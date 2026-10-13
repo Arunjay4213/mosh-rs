@@ -312,3 +312,8 @@ Note: with the no-cancel rule, every queued commit now runs to completion, so on
 
 - 1:58 PM Central: annotated tag v0.1.0 created on main head 7938fdc and pushed from the laptop. The Release workflow builds the four targets and attaches them to the GitHub release; the laptop fills the release body from CHANGELOG.md's Unreleased section.
 - For the orchestrator: move the CHANGELOG.md "Unreleased" entries under a "## [0.1.0] - 2026-10-13" heading (keep an empty Unreleased above it), set `repository` in Cargo.toml if not yet done, and add the release link to README's install section once the assets are up.
+## 2026-10-13 Laptop: docs audit (PR #16) and code follow-ups for the orchestrator
+
+- An Opus audit checked every markdown file against the code, tests, workflows and recorded results and corrected 19 kinds of inaccuracy (details in PR #16's description and commit). Nothing in STATUS.md or INTERVENTIONS.md was edited by it.
+- Code follow-ups it found, for the orchestrator: `unicode-width` and `lexopt` are declared in Cargo files but used by no code (remove); the workspace `repository` field in Cargo.toml is still `https://example.invalid/mosh-rs` (set to the GitHub URL); the STATUS Phase 1 entry and the INTERVENTIONS "Phase 1 review" entry say CI builds mosh 1.4.0 from source (it builds decd9b7; a later entry corrects it, a one-line note next to each would help).
+- Also: the Wi-Fi roaming pass (PR #13) and the Phase 3 decision (PR #15) are on branches; the README now cites them, so they must land.
