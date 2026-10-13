@@ -109,9 +109,10 @@ mosh --ssh="ssh -p 2222" host       # custom ssh command
 mosh -p 60001 host                  # pin the server's UDP port (or a range: 60000:60010)
 mosh --predict=always host          # local echo even on fast links
 mosh --local                        # run mosh-server locally, without ssh
+mosh --scrollback host              # keep the session's output in your terminal's history (needs a mosh-rs server)
 ```
 
-Launcher flags planned for v0.1 ([PLAN.md](PLAN.md) section 8):
+Launcher flags ([PLAN.md](PLAN.md) section 8):
 
 | Flag | Meaning |
 | --- | --- |
@@ -122,7 +123,9 @@ Launcher flags planned for v0.1 ([PLAN.md](PLAN.md) section 8):
 | `--no-init` | do not send the terminal initialization string |
 | `--local` | run mosh-server locally without ssh |
 | `-4`, `-6` | IPv4 only, IPv6 only |
-| `--scrollback=N` | lines of scrollback the server keeps (new in mosh-rs) |
+| `--scrollback` | keep the session's output in the local terminal's history; needs a mosh-rs server, falls back to upstream behavior with a notice otherwise (new in mosh-rs) |
+
+The server takes `mosh-server new --scrollback MIB` to cap how much undelivered history it holds (default 32 MiB, `0` turns capture off).
 
 Environment variables, as in upstream:
 
@@ -137,12 +140,15 @@ Each cell is one run of the interop test ([PLAN.md](PLAN.md) section 3, oracle 4
 
 | Client / server | Clean | 5% loss | 30% loss, 200 ms, reorder | 2 min blackout | Client roams |
 | --- | :---: | :---: | :---: | :---: | :---: |
-| mosh-rs client / mosh-rs server | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
-| mosh-rs client / mosh 1.4 server | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
-| mosh 1.4 client / mosh-rs server | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
-| mosh 1.4 client / mosh 1.4 server (baseline) | 🚧 | 🚧 | 🚧 | 🚧 | 🚧 |
+| mosh-rs client / mosh-rs server | ✅ | ✅ | ✅ | ✅ | ✅ |
+| mosh-rs client / mosh 1.4 server | ✅ | ✅ | ✅ | ✅ | ✅ |
+| mosh 1.4 client / mosh-rs server | ✅ | ✅ | ✅ | ✅ | ✅ |
+| mosh 1.4 client / mosh 1.4 server (baseline) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| mosh-rs client with `--scrollback` / mosh-rs server | ✅ | ✅ | ✅ | ✅ | ✅ |
+| mosh-rs client with `--scrollback` / mosh 1.4 server | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-✅ verified by the interop test · 🚧 not yet verified
+✅ verified by the interop test (`INTEROP_FULL=1 tests/interop.sh`), six screen scenarios per cell (seq, colors, vim, wide characters, resize, typing), 180 cells in all, on devbox (arm64 Linux) at commit 728e468.
+Upstream's own test suite (`make check`, 32 tests) also passes with mosh-rs binaries in every client/server combination: 30 pass and the same 2 expected failures as upstream.
 
 ## Performance
 
@@ -182,13 +188,22 @@ The full design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Scrollback
 
 Upstream mosh has no scrollback because the client switches the local terminal to the alternate screen and the server discards rows that scroll off.
-In mosh-rs, the server will record rows that leave the top of a full-screen scroll region (but not while a full-screen program like vim is on the alternate screen) and send them as a new protobuf field.
-The client will write those lines into the local terminal's normal history, so the mouse wheel and your terminal's search work as they do over ssh, and an upstream peer on either end simply sees normal mosh behavior.
+With `mosh --scrollback` and a mosh-rs server, the server records every row that leaves the top of the screen, and the rows on screen when a program clears it, and sends them as a new protobuf field that upstream peers ignore.
+The client writes those lines into your terminal's normal history, so the mouse wheel and your terminal's search work as they do over ssh.
+Full-screen programs like vim and less run in your terminal's own alternate screen, so nothing they draw enters history and the screen from before them comes back when they exit.
+
+The screen is always current; history follows a few seconds behind on a large burst (the history of `seq 1 50000` arrives in about 9 seconds on loopback), because the server sends at most a few packets of history per round trip so that it survives packet loss.
+The remote program is never paused for history: if more than 32 MiB of history is waiting (for example while your laptop sleeps during a long build), the oldest undelivered lines are dropped and a dim line in your history says how many.
+Known limit: changing the window height can lose or repeat a few rows, because terminals keep the bottom of the screen on resize while mosh's emulator keeps the top.
+Against an upstream server, `--scrollback` falls back to normal mosh behavior and shows a notice.
+
+How this is checked: `tests/scrollback.sh` runs `seq 1 50000` through mosh in tmux with a 200,000-line history and compares the captured history with `seq` line by line, also through 30% packet loss, around vim, less and `clear`, across resizes, and against an upstream server.
 
 ## Windows
 
-The Windows client will put the console into VT mode, so keys arrive as the same escape-sequence bytes a Unix terminal produces and output is plain VT bytes, with no key translation layer.
-It will start the server with the `ssh.exe` that ships with Windows 10 and later.
+The Windows client puts the console into VT mode, so keys arrive as the same escape-sequence bytes a Unix terminal produces and output is plain VT bytes, with no key translation layer.
+It starts the server with the `ssh.exe` that ships with Windows 10 and later, and assumes `TERM=xterm-256color` when TERM is unset, as it normally is on Windows.
+`mosh.exe` and `mosh-client.exe` cross-compile from Linux and need only system DLLs; they have not yet been tested on a Windows machine.
 `mosh-server` stays Unix-only, as in upstream.
 
 ## How correctness is checked
