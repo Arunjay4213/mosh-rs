@@ -1,6 +1,19 @@
 # Tests
 
-`tests/run-all.sh` runs everything: `cargo test --release --workspace --no-fail-fast`, then every executable `tests/*.sh` driver.
+`tests/run-all.sh` runs everything: each cargo integration test, `lib-bin-doc` (the workspace's lib, bin and doc tests), and every executable `tests/*.sh` driver.
+The cargo tests run one after another; `scrollback.sh` runs after them (it shares ports 61500-61599 with `detached_warning` and `scrollback_hostile`); every other driver runs alongside them.
+Each item prints one block (its tail when it passed, all of it when it failed, full logs in `target/run-all/`), then a PASS/FAIL line per item and the wall time.
+It exports `MOSH_CI_FULL=1` unless that is already 0.
+
+To run a subset, for example in a CI shard, name the items, comma-separated, globs allowed:
+
+```
+RUN_ALL_ONLY=client_e2e,transport-impaired.sh tests/run-all.sh
+RUN_ALL_ONLY='lib-bin-doc,*_conformance' tests/run-all.sh
+```
+
+A pattern that matches nothing exits 2 and lists every name, so a typo cannot silently skip tests.
+A set of shards must together cover every name, including `lib-bin-doc`.
 The interop matrix and upstream's test suite are described in `tests/interop/README.md`.
 
 ## Splitting the long scrollback tests across CI shards

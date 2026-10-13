@@ -40,6 +40,7 @@
 #   2. 5% loss, same delay and reordering, no address change.
 #   3. Same as 1 without the rebind, plus a 3 s blackout starting at 4 s.
 # Prints one summary line per run; exits non-zero if any run fails.
+# Holds /tmp/mosh-rs-transport-impaired.lock while it runs.
 
 set -euo pipefail
 
@@ -49,6 +50,14 @@ cd "$root"
 LISTEN=127.0.0.1:60700
 SERVER_PORT=60701
 CONTROL=127.0.0.1:60702
+
+# The ports above are fixed, so one run at a time per machine (another
+# checkout or worktree may run this script too).
+exec 8> /tmp/mosh-rs-transport-impaired.lock
+if ! flock -n 8; then
+    echo "transport-impaired: another run holds /tmp/mosh-rs-transport-impaired.lock, waiting"
+    flock 8
+fi
 
 cargo build --release -p mosh-tools --bin udp-impair
 # Build once, then run the test executable directly. Going through
