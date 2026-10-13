@@ -687,3 +687,9 @@ Also in this commit: the unused `unicode-width` and `lexopt` declarations are re
 ## 2026-10-13 CI client_e2e "non-zero exit" fixed in the tests (agent S2)
 
 - The exit-status waits in client_e2e, server_e2e and launcher matched the typed command line's `MOSH_EXIT=` and could capture before the shell printed the status. They now wait for a whole `MOSH_EXIT=<n>` line. Both clients exited 0 in all 100 devbox runs (50 each, with and without load). `command_output_and_exit` under load: 15 of 15. Details in INTERVENTIONS.md.
+
+## 2026-10-13 Phase 5 gate: PASSED; v0.1.0 released
+
+- Performance: every PLAN section 5 target measured by `tools/bench --hour` against C++ mosh 1.4.0 on devbox and published in the README (entry "Phase 5: one-hour bench rerun" above): idle CPU 0.00%, memory after one hour 4.1 MiB client and 2.5 MiB server (C++ 14.3 and 9.9), static binaries 0.8 to 1.2 MB, client startup 1.40 ms, keystroke 0.09 ms with one render, `seq 1 100000` 110 ms (C++ 130 ms).
+- Release: the laptop ran the Release workflow dry run (run 38447825710, all four targets built, smoke-tested and packaged), the user made the repository public ("public if it's ready", 13:50 Central) and tagged v0.1.0 ("yes tag v0.1.0", 13:58 Central) on main at 7938fdc. The release at github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.0 carries, each with a sha256 file: aarch64-apple-darwin (996 KB), aarch64-unknown-linux-musl (1.24 MB), x86_64-unknown-linux-musl (1.32 MB), x86_64-pc-windows-msvc (573 KB).
+- Open after the gate: the Phase 3 platform review (`reviews/2026-10-13-phase3-platform.md`, 0 blocking, 4 should-fix) is with agent C; its fixes land through CI as 0.1.x follow-ups.
