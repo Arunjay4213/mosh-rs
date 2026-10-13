@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # Strip symbols from release binaries for every target, without editing Cargo.toml.
+  CARGO_PROFILE_RELEASE_STRIP: symbols
+
+jobs:
+  build:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            tool: cargo
+            bins: --bin mosh --bin mosh-client --bin mosh-server
+            archive: tar.gz
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-latest
+            tool: cross
+            bins: --bin mosh --bin mosh-client --bin mosh-server
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            tool: cargo
+            bins: --bin mosh --bin mosh-client --bin mosh-server
+            archive: tar.gz
+          # mosh-server is Unix-only, as upstream, so Windows ships the client side only.
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            tool: cargo
+            bins: --bin mosh --bin mosh-client
+            archive: zip
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Install cross
+        if: matrix.tool == 'cross'
+        run: cargo install cross --locked
+
+      - name: Build
+        shell: bash
+        run: ${{ matrix.tool }} build --release --locked --target ${{ matrix.target }} -p mosh ${{ matrix.bins }}
+
+      - name: Package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="mosh-rs-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          mkdir "$name"
+          out="target/${{ matrix.target }}/release"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            cp "$out/mosh.exe" "$out/mosh-client.exe" "$name/"
+          else
+            cp "$out/mosh" "$out/mosh-client" "$out/mosh-server" "$name/"
+          fi
+          cp LICENSE README.md "$name/"
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            7z a "$name.zip" "$name"
+            asset="$name.zip"
+          else
+            tar czf "$name.tar.gz" "$name"
+            asset="$name.tar.gz"
+          fi
+          if command -v sha256sum >/dev/null; then
+            sha256sum "$asset" > "$asset.sha256"
+          else
+            shasum -a 256 "$asset" > "$asset.sha256"
+          fi
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ steps.package.outputs.asset }}
+            ${{ steps.package.outputs.asset }}.sha256

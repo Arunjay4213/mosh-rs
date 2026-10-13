@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Arunjay4213/mosh-rs/security/advisories/new
+    about: Please report security problems privately, not in a public issue.
+  - name: Upstream mosh
+    url: https://github.com/mobile-shell/mosh
+    about: Bugs in mosh itself (not in mosh-rs) belong upstream.

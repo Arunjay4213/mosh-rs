@@ -34,3 +34,4 @@ Rust reimplementation of mosh 1.4.0. Read `PLAN.md` first. Section numbers below
 
 - Append to STATUS.md at every gate and to INTERVENTIONS.md every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 - The remote is origin (private repo github.com/Arunjay4213/mosh-rs). Push to main after every commit. The user reviews progress on GitHub.
+- Run `git pull --rebase --autostash` before every push; another machine also pushes to main.

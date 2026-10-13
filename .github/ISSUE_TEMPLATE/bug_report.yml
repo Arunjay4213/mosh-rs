@@ -1,0 +1,80 @@
+name: Bug report
+description: Something in mosh-rs behaves differently from upstream mosh 1.4.0, or is broken.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting.
+        mosh-rs is pre-alpha, so please check the Status section of the README first.
+        Security problems go through private reporting (see SECURITY.md), not here.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands, and what you typed or ran inside the session.
+      placeholder: |
+        1. mosh user@host
+        2. run `vim file.txt`
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: upstream
+    attributes:
+      label: Does upstream mosh 1.4.0 behave the same way?
+      description: If upstream does the same thing, it is probably intended behavior for mosh-rs too.
+      options:
+        - "No, upstream mosh behaves correctly"
+        - "Yes, upstream mosh has the same problem"
+        - "I have not checked"
+    validations:
+      required: true
+  - type: dropdown
+    id: pairing
+    attributes:
+      label: Client and server
+      options:
+        - mosh-rs client with mosh-rs server
+        - mosh-rs client with mosh 1.4 server
+        - mosh 1.4 client with mosh-rs server
+        - Other (explain below)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: mosh-rs version or commit
+      placeholder: "output of `mosh-client --version`, or a commit hash"
+    validations:
+      required: true
+  - type: input
+    id: client-os
+    attributes:
+      label: Client OS and terminal
+      placeholder: "e.g. Windows 11, Windows Terminal 1.21"
+    validations:
+      required: true
+  - type: input
+    id: server-os
+    attributes:
+      label: Server OS
+      placeholder: "e.g. Ubuntu 24.04 arm64"
+  - type: textarea
+    id: network
+    attributes:
+      label: Network conditions
+      description: Wi-Fi, cellular, VPN, roaming between networks, sleep and wake, known packet loss.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screen captures
+      description: Paste text output here. It is formatted as code automatically.
+      render: text

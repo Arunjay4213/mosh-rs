@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest a change or a new capability.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        mosh-rs ports mosh 1.4.0 faithfully.
+        Behavior that differs from upstream is only added when it is listed in PLAN.md section 9, so a request that changes upstream behavior starts as a discussion here.
+        X forwarding, port forwarding, SOCKS, and a Windows server are out of scope for now (PLAN.md section 12).
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what stops you today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should mosh-rs do?
+    validations:
+      required: true
+  - type: dropdown
+    id: compat
+    attributes:
+      label: Does this change behavior compared to upstream mosh 1.4.0?
+      options:
+        - "No, it is additive and old peers would not notice"
+        - "Yes, it changes behavior an upstream peer or user would see"
+        - "Not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
