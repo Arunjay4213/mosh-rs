@@ -36,7 +36,8 @@ use std::collections::VecDeque;
 
 use mosh_network::prost::Message;
 use mosh_network::proto::client_buffers::{Instruction, Keystroke, ResizeMessage, UserMessage};
-use mosh_network::State;
+use mosh_network::transport::dos_detected;
+use mosh_network::{CryptoError, State};
 use mosh_terminal::{Resize, UserByte};
 
 /// Which of the two actions a `UserEvent` holds.
@@ -156,6 +157,11 @@ impl State for UserStream {
         }
     }
 
+    fn subtract_self(&mut self) {
+        // if we are subtracting ourself from ourself, just clear the std::deque
+        self.actions.clear();
+    }
+
     fn diff_from(&self, existing: &UserStream) -> Vec<u8> {
         let mut my_it = self.actions.iter();
 
@@ -206,10 +212,12 @@ impl State for UserStream {
         self.diff_from(&UserStream::new())
     }
 
-    fn apply_string(&mut self, diff: &[u8]) {
-        // Upstream: fatal_assert( input.ParseFromString( diff ) ). The diff
-        // was authenticated by the session key, so this mirrors that abort.
-        let input = UserMessage::decode(diff).expect("fatal_assert: UserMessage parses");
+    fn apply_string(&mut self, diff: &[u8]) -> Result<(), CryptoError> {
+        // Upstream: fatal_assert( input.ParseFromString( diff ) ). PLAN.md 9.8:
+        // malformed input from a keyed peer is an error, not an abort.
+        let input = UserMessage::decode(diff).map_err(|_| {
+            dos_detected("input.ParseFromString( diff )", "UserStream::apply_string")
+        })?;
 
         for inst in &input.instruction {
             if let Some(k) = &inst.keystroke {
@@ -218,15 +226,24 @@ impl State for UserStream {
                         .push_back(UserEvent::from_userbyte(UserByte::new(b)));
                 }
             } else if let Some(r) = &inst.resize {
-                // int32 to size_t, as upstream's Resize( width(), height() ):
-                // a negative value wraps, as the C++ conversion does.
-                self.actions.push_back(UserEvent::from_resize(Resize::new(
-                    r.width.unwrap_or(0) as usize,
-                    r.height.unwrap_or(0) as usize,
-                )));
+                // Upstream converts int32 to size_t here and aborts later, when
+                // the server's Framebuffer::resize asserts a size above 0 (or
+                // fails to allocate a wrapped negative one). PLAN.md 9.8: an
+                // error now. Both values are >= 1 after the check, so the
+                // casts are lossless.
+                let (w, h) = (r.width.unwrap_or(0), r.height.unwrap_or(0));
+                if w < 1 || h < 1 {
+                    return Err(dos_detected(
+                        "width > 0 && height > 0",
+                        "UserStream::apply_string",
+                    ));
+                }
+                self.actions
+                    .push_back(UserEvent::from_resize(Resize::new(w as usize, h as usize)));
             }
             /* any other instruction type (unknown extension) is ignored */
         }
+        Ok(())
     }
 
     fn reset_input(&mut self) {

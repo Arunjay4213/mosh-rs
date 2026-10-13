@@ -39,7 +39,8 @@ use mosh_network::prost::Message;
 use mosh_network::proto::host_buffers::{
     EchoAck, HostBytes, HostMessage, Instruction, ResizeMessage,
 };
-use mosh_network::State;
+use mosh_network::transport::dos_detected;
+use mosh_network::{CryptoError, State};
 use mosh_terminal::terminalframebuffer::Framebuffer;
 use mosh_terminal::{Actions, Display, Emulator, Resize, UTF8Parser};
 
@@ -218,6 +219,10 @@ impl PartialEq for Complete {
 impl State for Complete {
     fn subtract(&mut self, _prefix: &Complete) {}
 
+    /// Upstream `subtract( const Complete* ) const {}` does nothing, also
+    /// when handed itself, so there is nothing to copy or change.
+    fn subtract_self(&mut self) {}
+
     fn diff_from(&self, existing: &Complete) -> Vec<u8> {
         let mut output = HostMessage::default();
 
@@ -270,28 +275,49 @@ impl State for Complete {
         ))
     }
 
-    fn apply_string(&mut self, diff: &[u8]) {
-        // Upstream: fatal_assert( input.ParseFromString( diff ) ). The diff
-        // was authenticated by the session key, so this mirrors that abort.
-        let input = HostMessage::decode(diff).expect("fatal_assert: HostMessage parses");
+    fn apply_string(&mut self, diff: &[u8]) -> Result<(), CryptoError> {
+        // Upstream fatal_asserts the parse and asserts the three checks below.
+        // PLAN.md 9.8: malformed input from a keyed peer is an error, not an
+        // abort. On error the state may be partly applied; Transport::recv
+        // applies to a copy and drops it.
+        let input = HostMessage::decode(diff)
+            .map_err(|_| dos_detected("input.ParseFromString( diff )", "Complete::apply_string"))?;
 
         for inst in &input.instruction {
             if let Some(hb) = &inst.hostbytes {
                 let terminal_to_host = self.act(hb.hoststring.as_deref().unwrap_or(&[]));
-                assert!(terminal_to_host.is_empty()); /* server never interrogates client terminal */
+                if !terminal_to_host.is_empty() {
+                    /* server never interrogates client terminal */
+                    return Err(dos_detected(
+                        "terminal_to_host.empty()",
+                        "Complete::apply_string",
+                    ));
+                }
             } else if let Some(r) = &inst.resize {
-                // int32 to size_t, as upstream's Resize( width(), height() ).
-                let resize = Resize::new(
-                    r.width.unwrap_or(0) as usize,
-                    r.height.unwrap_or(0) as usize,
-                );
+                // int32 to size_t, as upstream's Resize( width(), height() );
+                // upstream then asserts a size above 0 in Framebuffer::resize.
+                // Both values are >= 1 after the check, so the casts are lossless.
+                let (w, h) = (r.width.unwrap_or(0), r.height.unwrap_or(0));
+                if w < 1 || h < 1 {
+                    return Err(dos_detected(
+                        "width > 0 && height > 0",
+                        "Complete::apply_string",
+                    ));
+                }
+                let resize = Resize::new(w as usize, h as usize);
                 self.act_action(UserAction::Resize(&resize));
             } else if let Some(e) = &inst.echoack {
                 let inst_echo_ack_num = e.echo_ack_num.unwrap_or(0);
-                assert!(inst_echo_ack_num >= self.echo_ack);
+                if inst_echo_ack_num < self.echo_ack {
+                    return Err(dos_detected(
+                        "inst_echo_ack_num >= echo_ack",
+                        "Complete::apply_string",
+                    ));
+                }
                 self.echo_ack = inst_echo_ack_num;
             }
         }
+        Ok(())
     }
 
     fn reset_input(&mut self) {

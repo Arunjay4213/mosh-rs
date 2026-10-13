@@ -50,7 +50,7 @@ use std::os::fd::RawFd;
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-use mosh_network::{freeze_timestamp, Error, State, Transport};
+use mosh_network::{freeze_timestamp, CryptoError, Error, State, Transport};
 use rand::rngs::StdRng;
 use rand::{Rng, RngExt, SeedableRng};
 
@@ -74,8 +74,10 @@ impl State for Log {
         self.diff_from(&Log::default())
     }
 
-    fn apply_string(&mut self, diff: &[u8]) {
+    /// every byte string is a valid diff: append it
+    fn apply_string(&mut self, diff: &[u8]) -> Result<(), CryptoError> {
         self.bytes.extend_from_slice(diff);
+        Ok(())
     }
 
     /// drop the prefix (asserted to be one, as UserStream::subtract does)
@@ -230,7 +232,10 @@ fn client(
         if pushed < changes && start.elapsed() >= due {
             let mut chunk = vec![0u8; rng.random_range(1..=40usize)];
             rng.fill_bytes(&mut chunk);
-            network.get_current_state().apply_string(&chunk);
+            network
+                .get_current_state()
+                .apply_string(&chunk)
+                .expect("a Log accepts any bytes");
             log.extend_from_slice(&chunk);
             pushed += 1;
         }

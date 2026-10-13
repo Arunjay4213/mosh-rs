@@ -221,7 +221,9 @@ impl<MyState: State> TransportSender<MyState> {
         if self.verbose != 0 {
             /* verify diff has round-trip identity (modulo Unicode fallback rendering) */
             let mut newstate = self.sent_states[self.assumed_receiver_state].state.clone();
-            newstate.apply_string(&diff);
+            if newstate.apply_string(&diff).is_err() {
+                eprintln!("Warning, generated diff does not apply to the assumed receiver state!");
+            }
             /* upstream also runs current_state.compare( newstate ) here; State has no compare() */
 
             /* Also verify that both the original frame and generated frame have the same initial diff. */

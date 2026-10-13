@@ -90,8 +90,9 @@ impl From<CryptoError> for Error {
 }
 
 /// `dos_assert( expr )`: illegal counterparty input raises a non-fatal
-/// CryptoException.
-pub(crate) fn dos_detected(expression: &str, function: &str) -> CryptoError {
+/// CryptoException. Public so `State` implementations report malformed diffs
+/// the same way.
+pub fn dos_detected(expression: &str, function: &str) -> CryptoError {
     CryptoError::new(format!(
         "Illegal counterparty input (possible denial of service) in function {function}, failed test: {expression}\n"
     ))

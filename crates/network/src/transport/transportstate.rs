@@ -33,6 +33,8 @@
 //! plus the `State` trait that stands for the template parameter
 //! upstream's `TransportSender` and `Transport` take.
 
+use crate::crypto::CryptoError;
+
 /// What `TransportSender<MyState>` and `Transport<MyState, RemoteState>`
 /// require of a state type (upstream's implicit template interface).
 pub trait State: PartialEq + Clone {
@@ -40,8 +42,11 @@ pub trait State: PartialEq + Clone {
     fn diff_from(&self, existing: &Self) -> Vec<u8>;
     /// The diff from the initial (empty) state.
     fn init_diff(&self) -> Vec<u8>;
-    /// Applies a diff produced by `diff_from`.
-    fn apply_string(&mut self, diff: &[u8]);
+    /// Applies a diff produced by `diff_from`. A diff that cannot be applied
+    /// (malformed input from a peer holding the key) is a non-fatal error
+    /// where upstream aborts (`fatal_assert`/`assert`, PLAN.md 9.8); on error
+    /// `self` may be partly changed, so callers apply to a copy they can drop.
+    fn apply_string(&mut self, diff: &[u8]) -> Result<(), CryptoError>;
     /// Drop the part of `self` that `prefix` already contains.
     fn subtract(&mut self, prefix: &Self);
     /// `subtract` with `self` as the prefix. Upstream passes the same object

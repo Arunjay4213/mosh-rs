@@ -162,3 +162,18 @@ Agent spawns and why (all Opus, medium effort, each in its own git worktree):
 
 - The proxy relay now ignores SIGHUP at the point mosh.pl does (line 305) via `mosh_platform::process::ignore_sighup()` (no-op on Windows), so the copy finishes after ssh exits. Before: a running `mosh --fake-proxy -- localhost 22` died on `kill -HUP`; after: alive, as `/usr/bin/mosh --fake-proxy` is.
 - `cargo test --release -p mosh-tests --test launcher`, 3 runs: 4 passed, 0 failed each (4.44 s, 4.25 s, 4.20 s), including the dual-stack case with no flag, `-4` and `-6`.
+
+## 2026-10-13 statesync: subtract_self and errors instead of aborts (agent B)
+
+What changed:
+- `Complete` and `UserStream` override `State::subtract_self` with upstream's `subtract(this)` semantics: `Complete` does nothing (upstream `subtract` is an empty const function) and `UserStream` clears (upstream's `this == prefix` branch). The trait default cloned the whole state on every packet.
+- PLAN 9.8 extended: `State::apply_string` returns `Result<(), CryptoError>`, and `Transport::recv` returns the error and drops the packet.
+  `Complete` and `UserStream` return non-fatal `dos_detected` errors where upstream `fatal_assert`s or `assert`s: undecodable diff, resize below 1x1, host bytes that make the client reply, and a decreasing echo ack.
+
+Measured:
+- `subtract_self`, 10,000 calls, before and after (temporary bench, not committed): `Complete` holding the vim session at 132x43, 4.02 ms before and 53 ns after; the state is unchanged both times (asserted).
+  `UserStream` with 1,000 events (clone included in each iteration), 67.3 ms before and 6.14 ms after; the clone alone is 6.17 ms. The stream is empty afterwards in both cases.
+- `statesync_roundtrip`: `files=27 steps=2214 upstream_identical_divergences=1 mismatches=0` (unchanged), plus the new `malformed_diffs_through_transport`.
+  A keyed peer sends 3 malformed `UserMessage` diffs and 4 malformed `HostMessage` diffs to live `Transport`s: each is an `Err` from `recv` with no state added, and the next valid diff is accepted.
+- `transport_roundtrip`: 5 passed. `transport_sync`: 1 passed.
+

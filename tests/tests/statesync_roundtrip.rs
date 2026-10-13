@@ -48,9 +48,11 @@ use std::path::{Path, PathBuf};
 
 use mosh::statesync::{Complete, UserAction, UserEventType, UserStream};
 use mosh_network::prost::Message;
-use mosh_network::proto::client_buffers::UserMessage;
-use mosh_network::proto::host_buffers::HostMessage;
-use mosh_network::State;
+use mosh_network::proto::client_buffers::{self, UserMessage};
+use mosh_network::proto::host_buffers::{self, HostMessage};
+use mosh_network::proto::transport_buffers;
+use mosh_network::transport::transportfragment::Fragmenter;
+use mosh_network::{Connection, Error, Session, State, Transport};
 use mosh_terminal::terminalframebuffer::Framebuffer;
 use mosh_terminal::{Resize, UserByte};
 use mosh_tests::dump::{dump, hex, strip_gen};
@@ -235,7 +237,7 @@ fn complete_roundtrip() {
                     );
                     resizes_seen += 1;
                 }
-                client.apply_string(&diff);
+                client.apply_string(&diff).expect("server diff applies");
                 steps += 1;
                 let (ss, cs) = (screen(server.get_fb()), screen(client.get_fb()));
                 if ss != cs {
@@ -303,7 +305,9 @@ fn complete_roundtrip() {
                 server.get_fb().ds.get_width() as usize,
                 server.get_fb().ds.get_height() as usize,
             );
-            fresh.apply_string(&server.init_diff());
+            fresh
+                .apply_string(&server.init_diff())
+                .expect("init_diff applies");
             check(
                 &mut mismatches,
                 &format!("{} init_diff", at),
@@ -376,10 +380,12 @@ fn userstream_roundtrip() {
 
     // apply_string reproduces equality.
     let mut applied = older.clone();
-    applied.apply_string(&diff);
+    applied.apply_string(&diff).expect("diff applies");
     assert!(applied == full);
     let mut from_init = UserStream::new();
-    from_init.apply_string(&full.init_diff());
+    from_init
+        .apply_string(&full.init_diff())
+        .expect("init_diff applies");
     assert!(from_init == full);
 
     // subtract leaves the tail.
@@ -397,9 +403,10 @@ fn userstream_roundtrip() {
     with_key.extend_from_slice(&[0x0a, keystroke_inst.len() as u8]);
     with_key.extend_from_slice(&keystroke_inst);
     let mut s = full.clone();
-    s.apply_string(&bytes);
+    s.apply_string(&bytes)
+        .expect("unknown instruction is not an error");
     assert!(s == full, "unknown instruction must add no event");
-    s.apply_string(&with_key);
+    s.apply_string(&with_key).expect("keystroke applies");
     assert_eq!(s.size(), full.size() + 1);
     assert_eq!(s.events().back().map(|e| e.userbyte.c), Some(b'x'));
 
@@ -419,5 +426,194 @@ fn userstream_roundtrip() {
         "userstream events={} diff_instructions={}",
         full.size(),
         msg.instruction.len()
+    );
+}
+
+/// `Transport::recv` on the next datagram, waiting up to 2 s for it to arrive.
+fn recv_next<M: State, R: State>(t: &mut Transport<M, R>) -> Result<(), Error> {
+    let start = std::time::Instant::now();
+    loop {
+        match t.recv() {
+            Err(Error::Network(e)) if e.function == "No packet received" => {
+                assert!(start.elapsed().as_secs() < 2, "datagram never arrived");
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            r => return r,
+        }
+    }
+}
+
+/// A peer that holds the session key and sends hand-made instructions.
+struct Peer {
+    conn: Connection,
+    fragmenter: Fragmenter,
+    mtu: usize,
+}
+
+impl Peer {
+    fn new(key: &str, port: &str) -> Peer {
+        let conn = Connection::new_client(key, "127.0.0.1", port).expect("peer connection");
+        // size_t arithmetic in upstream; the MTU is well above the overheads.
+        let mtu = (conn.get_mtu() - Connection::ADDED_BYTES - Session::ADDED_BYTES as i32) as usize;
+        Peer {
+            conn,
+            fragmenter: Fragmenter::new(),
+            mtu,
+        }
+    }
+
+    fn send(&mut self, old: u64, new: u64, diff: Vec<u8>) {
+        let inst = transport_buffers::Instruction {
+            protocol_version: Some(2),
+            old_num: Some(old),
+            new_num: Some(new),
+            ack_num: Some(0),
+            throwaway_num: Some(0),
+            diff: Some(diff),
+            chaff: Some(Vec::new()),
+        };
+        for f in self
+            .fragmenter
+            .make_fragments(&inst, self.mtu)
+            .expect("fragments")
+        {
+            self.conn.send(&f.tostring()).expect("send");
+        }
+    }
+}
+
+fn user_diff(inst: client_buffers::Instruction) -> Vec<u8> {
+    UserMessage {
+        instruction: vec![inst],
+    }
+    .encode_to_vec()
+}
+
+fn host_diff(inst: host_buffers::Instruction) -> Vec<u8> {
+    HostMessage {
+        instruction: vec![inst],
+    }
+    .encode_to_vec()
+}
+
+/// PLAN.md 9.8: a keyed peer sending a well-formed, authenticated fragment
+/// whose diff the state cannot apply gets an `Err` from `recv` (upstream
+/// aborts); the packet is dropped and the receiver keeps working.
+#[test]
+fn malformed_diffs_through_transport() {
+    // Server direction: diffs of a UserStream.
+    let mut server: Transport<Complete, UserStream> = Transport::new_server(
+        &Complete::new(80, 24),
+        &UserStream::new(),
+        Some("127.0.0.1"),
+        None,
+    )
+    .expect("server transport");
+    let port = server.port().expect("port");
+    let mut peer = Peer::new(&server.get_key(), &port);
+    let bad_user_diffs = [
+        b"\xff\xff\xff\xff".to_vec(),
+        user_diff(client_buffers::Instruction {
+            resize: Some(client_buffers::ResizeMessage {
+                width: Some(0),
+                height: Some(24),
+            }),
+            ..Default::default()
+        }),
+        user_diff(client_buffers::Instruction {
+            resize: Some(client_buffers::ResizeMessage {
+                width: Some(80),
+                height: Some(-1),
+            }),
+            ..Default::default()
+        }),
+    ];
+    // Each malformed send uses its own new_num: the Fragmenter (as upstream)
+    // asserts that one (old, new) pair always carries the same diff.
+    for (i, diff) in bad_user_diffs.into_iter().enumerate() {
+        peer.send(0, 100 + i as u64, diff);
+        assert!(matches!(recv_next(&mut server), Err(Error::Crypto(_))));
+        assert_eq!(
+            server.get_remote_state_num(),
+            0,
+            "malformed diff added a state"
+        );
+    }
+    peer.send(
+        0,
+        1,
+        user_diff(client_buffers::Instruction {
+            keystroke: Some(client_buffers::Keystroke {
+                keys: Some(b"x".to_vec()),
+            }),
+            ..Default::default()
+        }),
+    );
+    assert!(recv_next(&mut server).is_ok());
+    assert_eq!(server.get_remote_state_num(), 1);
+    let got = &server.get_latest_remote_state().state;
+    assert_eq!(got.size(), 1);
+    assert_eq!(got.events()[0].userbyte.c, b'x');
+
+    // Client direction: diffs of a Complete.
+    let mut client: Transport<UserStream, Complete> = Transport::new_server(
+        &UserStream::new(),
+        &Complete::new(80, 24),
+        Some("127.0.0.1"),
+        None,
+    )
+    .expect("client-side transport");
+    let port = client.port().expect("port");
+    let mut peer = Peer::new(&client.get_key(), &port);
+    let hostbytes = |b: &[u8]| {
+        host_diff(host_buffers::Instruction {
+            hostbytes: Some(host_buffers::HostBytes {
+                hoststring: Some(b.to_vec()),
+            }),
+            ..Default::default()
+        })
+    };
+    let echoack = |n: u64| {
+        host_diff(host_buffers::Instruction {
+            echoack: Some(host_buffers::EchoAck {
+                echo_ack_num: Some(n),
+            }),
+            ..Default::default()
+        })
+    };
+    // valid: state 1 with echo ack 5
+    peer.send(0, 1, echoack(5));
+    assert!(recv_next(&mut client).is_ok());
+    assert_eq!(client.get_remote_state_num(), 1);
+    let bad_host_diffs = [
+        b"\x0a\x05\x12\x03\xff".to_vec(), // truncated nested message
+        hostbytes(b"\x1b[6n"),            // a query: the client would have to reply
+        echoack(3),                       // echo ack going backwards from 5
+        host_diff(host_buffers::Instruction {
+            resize: Some(host_buffers::ResizeMessage {
+                width: Some(-5),
+                height: Some(10),
+            }),
+            ..Default::default()
+        }),
+    ];
+    for (i, diff) in bad_host_diffs.into_iter().enumerate() {
+        peer.send(1, 100 + i as u64, diff);
+        assert!(matches!(recv_next(&mut client), Err(Error::Crypto(_))));
+        assert_eq!(
+            client.get_remote_state_num(),
+            1,
+            "malformed diff added a state"
+        );
+    }
+    peer.send(1, 2, hostbytes(b"hi"));
+    assert!(recv_next(&mut client).is_ok());
+    assert_eq!(client.get_remote_state_num(), 2);
+    let fb = client.get_latest_remote_state().state.get_fb();
+    assert_eq!(fb.get_cell(0, 0).debug_contents_bytes(), b"h");
+    assert_eq!(fb.get_cell(0, 1).debug_contents_bytes(), b"i");
+    assert_eq!(client.get_latest_remote_state().state.get_echo_ack(), 5);
+    println!(
+        "malformed diffs rejected: user=3 host=4; both receivers accepted the next valid diff"
     );
 }

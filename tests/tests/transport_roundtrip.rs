@@ -35,7 +35,7 @@ use mosh_network::prost::Message as _;
 use mosh_network::proto::{client_buffers, host_buffers, transport_buffers};
 use mosh_network::transport::compressor::{compress_str, uncompress_str, BUFFER_SIZE};
 use mosh_network::transport::transportfragment::{Fragment, FragmentAssembly, Fragmenter};
-use mosh_network::{Connection, Error, Message, Nonce, Session, State, Transport};
+use mosh_network::{Connection, CryptoError, Error, Message, Nonce, Session, State, Transport};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
@@ -376,7 +376,9 @@ impl State for Empty {
     fn init_diff(&self) -> Vec<u8> {
         Vec::new()
     }
-    fn apply_string(&mut self, _diff: &[u8]) {}
+    fn apply_string(&mut self, _diff: &[u8]) -> Result<(), CryptoError> {
+        Ok(())
+    }
     fn subtract(&mut self, _prefix: &Empty) {}
     fn reset_input(&mut self) {}
 }

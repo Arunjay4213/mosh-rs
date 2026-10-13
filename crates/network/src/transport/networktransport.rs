@@ -196,7 +196,9 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
             new_state.num = inst.new_num();
 
             if !inst.diff().is_empty() {
-                new_state.state.apply_string(inst.diff());
+                /* upstream aborts on a diff it cannot apply (PLAN.md 9.8): the
+                packet is dropped and the error returned */
+                new_state.state.apply_string(inst.diff())?;
             }
 
             /* Insert new state in sorted place */
