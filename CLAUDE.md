@@ -37,3 +37,13 @@ Rust reimplementation of mosh 1.4.0. Read `PLAN.md` first. Section numbers below
 - Run `git pull --rebase --autostash` before every push; another machine also pushes to main.
 - Commit often, not only at gates: after every agent delivery that compiles, and at least every 30 minutes while agents are working. Prefix work-in-progress commits with "WIP:" and name the module. Push after every commit.
 - Agents commit their own work too: each agent commits its owned files whenever its crate builds, with a plain message naming the module.
+
+## Code quality bar (checked at every commit, enforced at every gate)
+
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` must pass before any commit. A clippy error is a bug until proven otherwise; fix the code, do not add `#[allow]`.
+- `#[allow(...)]` needs a one-line comment on the line above saying why. Blanket allows at module or crate level are forbidden.
+- `unsafe` is allowed only in `crates/platform`, and every `unsafe` block has a `// SAFETY:` comment stating the invariant. Other crates carry `#![forbid(unsafe_code)]`.
+- `.unwrap()` and `.expect()` in library code only where the invariant is provably local, with the reason in the `expect` message. Errors that can happen at runtime are returned, never panicked.
+- Every `pub` item has a doc comment. Every module starts with a doc comment naming the upstream file and what the module does.
+- Integer casts between signed and unsigned mirror upstream exactly and get a comment where the value could be negative or exceed the range.
+- Independent code reviews land in `reviews/`. Before a gate is declared passed, every item in every `reviews/*.md` file is either fixed or answered in that file, with the commit hash.
