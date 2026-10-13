@@ -31,6 +31,5 @@
 // Ported from: upstream/src/frontend/mosh-client.cc
 
 fn main() {
-    eprintln!("mosh-client: not implemented yet (Phase 2, crates/mosh/src/client)");
-    std::process::exit(1);
+    std::process::exit(mosh::client::main());
 }

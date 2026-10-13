@@ -177,7 +177,6 @@ Measured:
   A keyed peer sends 3 malformed `UserMessage` diffs and 4 malformed `HostMessage` diffs to live `Transport`s: each is an `Err` from `recv` with no state added, and the next valid diff is accepted.
 - `transport_roundtrip`: 5 passed. `transport_sync`: 1 passed.
 
-
 ## 2026-10-13 mosh-server ported; gate 1 (server_e2e) passes (agent D)
 
 What changed:
@@ -194,3 +193,21 @@ Measured on devbox (`cargo test --release -p mosh-tests --test server_e2e -- --n
 - Planted bug (resize width off by one): the resize case fails.
 - `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`: clean.
 - `cargo build -p mosh -p mosh-platform -p mosh-network -p mosh-terminal --target x86_64-pc-windows-gnu`: builds. `cargo build --workspace` for that target fails only in `tools` (`pty-record`, `udp-impair`) and `tests/src/bin/toy-sync.rs`, which are unix-only programs not gated by `cfg(unix)`, unchanged by this work.
+
+## 2026-10-13 mosh-client, landing 1: client against the C++ server (agent E)
+
+What changed:
+- `mosh-client` is a port of `mosh-client.cc` (`client/mod.rs`), `stmclient.cc` (`client/stmclient.rs`) and all of `terminaloverlay.cc` (`client/terminaloverlay.rs`, including the prediction engine, which the default adaptive mode only shows on slow links; its own gate is landing 2).
+- PLAN 9.5: each non-empty frame is wrapped in `\e[?2026h` ... `\e[?2026l`. Empty frames stay empty, so an idle client writes nothing.
+- A panic leaves the alternate screen and restores the tty from the panic hook before the message is printed, then prints `[mosh is exiting.]` and exits 1 (checked once with a temporary panic on Ctrl-G: `STTY:icanon STTY:echo` afterwards).
+- Platform: `tty::suspend_self()` (`kill(0, SIGSTOP)`, no-op on Windows) and a Windows no-op `coredump::disable_dumping_core()`.
+- INTERIM: `mosh-client -c` asks `tput colors`, because the generated terminfo table (PLAN 9.6) has no `colors` capability yet. Upstream's messages and exit status for unset and unknown TERM are kept. Open question to the orchestrator.
+
+Measured (`cargo test --release -p mosh-tests --test client_e2e`, every test runs `/usr/bin/mosh-client` first, then ours, against `/usr/bin/mosh-server` via our launcher in tmux): 5 passed.
+- Command output (`seq 1 300`, `DONE`), `[mosh is exiting.]`, exit 0; interactive `bash --norc`; resize to 100x30 gives `COLS=100 LINES=30` from `tput`; `Ctrl-^ .` exits 0, the pre-mosh screen comes back and `stty -a` shows `icanon echo`.
+- `kill -9` of the server: `mosh: Last contact 9 seconds ago. [To quit: Ctrl-^ .]` after 9.1 s for both clients.
+- Idle CPU, `pidstat 1 60`: 0.00% for both clients.
+- Argument errors, `-c`, unknown prediction mode, no MOSH_KEY, no tty: same messages and exit codes as `/usr/bin/mosh-client`.
+- `cargo build -p mosh --bin mosh-client --target x86_64-pc-windows-gnu`: builds.
+- Not yet run: `tests/interop.sh` and `tests/upstream-check.sh` (agent M's harness is not on main yet).
+

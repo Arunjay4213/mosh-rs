@@ -84,3 +84,8 @@ pub fn reenable_dumping_core() {
         unsafe { libc::setrlimit(libc::RLIMIT_CORE, &limit) };
     }
 }
+
+/// Windows writes no core files, so there is nothing to disable; this lets
+/// `mosh-client` call the same function on both systems.
+#[cfg(windows)]
+pub fn disable_dumping_core() {}

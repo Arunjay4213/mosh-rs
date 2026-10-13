@@ -37,6 +37,17 @@
 //! `src/util/swrite.cc`: raw mode on and off, window size, stdin reads and
 //! complete stdout writes. Windows uses console modes (PLAN section 7).
 
+/// `kill( 0, SIGSTOP )`: stop this process group, for the client's
+/// Ctrl-^ Ctrl-Z suspend (STMClient::process_user_input). Returns after
+/// SIGCONT. Windows has no job control, so this returns at once there.
+pub fn suspend_self() {
+    #[cfg(unix)]
+    // SAFETY: plain kill(2) call on our own process group.
+    unsafe {
+        libc::kill(0, libc::SIGSTOP);
+    }
+}
+
 #[cfg(unix)]
 pub use self::unix::*;
 #[cfg(windows)]
