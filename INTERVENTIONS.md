@@ -298,3 +298,7 @@ Note: with the no-cancel rule, every queued commit now runs to completion, so on
 - 1:08 PM Central. The user accepts the Wi-Fi off-and-on roaming test (INTERVENTIONS entry "Phase 3 roaming test on the laptop", Rust client on Windows against the Rust server, `top` kept running) as the Phase 3 pass condition, in place of the sleep-and-wake step named in PLAN section 3 item 8. The sleep-and-wake test was not run. Orchestrator: write the Phase 3 "gate: PASSED" entry in STATUS.md citing this decision, tick the README box, and note in the README Windows section that sleep/wake is verified by the equivalent network-loss test.
 - Windows escape key: Ctrl+6 in Windows Terminal (Ctrl+Shift+6 does nothing). The user confirmed the blue command bar appears and `.` quits. Document as Ctrl+6 on Windows.
 - A Fable review of `crates/platform` (the Windows console path and the unix tty, pty and socket code) is running from the laptop as the Phase 3 review; its file lands in `reviews/`.
+## 2026-10-13 User decision: tag v0.1.0 ("yes tag v0.1.0")
+
+- 1:58 PM Central: annotated tag v0.1.0 created on main head 7938fdc and pushed from the laptop. The Release workflow builds the four targets and attaches them to the GitHub release; the laptop fills the release body from CHANGELOG.md's Unreleased section.
+- For the orchestrator: move the CHANGELOG.md "Unreleased" entries under a "## [0.1.0] - 2026-10-13" heading (keep an empty Unreleased above it), set `repository` in Cargo.toml if not yet done, and add the release link to README's install section once the assets are up.
