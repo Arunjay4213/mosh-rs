@@ -1,9 +1,9 @@
 result: success
-commit: bd5fde6e1158d9f391e48c117adf45c71e135da4
-branch: laptop/audit-followups
-pr: 18
-subject: INTERVENTIONS: docs audit landed as PR 16; code follow-ups
-run: https://github.com/Arunjay4213/mosh-rs/actions/runs/38451813991
+commit: 564478b51599399087acea1ad790d76e6e00add0
+branch: laptop/ci-gate-on
+pr: 10
+subject: INTERVENTIONS: CI green on main, branch protection on
+run: https://github.com/Arunjay4213/mosh-rs/actions/runs/38451843413
 fmt: success
 clippy: success
 test: success
@@ -21,7 +21,7 @@ test: success
     Checking mosh-network v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/network)
     Checking mosh v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/mosh)
     Checking mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 5.72s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 7.14s
 ```
 
 ## log-fmt: failures
@@ -45,10 +45,10 @@ test: success
    Compiling mosh-network v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/network)
    Compiling mosh v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/mosh)
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 22.86s
+    Finished `release` profile [optimized] target(s) in 18.70s
 == cargo test --release -p mosh-tests --test client_e2e
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 6.94s
+    Finished `release` profile [optimized] target(s) in 6.53s
      Running tests/client_e2e.rs (target/release/deps/client_e2e-05d18a1cd9e42bce)
 
 running 7 tests
@@ -62,20 +62,20 @@ test no_server_times_out ... ok
 test idle_cpu has been running for over 60 seconds
 test idle_cpu ... ok
 
-test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 61.68s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 61.65s
 
 == cargo test --release -p mosh-tests --test prediction_e2e
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 6.50s
+    Finished `release` profile [optimized] target(s) in 6.02s
      Running tests/prediction_e2e.rs (target/release/deps/prediction_e2e-d1eec2fcc152967c)
 
 running 3 tests
-    Finished `release` profile [optimized] target(s) in 0.02s
+    Finished `release` profile [optimized] target(s) in 0.01s
 test wrong_prediction_is_removed ... ok
 test unicode_input_with_prediction ... ok
 test keystroke_shows_at_once_with_prediction ... ok
 
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 45.82s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 45.75s
 
 
 shard client: all passed
@@ -94,10 +94,10 @@ shard client: all passed
    Compiling mosh-network v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/network)
    Compiling mosh v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/mosh)
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 19.45s
+    Finished `release` profile [optimized] target(s) in 24.77s
 == cargo test --release -p mosh-tests --test client_e2e
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 6.14s
+    Finished `release` profile [optimized] target(s) in 6.64s
      Running tests/client_e2e.rs (target/release/deps/client_e2e-8809f317143d72dc)
 
 running 7 tests
@@ -111,11 +111,11 @@ test no_server_times_out ... ok
 test idle_cpu has been running for over 60 seconds
 test idle_cpu ... ok
 
-test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 61.98s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 61.81s
 
 == cargo test --release -p mosh-tests --test prediction_e2e
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 5.10s
+    Finished `release` profile [optimized] target(s) in 6.14s
      Running tests/prediction_e2e.rs (target/release/deps/prediction_e2e-07e09746500697f0)
 
 running 3 tests
@@ -124,7 +124,7 @@ test wrong_prediction_is_removed ... ok
 test unicode_input_with_prediction ... ok
 test keystroke_shows_at_once_with_prediction ... ok
 
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 45.94s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 45.82s
 
 
 shard client: all passed
@@ -137,23 +137,23 @@ shard client: all passed
 ## log-test-conformance-ubuntu-24.04-arm (last 80 lines)
 ```
 running 3 tests
-Server now attached to client at 127.0.0.1:39674
-Server now attached to client at 127.0.0.1:57806
-test malformed_diffs_through_transport ... ok
 test userstream_roundtrip ... ok
+Server now attached to client at 127.0.0.1:37111
+Server now attached to client at 127.0.0.1:37680
+test malformed_diffs_through_transport ... ok
 test complete_roundtrip ... ok
 
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.96s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.98s
 
 == cargo test --release -p mosh-tests --test transport_roundtrip
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 7.48s
+    Finished `release` profile [optimized] target(s) in 7.94s
      Running tests/transport_roundtrip.rs (target/release/deps/transport_roundtrip-4fa039f18a2cf51b)
 
 running 5 tests
 test instruction_wire_format ... ok
-Server now attached to client at 127.0.0.1:40350
 test malformed_fragments_are_errors ... ok
+Server now attached to client at 127.0.0.1:35588
 test malformed_packets_through_transport ... ok
 test fragment_round_trip ... ok
 test compressor_round_trip ... ok
@@ -162,18 +162,18 @@ test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 == cargo test --release -p mosh-tests --test transport_sync
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 5.40s
+    Finished `release` profile [optimized] target(s) in 5.69s
      Running tests/transport_sync.rs (target/release/deps/transport_sync-3c3a06516293d34e)
 
 running 1 test
-Server now attached to client at 127.0.0.1:34468
+Server now attached to client at 127.0.0.1:54916
 test transport_sync ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.04s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.00s
 
 == cargo test --release -p mosh-tests --test udp_impair
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 6.11s
+    Finished `release` profile [optimized] target(s) in 6.43s
      Running tests/udp_impair.rs (target/release/deps/udp_impair-4c5fcb5bf3694f3b)
 
 running 6 tests
@@ -185,11 +185,11 @@ test delay_applies_both_directions ... ok
 test reorder_delivers_out_of_sequence ... ok
 test blackout_silences_then_resumes ... ok
 
-test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.44s
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.45s
 
 == cargo test --release -p mosh-tests --test platform_tty
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 5.33s
+    Finished `release` profile [optimized] target(s) in 5.53s
      Running tests/platform_tty.rs (target/release/deps/platform_tty-3a3d6d297de6e48e)
 
 running 1 test
@@ -199,7 +199,7 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 == cargo test --release -p mosh-tests --test launcher
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 5.75s
+    Finished `release` profile [optimized] target(s) in 6.07s
      Running tests/launcher.rs (target/release/deps/launcher-67bcc43b38dbb2a5)
 
 running 7 tests
@@ -212,7 +212,7 @@ test launches_session_with_user_at_ip_literal ... ok
 test launches_session_on_localhost_with_command ... ok
 test options_and_messages_match_mosh_pl ... ok
 
-test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.17s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.40s
 
 
 shard conformance: all passed
@@ -226,42 +226,42 @@ shard conformance: all passed
 ```
 running 3 tests
 test userstream_roundtrip ... ok
-Server now attached to client at 127.0.0.1:44787
-Server now attached to client at 127.0.0.1:44258
+Server now attached to client at 127.0.0.1:44086
+Server now attached to client at 127.0.0.1:41624
 test malformed_diffs_through_transport ... ok
 test complete_roundtrip ... ok
 
-test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.66s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 6.81s
 
 == cargo test --release -p mosh-tests --test transport_roundtrip
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 8.95s
+    Finished `release` profile [optimized] target(s) in 8.14s
      Running tests/transport_roundtrip.rs (target/release/deps/transport_roundtrip-4077e28d974d70cd)
 
 running 5 tests
-test instruction_wire_format ... ok
-Server now attached to client at 127.0.0.1:37616
-test malformed_fragments_are_errors ... ok
-test malformed_packets_through_transport ... ok
 test fragment_round_trip ... ok
+test instruction_wire_format ... ok
+test malformed_fragments_are_errors ... ok
+Server now attached to client at 127.0.0.1:57997
+test malformed_packets_through_transport ... ok
 test compressor_round_trip ... ok
 
-test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
 
 == cargo test --release -p mosh-tests --test transport_sync
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 6.50s
+    Finished `release` profile [optimized] target(s) in 5.90s
      Running tests/transport_sync.rs (target/release/deps/transport_sync-feeb43ceaccfcc46)
 
 running 1 test
-Server now attached to client at 127.0.0.1:40461
+Server now attached to client at 127.0.0.1:44379
 test transport_sync ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.00s
 
 == cargo test --release -p mosh-tests --test udp_impair
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 7.27s
+    Finished `release` profile [optimized] target(s) in 6.56s
      Running tests/udp_impair.rs (target/release/deps/udp_impair-d4305531de144f13)
 
 running 6 tests
@@ -277,7 +277,7 @@ test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 == cargo test --release -p mosh-tests --test platform_tty
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 6.39s
+    Finished `release` profile [optimized] target(s) in 5.80s
      Running tests/platform_tty.rs (target/release/deps/platform_tty-6d5fadaabc1bc6ee)
 
 running 1 test
@@ -287,7 +287,7 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 == cargo test --release -p mosh-tests --test launcher
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 6.94s
+    Finished `release` profile [optimized] target(s) in 6.26s
      Running tests/launcher.rs (target/release/deps/launcher-6f8b902763393331)
 
 running 7 tests
@@ -300,7 +300,7 @@ test launches_session_with_user_at_ip_literal ... ok
 test launches_session_on_localhost_with_command ... ok
 test options_and_messages_match_mosh_pl ... ok
 
-test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.93s
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.28s
 
 
 shard conformance: all passed
@@ -312,37 +312,37 @@ shard conformance: all passed
 # FAIL:  0
 # XPASS: 0
 # ERROR: 0
-PASS upstream-check client=cxx server=cxx total=32 pass=30 xfail=2 fail=0 error=0 xpass=0 seconds=240
+PASS upstream-check client=cxx server=cxx total=32 pass=30 xfail=2 fail=0 error=0 xpass=0 seconds=238
 
 ```
 
 ## log-test-scrollback-sh-ubuntu-24.04-arm (last 80 lines)
 ```
-PASS client=cxx server=cxx profile=loss30 scenario=colors seconds=5.1
+PASS client=cxx server=cxx profile=loss30 scenario=colors seconds=7.0
 PASS client=cxx server=cxx profile=blackout scenario=typing seconds=12.3
-PASS client=cxx server=cxx profile=blackout scenario=wide seconds=13.0
+PASS client=cxx server=cxx profile=blackout scenario=wide seconds=12.9
 PASS client=cxx server=cxx profile=blackout scenario=seq seconds=13.1
 PASS client=cxx server=cxx profile=clean scenario=typing seconds=12.0
-PASS client=cxx server=cxx profile=blackout scenario=resize seconds=13.3
+PASS client=cxx server=cxx profile=blackout scenario=resize seconds=13.2
 PASS client=cxx server=cxx profile=blackout scenario=colors seconds=13.3
-PASS client=cxx server=cxx profile=loss30 scenario=wide seconds=3.4
 PASS client=cxx server=cxx profile=blackout scenario=vim seconds=14.0
 PASS client=cxx server=cxx profile=rebind scenario=seq seconds=1.2
-PASS client=cxx server=cxx profile=rebind scenario=colors seconds=1.3
 PASS client=cxx server=cxx profile=rebind scenario=wide seconds=1.2
-PASS client=cxx server=cxx profile=rebind scenario=resize seconds=1.5
+PASS client=cxx server=cxx profile=rebind scenario=colors seconds=1.6
 PASS client=cxx server=cxx profile=loss5 scenario=typing seconds=12.0
+PASS client=cxx server=cxx profile=rebind scenario=resize seconds=1.5
 PASS client=cxx server=cxx profile=rebind scenario=vim seconds=2.4
-PASS client=cxx server=cxx profile=loss30 scenario=resize seconds=4.7
-PASS client=cxx server=cxx profile=loss30 scenario=vim seconds=12.7
+PASS client=cxx server=cxx profile=loss30 scenario=wide seconds=5.7
+PASS client=cxx server=cxx profile=loss30 scenario=resize seconds=8.1
+PASS client=cxx server=cxx profile=loss30 scenario=vim seconds=12.6
 PASS client=cxx server=cxx profile=rebind scenario=typing seconds=12.2
-PASS client=cxx server=cxx profile=loss30 scenario=typing seconds=15.4
+PASS client=cxx server=cxx profile=loss30 scenario=typing seconds=15.2
 interop: 30 cells, 30 passed, 0 failed, wall time 40s
 == tests/scrollback.sh
 scrollback: variants: clean loss30 vim clear altscreen resize shrink grow oldserver dropped
 scrollback: tmux 3.4
 PASS clean (10 s): lines=50007 numbers=50000 first=1 last=50000 in_order=True duplicates=0 gaps=none notices=none prompts=0 other=0
-PASS loss30 (162 s): lines=50005 numbers=50000 first=1 last=50000 in_order=True duplicates=0 gaps=none notices=none prompts=0 other=0
+PASS loss30 (170 s): lines=50005 numbers=50000 first=1 last=50000 in_order=True duplicates=0 gaps=none notices=none prompts=0 other=0
 PASS vim (2 s): lines=6007 numbers=6000 first=1 last=6000 in_order=True duplicates=0 gaps=none notices=none prompts=0 other=0
 PASS clear (1 s): lines=3007 numbers=3000 first=1 last=3000 in_order=True duplicates=0 gaps=none notices=none prompts=0 other=0
 PASS altscreen (4 s): lines=6010 numbers=6000 first=1 last=6000 in_order=True duplicates=0 gaps=none notices=none prompts=3 other=0
@@ -355,28 +355,28 @@ PASS dropped (22 s): lines=2783 numbers=2777 first=1 last=200000 in_order=True d
 == tests/transport-impaired.sh
     Finished `release` profile [optimized] target(s) in 0.01s
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 5.86s
+    Finished `release` profile [optimized] target(s) in 5.58s
 --- loss30-rebind: proxy --loss 0.30 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
-control at 5s: rebind -> ok rebind port=41634
-Server now attached to client at 127.0.0.1:49647
-Server now attached to client at 127.0.0.1:41634
-elapsed 10.44s; client: status=done elapsed_ms=10433 packets_received=16 acked_ts_advance=10352; server: packets_received=50 acked_ts_advance=9450 remote_addr=127.0.0.1:41634; state 6485 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.44s
-proxy stats: c2s forwarded=50 dropped=14 reordered=4 s2c forwarded=16 dropped=7 reordered=2
-PASS loss30-rebind: converged in 10.44s, 2 client address(es)
+control at 5s: rebind -> ok rebind port=58776
+Server now attached to client at 127.0.0.1:57937
+Server now attached to client at 127.0.0.1:58776
+elapsed 10.43s; client: status=done elapsed_ms=10424 packets_received=13 acked_ts_advance=10341; server: packets_received=48 acked_ts_advance=9408 remote_addr=127.0.0.1:58776; state 6155 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.43s
+proxy stats: c2s forwarded=48 dropped=15 reordered=6 s2c forwarded=13 dropped=5 reordered=0
+PASS loss30-rebind: converged in 10.43s, 2 client address(es)
 --- loss5: proxy --loss 0.05 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
-Server now attached to client at 127.0.0.1:60808
-elapsed 10.35s; client: status=done elapsed_ms=10347 packets_received=43 acked_ts_advance=9995; server: packets_received=71 acked_ts_advance=9389 remote_addr=127.0.0.1:60808; state 6103 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.35s
-proxy stats: c2s forwarded=71 dropped=7 reordered=7 s2c forwarded=43 dropped=1 reordered=2
-PASS loss5: converged in 10.35s, 1 client address(es)
+Server now attached to client at 127.0.0.1:52936
+elapsed 10.44s; client: status=done elapsed_ms=10442 packets_received=44 acked_ts_advance=10069; server: packets_received=71 acked_ts_advance=9913 remote_addr=127.0.0.1:52936; state 5936 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.44s
+proxy stats: c2s forwarded=71 dropped=7 reordered=7 s2c forwarded=44 dropped=1 reordered=2
+PASS loss5: converged in 10.44s, 1 client address(es)
 --- loss30-blackout: proxy --loss 0.30 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
 control at 4s: blackout 3000 -> ok
-Server now attached to client at 127.0.0.1:34158
-elapsed 10.93s; client: status=done elapsed_ms=10925 packets_received=8 acked_ts_advance=10878; server: packets_received=34 acked_ts_advance=9816 remote_addr=127.0.0.1:34158; state 5930 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.93s
-proxy stats: c2s forwarded=34 dropped=49 reordered=5 s2c forwarded=8 dropped=5 reordered=0
-PASS loss30-blackout: converged in 10.93s, 1 client address(es)
+Server now attached to client at 127.0.0.1:41640
+elapsed 10.74s; client: status=done elapsed_ms=10739 packets_received=7 acked_ts_advance=10599; server: packets_received=39 acked_ts_advance=9326 remote_addr=127.0.0.1:41640; state 6238 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.74s
+proxy stats: c2s forwarded=39 dropped=47 reordered=5 s2c forwarded=7 dropped=6 reordered=1
+PASS loss30-blackout: converged in 10.74s, 1 client address(es)
 transport-impaired: all 3 runs passed
 == tests/upstream-check.sh
 upstream-check: client=cxx (/home/runner/src/mosh/src/frontend/mosh-client) server=cxx (/home/runner/src/mosh/src/frontend/mosh-server)
@@ -395,7 +395,7 @@ upstream-check: running make check (log: /home/runner/work/mosh-rs/mosh-rs/targe
 # FAIL:  0
 # XPASS: 0
 # ERROR: 0
-PASS upstream-check client=cxx server=cxx total=32 pass=30 xfail=2 fail=0 error=0 xpass=0 seconds=240
+PASS upstream-check client=cxx server=cxx total=32 pass=30 xfail=2 fail=0 error=0 xpass=0 seconds=238
 
 shard scrollback-sh: all passed
 ```
@@ -406,37 +406,37 @@ shard scrollback-sh: all passed
 # FAIL:  0
 # XPASS: 0
 # ERROR: 0
-PASS upstream-check client=cxx server=cxx total=32 pass=30 xfail=2 fail=0 error=0 xpass=0 seconds=240
+PASS upstream-check client=cxx server=cxx total=32 pass=30 xfail=2 fail=0 error=0 xpass=0 seconds=236
 
 ```
 
 ## log-test-scrollback-sh-ubuntu-24.04 (last 80 lines)
 ```
-PASS client=cxx server=cxx profile=loss30 scenario=colors seconds=4.9
-PASS client=cxx server=cxx profile=blackout scenario=typing seconds=12.1
-PASS client=cxx server=cxx profile=clean scenario=typing seconds=11.8
+PASS client=cxx server=cxx profile=loss30 scenario=colors seconds=6.2
+PASS client=cxx server=cxx profile=blackout scenario=typing seconds=12.4
 PASS client=cxx server=cxx profile=blackout scenario=seq seconds=13.0
-PASS client=cxx server=cxx profile=blackout scenario=wide seconds=13.0
-PASS client=cxx server=cxx profile=blackout scenario=colors seconds=13.2
-PASS client=cxx server=cxx profile=blackout scenario=resize seconds=13.2
-PASS client=cxx server=cxx profile=loss30 scenario=wide seconds=3.6
+PASS client=cxx server=cxx profile=blackout scenario=wide seconds=13.2
+PASS client=cxx server=cxx profile=clean scenario=typing seconds=12.1
+PASS client=cxx server=cxx profile=blackout scenario=resize seconds=13.3
+PASS client=cxx server=cxx profile=blackout scenario=colors seconds=13.4
 PASS client=cxx server=cxx profile=blackout scenario=vim seconds=14.2
-PASS client=cxx server=cxx profile=rebind scenario=seq seconds=1.3
+PASS client=cxx server=cxx profile=rebind scenario=seq seconds=1.2
 PASS client=cxx server=cxx profile=rebind scenario=wide seconds=1.2
+PASS client=cxx server=cxx profile=loss30 scenario=wide seconds=3.7
 PASS client=cxx server=cxx profile=rebind scenario=colors seconds=1.5
-PASS client=cxx server=cxx profile=rebind scenario=resize seconds=1.6
-PASS client=cxx server=cxx profile=rebind scenario=vim seconds=2.3
-PASS client=cxx server=cxx profile=loss5 scenario=typing seconds=11.8
-PASS client=cxx server=cxx profile=loss30 scenario=resize seconds=5.1
-PASS client=cxx server=cxx profile=loss30 scenario=vim seconds=17.8
-PASS client=cxx server=cxx profile=rebind scenario=typing seconds=12.0
-PASS client=cxx server=cxx profile=loss30 scenario=typing seconds=16.3
-interop: 30 cells, 30 passed, 0 failed, wall time 40s
+PASS client=cxx server=cxx profile=loss5 scenario=typing seconds=12.1
+PASS client=cxx server=cxx profile=rebind scenario=resize seconds=1.5
+PASS client=cxx server=cxx profile=rebind scenario=vim seconds=2.4
+PASS client=cxx server=cxx profile=loss30 scenario=resize seconds=6.2
+PASS client=cxx server=cxx profile=loss30 scenario=vim seconds=14.8
+PASS client=cxx server=cxx profile=rebind scenario=typing seconds=12.3
+PASS client=cxx server=cxx profile=loss30 scenario=typing seconds=15.9
+interop: 30 cells, 30 passed, 0 failed, wall time 41s
 == tests/scrollback.sh
 scrollback: variants: clean loss30 vim clear altscreen resize shrink grow oldserver dropped
 scrollback: tmux 3.4
 PASS clean (10 s): lines=50007 numbers=50000 first=1 last=50000 in_order=True duplicates=0 gaps=none notices=none prompts=0 other=0
-PASS loss30 (144 s): lines=50005 numbers=50000 first=1 last=50000 in_order=True duplicates=0 gaps=none notices=none prompts=0 other=0
+PASS loss30 (175 s): lines=50005 numbers=50000 first=1 last=50000 in_order=True duplicates=0 gaps=none notices=none prompts=0 other=0
 PASS vim (2 s): lines=6007 numbers=6000 first=1 last=6000 in_order=True duplicates=0 gaps=none notices=none prompts=0 other=0
 PASS clear (1 s): lines=3007 numbers=3000 first=1 last=3000 in_order=True duplicates=0 gaps=none notices=none prompts=0 other=0
 PASS altscreen (4 s): lines=6010 numbers=6000 first=1 last=6000 in_order=True duplicates=0 gaps=none notices=none prompts=3 other=0
@@ -449,28 +449,28 @@ PASS dropped (22 s): lines=2783 numbers=2777 first=1 last=200000 in_order=True d
 == tests/transport-impaired.sh
     Finished `release` profile [optimized] target(s) in 0.01s
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 6.01s
+    Finished `release` profile [optimized] target(s) in 4.94s
 --- loss30-rebind: proxy --loss 0.30 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
-control at 5s: rebind -> ok rebind port=51940
-Server now attached to client at 127.0.0.1:37540
-Server now attached to client at 127.0.0.1:51940
-elapsed 10.47s; client: status=done elapsed_ms=10470 packets_received=15 acked_ts_advance=10391; server: packets_received=51 acked_ts_advance=9481 remote_addr=127.0.0.1:51940; state 6451 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.47s
-proxy stats: c2s forwarded=51 dropped=15 reordered=5 s2c forwarded=15 dropped=6 reordered=1
-PASS loss30-rebind: converged in 10.47s, 2 client address(es)
+control at 5s: rebind -> ok rebind port=52507
+Server now attached to client at 127.0.0.1:53035
+Server now attached to client at 127.0.0.1:52507
+elapsed 10.96s; client: status=done elapsed_ms=10960 packets_received=14 acked_ts_advance=10914; server: packets_received=51 acked_ts_advance=9775 remote_addr=127.0.0.1:52507; state 6364 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.96s
+proxy stats: c2s forwarded=51 dropped=16 reordered=5 s2c forwarded=14 dropped=5 reordered=1
+PASS loss30-rebind: converged in 10.96s, 2 client address(es)
 --- loss5: proxy --loss 0.05 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
-Server now attached to client at 127.0.0.1:49471
-elapsed 10.40s; client: status=done elapsed_ms=10398 packets_received=44 acked_ts_advance=10027; server: packets_received=71 acked_ts_advance=9876 remote_addr=127.0.0.1:49471; state 6420 bytes
+Server now attached to client at 127.0.0.1:42537
+elapsed 10.40s; client: status=done elapsed_ms=10402 packets_received=43 acked_ts_advance=10022; server: packets_received=71 acked_ts_advance=9872 remote_addr=127.0.0.1:42537; state 5766 bytes
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.40s
-proxy stats: c2s forwarded=71 dropped=7 reordered=7 s2c forwarded=44 dropped=1 reordered=2
+proxy stats: c2s forwarded=71 dropped=7 reordered=7 s2c forwarded=43 dropped=1 reordered=2
 PASS loss5: converged in 10.40s, 1 client address(es)
 --- loss30-blackout: proxy --loss 0.30 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
 control at 4s: blackout 3000 -> ok
-Server now attached to client at 127.0.0.1:46701
-elapsed 10.40s; client: status=done elapsed_ms=10401 packets_received=10 acked_ts_advance=10384; server: packets_received=43 acked_ts_advance=9464 remote_addr=127.0.0.1:46701; state 6099 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.40s
-proxy stats: c2s forwarded=43 dropped=37 reordered=5 s2c forwarded=10 dropped=8 reordered=1
-PASS loss30-blackout: converged in 10.40s, 1 client address(es)
+Server now attached to client at 127.0.0.1:57491
+elapsed 10.78s; client: status=done elapsed_ms=10781 packets_received=7 acked_ts_advance=10644; server: packets_received=39 acked_ts_advance=9364 remote_addr=127.0.0.1:57491; state 6307 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.78s
+proxy stats: c2s forwarded=39 dropped=48 reordered=5 s2c forwarded=7 dropped=6 reordered=1
+PASS loss30-blackout: converged in 10.78s, 1 client address(es)
 transport-impaired: all 3 runs passed
 == tests/upstream-check.sh
 upstream-check: client=cxx (/home/runner/src/mosh/src/frontend/mosh-client) server=cxx (/home/runner/src/mosh/src/frontend/mosh-server)
@@ -489,7 +489,7 @@ upstream-check: running make check (log: /home/runner/work/mosh-rs/mosh-rs/targe
 # FAIL:  0
 # XPASS: 0
 # ERROR: 0
-PASS upstream-check client=cxx server=cxx total=32 pass=30 xfail=2 fail=0 error=0 xpass=0 seconds=240
+PASS upstream-check client=cxx server=cxx total=32 pass=30 xfail=2 fail=0 error=0 xpass=0 seconds=236
 
 shard scrollback-sh: all passed
 ```
@@ -507,41 +507,41 @@ shard scrollback-sh: all passed
    Compiling mosh-network v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/network)
    Compiling mosh v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/mosh)
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 20.00s
+    Finished `release` profile [optimized] target(s) in 15.94s
 == cargo test --release -p mosh-tests --test server_e2e
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 5.97s
+    Finished `release` profile [optimized] target(s) in 5.98s
      Running tests/server_e2e.rs (target/release/deps/server_e2e-9b65167a4cb2eab7)
 
 running 4 tests
-    Finished `release` profile [optimized] target(s) in 0.02s
+    Finished `release` profile [optimized] target(s) in 0.01s
 test typing_and_resize ... ok
 test command_output_and_exit ... ok
 test network_timeout ... ok
 test signal_timeout ... ok
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.83s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.76s
 
 == cargo test --release -p mosh-tests --test detached_warning
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 5.57s
+    Finished `release` profile [optimized] target(s) in 5.63s
      Running tests/detached_warning.rs (target/release/deps/detached_warning-66662286f7fb856d)
 
 running 1 test
     Finished `release` profile [optimized] target(s) in 0.01s
 test detached_session_is_reported ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.62s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.53s
 
 == cargo test --release -p mosh-tests --test scrollback_server
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 9.15s
+    Finished `release` profile [optimized] target(s) in 9.38s
      Running tests/scrollback_server.rs (target/release/deps/scrollback_server-bd7c965b4cfb333e)
 
 running 13 tests
 test capability_wire_format ... ok
-test clear_keeps_the_screen_as_history ... ok
 test alternate_screen_is_not_captured ... ok
+test clear_keeps_the_screen_as_history ... ok
 test live::cxx_server_ignores_capability ... ok
     Finished `release` profile [optimized] target(s) in 0.01s
 Contents: ' ̂' [0xc2, 0xa0, 0xcc, 0x82] (4) vs. ' ̂' [0xcc, 0x82] (2)
@@ -558,24 +558,24 @@ test rendered_lines_match_upstream_cells ... ok
 test seq_50000_random_snapshots ... ok
 test seq_with_resizes ... ok
 test small_backlog_drops_oldest_unpublished ... ok
-udp-impair stats: c2s forwarded=84 dropped=4 reordered=0 s2c forwarded=129 dropped=123 reordered=0
+udp-impair stats: c2s forwarded=84 dropped=4 reordered=0 s2c forwarded=127 dropped=121 reordered=0
 test live::rust_server_blackout_10s ... ok
 test live::rust_server_clean ... ok
 udp-impair stats: c2s forwarded=17 dropped=5 reordered=0 s2c forwarded=64 dropped=27 reordered=0
 test live::rust_server_loss30_delay100 ... ok
 
-test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 54.74s
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 54.73s
 
 == cargo test --release -p mosh-tests --test scrollback_hostile
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 5.56s
+    Finished `release` profile [optimized] target(s) in 5.58s
      Running tests/scrollback_hostile.rs (target/release/deps/scrollback_hostile-368ec471dc708a6e)
 
 running 1 test
     Finished `release` profile [optimized] target(s) in 0.01s
 test hostile_history_lines_stay_bounded ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.17s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.21s
 
 
 shard server: all passed
@@ -594,10 +594,10 @@ shard server: all passed
    Compiling mosh-network v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/network)
    Compiling mosh v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/mosh)
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 27.46s
+    Finished `release` profile [optimized] target(s) in 24.32s
 == cargo test --release -p mosh-tests --test server_e2e
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 6.41s
+    Finished `release` profile [optimized] target(s) in 6.21s
      Running tests/server_e2e.rs (target/release/deps/server_e2e-5942c57d8ea2b063)
 
 running 4 tests
@@ -607,28 +607,28 @@ test command_output_and_exit ... ok
 test network_timeout ... ok
 test signal_timeout ... ok
 
-test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.12s
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 22.82s
 
 == cargo test --release -p mosh-tests --test detached_warning
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 5.85s
+    Finished `release` profile [optimized] target(s) in 5.83s
      Running tests/detached_warning.rs (target/release/deps/detached_warning-13d03daf73568ac2)
 
 running 1 test
     Finished `release` profile [optimized] target(s) in 0.02s
 test detached_session_is_reported ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.69s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.63s
 
 == cargo test --release -p mosh-tests --test scrollback_server
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 9.34s
+    Finished `release` profile [optimized] target(s) in 9.29s
      Running tests/scrollback_server.rs (target/release/deps/scrollback_server-017f21015f2f3ace)
 
 running 13 tests
 test capability_wire_format ... ok
-test clear_keeps_the_screen_as_history ... ok
 test alternate_screen_is_not_captured ... ok
+test clear_keeps_the_screen_as_history ... ok
 test live::cxx_server_ignores_capability ... ok
     Finished `release` profile [optimized] target(s) in 0.02s
 Contents: ' ̂' [0xc2, 0xa0, 0xcc, 0x82] (4) vs. ' ̂' [0xcc, 0x82] (2)
@@ -645,24 +645,24 @@ test rendered_lines_match_upstream_cells ... ok
 test seq_50000_random_snapshots ... ok
 test seq_with_resizes ... ok
 test small_backlog_drops_oldest_unpublished ... ok
-udp-impair stats: c2s forwarded=84 dropped=4 reordered=0 s2c forwarded=128 dropped=120 reordered=0
+udp-impair stats: c2s forwarded=84 dropped=4 reordered=0 s2c forwarded=130 dropped=120 reordered=0
 test live::rust_server_blackout_10s ... ok
 test live::rust_server_clean ... ok
 udp-impair stats: c2s forwarded=17 dropped=5 reordered=0 s2c forwarded=64 dropped=27 reordered=0
 test live::rust_server_loss30_delay100 ... ok
 
-test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 54.73s
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 54.75s
 
 == cargo test --release -p mosh-tests --test scrollback_hostile
    Compiling mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `release` profile [optimized] target(s) in 5.79s
+    Finished `release` profile [optimized] target(s) in 5.55s
      Running tests/scrollback_hostile.rs (target/release/deps/scrollback_hostile-4c0f44b763adf657)
 
 running 1 test
     Finished `release` profile [optimized] target(s) in 0.02s
 test hostile_history_lines_stay_bounded ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.26s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.22s
 
 
 shard server: all passed
