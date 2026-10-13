@@ -63,7 +63,11 @@ fn mosh_binary() -> PathBuf {
         let target = std::env::var_os("CARGO_TARGET_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| root.join("target"));
-        target.join("release").join("mosh")
+        // Canonical, so it is the same path the launcher reports for itself
+        // (`current_exe`) in its ProxyCommand; `target/../` or a symlink in it
+        // would otherwise defeat the `$0` normalization below.
+        let bin = target.join("release").join("mosh");
+        std::fs::canonicalize(&bin).unwrap_or(bin)
     })
     .clone()
 }
@@ -401,6 +405,25 @@ fn observe(bin: &str, args: &[&str], env: &[(&str, &str)], tag: &str) -> String 
     )
 }
 
+/// The lines where two observations differ, numbered, for a failure
+/// message that shows every difference even when only the end of the log
+/// is kept.
+fn differing_lines(want: &str, got: &str) -> String {
+    let (want, got): (Vec<&str>, Vec<&str>) = (want.lines().collect(), got.lines().collect());
+    let mut out = String::new();
+    for i in 0..want.len().max(got.len()) {
+        let a = want.get(i).copied().unwrap_or("(no line)");
+        let b = got.get(i).copied().unwrap_or("(no line)");
+        if a != b {
+            out.push_str(&format!(
+                "  line {}: mosh.pl {a:?}\n          ours    {b:?}\n",
+                i + 1
+            ));
+        }
+    }
+    out
+}
+
 /// One differential case: launcher arguments and extra environment.
 type Case<'a> = (Vec<&'a str>, Vec<(&'a str, &'a str)>);
 
@@ -515,6 +538,7 @@ fn options_and_messages_match_mosh_pl() {
     ));
 
     let mut failures = 0;
+    let mut report = String::new();
     for (args, env) in &cases {
         let want = observe(MOSH_PL, args, env, "real");
         let got = observe(&ours, args, env, "ours");
@@ -526,10 +550,20 @@ fn options_and_messages_match_mosh_pl() {
         } else {
             failures += 1;
             println!("DIFFERENT: {args:?} {env:?}\n=== mosh.pl\n{want}=== ours\n{got}");
+            report.push_str(&format!(
+                "case {args:?} env {env:?}: mosh.pl {}, ours {}\n{}",
+                want.lines().next().unwrap_or(""),
+                got.lines().next().unwrap_or(""),
+                differing_lines(&want, &got)
+            ));
         }
     }
     println!("{} cases, {failures} different", cases.len());
-    assert_eq!(failures, 0, "launcher differs from mosh.pl");
+    assert!(
+        failures == 0,
+        "{failures} of {} cases differ from mosh.pl:\n{report}",
+        cases.len()
+    );
 
     // The usage text differs only where PLAN allows: `--bind-server` takes
     // ssh or any (PLAN 9.3), and `--scrollback` exists (PLAN section 6).
