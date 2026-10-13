@@ -39,7 +39,7 @@
 // `/usr/bin/mosh-client` first, so the numbers can be compared and a
 // failure of ours is not a harness problem.
 //
-// UDP ports 61350-61399.
+// UDP ports 61350-61397.
 
 #![cfg(unix)]
 
@@ -233,7 +233,8 @@ struct Session {
 }
 
 impl Session {
-    fn start(name: &str, client: &str, base: u16, mode: &str, command: &[&str]) -> Session {
+    /// `env` holds the client's variables, e.g. `MOSH_PREDICTION_DISPLAY=always`.
+    fn start(name: &str, client: &str, base: u16, env: &str, command: &[&str]) -> Session {
         kill_port(base);
         let key = start_server(base, command);
         let proxy = Command::new(release_dir().join("udp-impair"))
@@ -247,7 +248,7 @@ impl Session {
             .expect("run udp-impair");
         let tmux = Tmux::start(name);
         tmux.type_line(&format!(
-            "MOSH_KEY={key} MOSH_PREDICTION_DISPLAY={mode} {client} 127.0.0.1 {}; echo MOSH_EXIT=$?",
+            "MOSH_KEY={key} {env} {client} 127.0.0.1 {}; echo MOSH_EXIT=$?",
             base + 1
         ));
         Session { tmux, proxy, base }
@@ -265,55 +266,96 @@ impl Drop for Session {
 /// The shell in the session: `R$ ` prompt, no rc files.
 const SHELL: &[&str] = &["env", "PS1=R$ ", "bash", "--norc"];
 
-/// Time from `send-keys` of one printable key to its glyph on screen, in
-/// the given prediction mode. A few keys are typed and echoed first, so
-/// the prediction epoch is confirmed (upstream shows nothing of an
-/// unconfirmed epoch).
-fn keystroke_latency(name: &str, client: &str, base: u16, mode: &str) -> Duration {
-    let s = Session::start(&format!("lat-{mode}-{name}"), client, base, mode, SHELL);
-    s.tmux.wait_line("R$", Duration::from_secs(30));
-    s.tmux.keys("echo ab");
-    s.tmux.wait_line("R$ echo ab", Duration::from_secs(10));
+/// Key-to-screen times for three edits of a shell command line: typing at
+/// the end, backspace, and inserting in the middle (after a left arrow).
+/// A few keys are typed and echoed first, so the prediction epoch is
+/// confirmed (upstream shows nothing of an unconfirmed epoch), and each
+/// edit waits until the previous one is confirmed by the server.
+/// With `MOSH_PREDICTION_OVERWRITE=yes` the insert is predicted as an
+/// overwrite (`ax` instead of `axb`), and corrected to bash's `axb`.
+fn editing_latencies(name: &str, client: &str, base: u16, env: &str) -> [Duration; 3] {
+    let label = env.replace(['=', ' '], "-");
+    let s = Session::start(&format!("{label}-{name}"), client, base, env, SHELL);
+    let t = &s.tmux;
+    t.wait_line("R$", Duration::from_secs(30));
+    t.keys("echo ab");
+    t.wait_line("R$ echo ab", Duration::from_secs(10));
     std::thread::sleep(Duration::from_millis(1000));
 
-    s.tmux.keys("c");
-    let (_, t) = s
-        .tmux
+    let measure = |what: &str, expect: &str| {
+        let (_, took) = t
+            .poll(Duration::from_millis(5), Duration::from_secs(5), |sc| {
+                sc.lines().any(|l| l == expect)
+            })
+            .unwrap_or_else(|| panic!("[{name}] {env}: {what} never showed {expect:?}"));
+        // Let the server confirm the edit before the next one.
+        std::thread::sleep(Duration::from_millis(1000));
+        took
+    };
+
+    t.keys("c");
+    let typed = measure("typing", "R$ echo abc");
+    t.tmux(&["send-keys", "BSpace"]);
+    let backspace = measure("backspace", "R$ echo ab");
+    t.tmux(&["send-keys", "Left"]);
+    std::thread::sleep(Duration::from_millis(1000));
+    t.keys("x");
+    let overwrite = env.contains("MOSH_PREDICTION_OVERWRITE=yes");
+    let (_, inserted) = t
         .poll(Duration::from_millis(5), Duration::from_secs(5), |sc| {
-            sc.lines().any(|l| l == "R$ echo abc")
+            sc.lines().any(|l| {
+                l == if overwrite {
+                    "R$ echo ax"
+                } else {
+                    "R$ echo axb"
+                }
+            })
         })
-        .expect("typed key never appeared");
-    s.tmux.tmux(&["send-keys", "Enter"]);
-    s.tmux.wait_line("abc", Duration::from_secs(10));
-    t
+        .unwrap_or_else(|| panic!("[{name}] {env}: insert never showed"));
+    // The server's truth is bash's insert in every mode.
+    t.wait_line("R$ echo axb", Duration::from_secs(5));
+    t.tmux(&["send-keys", "Enter"]);
+    t.wait_line("axb", Duration::from_secs(10));
+    [typed, backspace, inserted]
 }
 
 #[test]
 fn keystroke_shows_at_once_with_prediction() {
+    let modes = [
+        "MOSH_PREDICTION_DISPLAY=always",
+        "MOSH_PREDICTION_DISPLAY=adaptive",
+        "MOSH_PREDICTION_DISPLAY=always MOSH_PREDICTION_OVERWRITE=yes",
+        "MOSH_PREDICTION_DISPLAY=never",
+    ];
     for (i, (name, client)) in clients().into_iter().enumerate() {
-        let base = 61350 + 12 * i as u16;
-        let always = keystroke_latency(name, &client, base, "always");
-        let adaptive = keystroke_latency(name, &client, base + 4, "adaptive");
-        let never = keystroke_latency(name, &client, base + 8, "never");
-        println!(
-            "[{name}] 300 ms RTT, key to screen: always {} ms, adaptive {} ms, never {} ms",
-            always.as_millis(),
-            adaptive.as_millis(),
-            never.as_millis()
-        );
-        assert!(
-            always < Duration::from_millis(50),
-            "[{name}] predicted key took {always:?}"
-        );
-        // At 300 ms RTT the send interval is far above SRTT_TRIGGER_HIGH.
-        assert!(
-            adaptive < Duration::from_millis(50),
-            "[{name}] adaptive: predicted key took {adaptive:?}"
-        );
-        assert!(
-            never > Duration::from_millis(250),
-            "[{name}] without prediction the key took only {never:?}: the test does not measure prediction"
-        );
+        for (k, env) in modes.iter().enumerate() {
+            let base = 61350 + 16 * i as u16 + 4 * k as u16;
+            let [typed, backspace, inserted] = editing_latencies(name, &client, base, env);
+            println!(
+                "[{name}] 300 ms RTT, {env}: key {} ms, backspace {} ms, insert {} ms",
+                typed.as_millis(),
+                backspace.as_millis(),
+                inserted.as_millis()
+            );
+            for (what, took) in [
+                ("key", typed),
+                ("backspace", backspace),
+                ("insert", inserted),
+            ] {
+                if env.ends_with("never") {
+                    assert!(
+                        took > Duration::from_millis(250),
+                        "[{name}] without prediction the {what} took only {took:?}: the test does not measure prediction"
+                    );
+                } else {
+                    // Adaptive: at 300 ms RTT the send interval is far above SRTT_TRIGGER_HIGH.
+                    assert!(
+                        took < Duration::from_millis(50),
+                        "[{name}] {env}: predicted {what} took {took:?}"
+                    );
+                }
+            }
+        }
     }
 }
 
@@ -326,8 +368,8 @@ fn wrong_prediction_is_removed() {
         let s = Session::start(
             &format!("wrong-{name}"),
             &client,
-            61376 + 4 * i as u16,
-            "always",
+            61382 + 4 * i as u16,
+            "MOSH_PREDICTION_DISPLAY=always",
             SHELL,
         );
         s.tmux.wait_line("R$", Duration::from_secs(30));
@@ -385,8 +427,8 @@ fn unicode_input_with_prediction() {
         let s = Session::start(
             &format!("unicode-{name}"),
             &client,
-            61384 + 4 * i as u16,
-            "always",
+            61390 + 4 * i as u16,
+            "MOSH_PREDICTION_DISPLAY=always",
             SHELL,
         );
         s.tmux.wait_line("R$", Duration::from_secs(30));

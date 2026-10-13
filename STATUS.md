@@ -232,3 +232,10 @@ Measured (`cargo test --release -p mosh-tests --test prediction_e2e`): 3 passed.
 - Upstream's prediction-unicode input (`gl`, `ü`, `ck fa`, `ĩ`, `l ` into `cat`): no garbled frame seen, final screen is three lines of `glück faĩl` x5, both clients.
 - Planted bugs: overlay cells never drawn: the latency and wrong-prediction cases fail (316 ms; `q` never shows). Wrong confirmed predictions never killed (cell and cursor checks both disabled; either one alone still removes `q`, as upstream has both): the wrong-prediction case fails.
 - `client_e2e` still 5 passed, idle CPU 0.00% for both clients.
+
+## 2026-10-13 mosh-client: more e2e coverage (agent E)
+
+- `prediction_e2e` now times three edits per mode (key at the end of the line, backspace, insert after a left arrow) in always, adaptive, always with `MOSH_PREDICTION_OVERWRITE=yes` (the insert shows as an overwrite, `ax`, and is corrected to bash's `axb`), and never.
+  C++: 2/4/2, 2/2/2, 2/2/2 and 316/312/310 ms. Ours: 2/2/2, 3/3/2, 3/2/2 and 312/316/318 ms.
+- `client_e2e` gains `Ctrl-^ Ctrl-Z` suspend (`[mosh is suspended.]`, the shell reports the job stopped and works, `fg` repaints the session) and a client with no server (the "Nothing received" bar after 0.3 s (C++) and 0.5 s (ours), "Timed out waiting for server..." at 15.0 s, exit 1 after 19 s with the four-line stderr explanation, same for both): 7 passed.
+- `idle_cpu` prints SKIPPED where `pidstat` is missing (the CI runner has no `sysstat`).

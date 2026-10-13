@@ -357,6 +357,10 @@ fn killed_server_shows_last_contact() {
 /// shell prompt side by side while `pidstat` samples them for 60 s.
 #[test]
 fn idle_cpu() {
+    if Command::new("pidstat").arg("-V").output().is_err() {
+        println!("SKIPPED: pidstat not installed (package sysstat)");
+        return;
+    }
     require_ssh_localhost();
     let mut sessions = Vec::new();
     for (i, (name, client)) in clients().into_iter().enumerate() {
@@ -395,5 +399,90 @@ fn idle_cpu() {
         tmux.type_line("exit");
         tmux.wait_for("MOSH_EXIT=", Duration::from_secs(30));
         kill_server(*port);
+    }
+}
+
+/// `Ctrl-^ Ctrl-Z` suspends the client (the shell reports it stopped and
+/// the terminal is usable), and `fg` brings the session back.
+#[test]
+fn escape_suspend_and_resume() {
+    require_ssh_localhost();
+    for (i, (name, client)) in clients().into_iter().enumerate() {
+        let port = 61345 + i as u16;
+        let tmux = Tmux::start(&format!("suspend-{name}"));
+        // No `; echo` after it: a list would go on running when mosh stops.
+        tmux.type_line(&format!(
+            "{} --client={client} --server=/usr/bin/mosh-server -p {port} localhost -- env PS1='R$ ' bash --norc",
+            release_dir().join("mosh").display()
+        ));
+        tmux.wait_line("R$", Duration::from_secs(30));
+        tmux.type_line("echo BEFORE_SUSPEND");
+        tmux.wait_line("BEFORE_SUSPEND", Duration::from_secs(10));
+
+        tmux.tmux(&["send-keys", "C-^"]);
+        tmux.tmux(&["send-keys", "C-z"]);
+        let stopped = tmux.wait_until("the shell's job report", Duration::from_secs(10), |s| {
+            s.contains("[mosh is suspended.]") && s.contains("Stopped")
+        });
+        println!("[{name}] suspended:\n{}", stopped.trim_end());
+        tmux.type_line("echo SHELL_WORKS");
+        tmux.wait_line("SHELL_WORKS", Duration::from_secs(5));
+
+        tmux.type_line("fg");
+        let back = tmux.wait_line("BEFORE_SUSPEND", Duration::from_secs(10));
+        assert!(
+            !back.contains("SHELL_WORKS"),
+            "[{name}] not repainted:\n{back}"
+        );
+        tmux.type_line("echo AFTER_RESUME");
+        let screen = tmux.wait_line("AFTER_RESUME", Duration::from_secs(10));
+        println!("[{name}] resumed:\n{}", screen.trim_end());
+
+        tmux.type_line("exit");
+        tmux.wait_for("[mosh is exiting.]", Duration::from_secs(30));
+        kill_server(port);
+    }
+}
+
+/// Nothing answers on the port: the client says so at once, gives up after
+/// 15 s, and explains on stderr, exit 1.
+#[test]
+fn no_server_times_out() {
+    for (i, (name, client)) in clients().into_iter().enumerate() {
+        let port = 61347 + i as u16;
+        kill_server(port);
+        let tmux = Tmux::start(&format!("noserver-{name}"));
+        let started = Instant::now();
+        tmux.type_line(&format!(
+            "MOSH_KEY=AAAAAAAAAAAAAAAAAAAAAA {client} 127.0.0.1 {port}; echo MOSH_EXIT=$?"
+        ));
+        let bar = format!("mosh: Nothing received from server on UDP port {port}.");
+        tmux.wait_until("the connecting bar", Duration::from_secs(5), |s| {
+            s.lines().next().is_some_and(|l| l.starts_with(&bar))
+        });
+        println!(
+            "[{name}] connecting bar after {:.1} s",
+            started.elapsed().as_secs_f64()
+        );
+        tmux.wait_until("the timeout bar", Duration::from_secs(25), |s| {
+            s.lines()
+                .next()
+                .is_some_and(|l| l.starts_with("mosh: Timed out waiting for server..."))
+        });
+        println!(
+            "[{name}] timeout bar after {:.1} s",
+            started.elapsed().as_secs_f64()
+        );
+        let done = tmux.wait_for("MOSH_EXIT=", Duration::from_secs(60));
+        println!(
+            "[{name}] exit after {:.1} s:\n{}",
+            started.elapsed().as_secs_f64(),
+            done.trim_end()
+        );
+        assert!(done.contains(&format!(
+            "mosh did not make a successful connection to 127.0.0.1:{port}."
+        )));
+        assert!(done.contains("[mosh is exiting.]"));
+        assert!(done.contains("MOSH_EXIT=1"));
     }
 }
