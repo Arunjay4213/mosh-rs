@@ -147,24 +147,16 @@ fn control(imp: &Impair, cmd: &str) -> String {
     String::from_utf8_lossy(&buf[..n]).into_owned()
 }
 
-/// One received echo: sequence number and the time it came back.
+/// One received echo: sequence number and round-trip time.
 struct Reply {
     seq: u32,
     rtt: Duration,
-    at: Instant,
 }
 
 /// Send `count` numbered packets `gap` apart through the proxy, starting at
 /// `first`, and collect replies until `quiet` passes with nothing arriving
-/// after the last send. `between` runs after packet index `at_index`.
-fn run_traffic(
-    imp: &Impair,
-    first: u32,
-    count: u32,
-    gap: Duration,
-    quiet: Duration,
-    between: Option<(u32, &dyn Fn())>,
-) -> Vec<Reply> {
+/// after the last send.
+fn run_traffic(imp: &Impair, first: u32, count: u32, gap: Duration, quiet: Duration) -> Vec<Reply> {
     let sock = UdpSocket::bind("127.0.0.1:0").unwrap();
     sock.connect(imp.listen).unwrap();
     let rx = sock.try_clone().unwrap();
@@ -186,7 +178,6 @@ fn run_traffic(
                     out.push(Reply {
                         seq,
                         rtt: at - sent,
-                        at,
                     });
                 }
                 _ => {}
@@ -203,11 +194,6 @@ fn run_traffic(
         sends.lock().unwrap().push(Instant::now());
         // A full send buffer just means this packet is lost locally; keep going.
         let _ = sock.send(&seq.to_be_bytes());
-        if let Some((at_index, f)) = between {
-            if i == at_index {
-                f();
-            }
-        }
         thread::sleep(gap);
     }
     *done.lock().unwrap() = Some(Instant::now());
@@ -236,7 +222,6 @@ fn loss_half_each_direction() {
         PACKETS,
         Duration::from_micros(300),
         Duration::from_millis(500),
-        None,
     );
     let at_server = echo.sources.lock().unwrap().len();
     println!(
@@ -269,7 +254,6 @@ fn delay_applies_both_directions() {
         PACKETS,
         Duration::from_micros(500),
         Duration::from_millis(800),
-        None,
     );
     let mut rtts: Vec<Duration> = replies.iter().map(|r| r.rtt).collect();
     rtts.sort();
@@ -296,7 +280,6 @@ fn reorder_delivers_out_of_sequence() {
         PACKETS,
         Duration::from_micros(500),
         Duration::from_millis(500),
-        None,
     );
     let ooo = out_of_sequence(&replies);
     println!(
@@ -322,7 +305,6 @@ fn rebind_changes_source_port() {
         100,
         Duration::from_millis(1),
         Duration::from_millis(300),
-        None,
     );
     let old_ports: Vec<u16> = echo
         .sources
@@ -339,7 +321,6 @@ fn rebind_changes_source_port() {
         100,
         Duration::from_millis(1),
         Duration::from_millis(300),
-        None,
     );
     let all: Vec<u16> = echo
         .sources
@@ -370,49 +351,122 @@ fn dedup(ports: &[u16]) -> Vec<u16> {
     v
 }
 
+/// Send numbered packets 10 ms apart for `dur`, recording each send time in
+/// `sent` (index = sequence number) and each reply's sequence in `replies`.
+fn send_for(sock: &UdpSocket, sent: &mut Vec<Instant>, replies: &mut Vec<u32>, dur: Duration) {
+    let end = Instant::now() + dur;
+    while Instant::now() < end {
+        let seq = sent.len() as u32;
+        sent.push(Instant::now());
+        let _ = sock.send(&seq.to_be_bytes());
+        receive_for(sock, replies, Duration::from_millis(10));
+    }
+}
+
+/// Collect replies for `dur`.
+fn receive_for(sock: &UdpSocket, replies: &mut Vec<u32>, dur: Duration) {
+    let end = Instant::now() + dur;
+    let mut buf = [0u8; 64];
+    loop {
+        let left = end.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return;
+        }
+        sock.set_read_timeout(Some(left)).unwrap();
+        if let Ok(n) = sock.recv(&mut buf) {
+            if n >= 4 {
+                replies.push(u32::from_be_bytes(buf[..4].try_into().unwrap()));
+            }
+        }
+    }
+}
+
+/// Collect replies until none arrives for `quiet`.
+fn drain(sock: &UdpSocket, replies: &mut Vec<u32>, quiet: Duration) {
+    let mut buf = [0u8; 64];
+    sock.set_read_timeout(Some(quiet)).unwrap();
+    while let Ok(n) = sock.recv(&mut buf) {
+        if n >= 4 {
+            replies.push(u32::from_be_bytes(buf[..4].try_into().unwrap()));
+        }
+    }
+}
+
 #[test]
 fn blackout_silences_then_resumes() {
+    const BLACKOUT: Duration = Duration::from_millis(2000);
+    // Longest a packet may take from our send to the proxy (loopback, no
+    // configured delay, but a loaded machine). Packets sent this close to
+    // the blackout's earliest possible end are not judged.
+    const TRANSIT: Duration = Duration::from_millis(300);
+    // The proxy has no configured delay, so in-flight replies are gone well
+    // within this; it stands in for "twice the configured delay".
+    const QUIET: Duration = Duration::from_millis(200);
+
     let echo = start_echo();
     let imp = start_impair(echo.addr, &[]);
-    let start: Arc<Mutex<Option<Instant>>> = Arc::new(Mutex::new(None));
-    let s2 = start.clone();
-    let imp_control = imp.control;
-    let trigger = move || {
-        let sock = UdpSocket::bind("127.0.0.1:0").unwrap();
-        sock.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
-        sock.send_to(b"blackout 2000", imp_control).unwrap();
-        let mut buf = [0u8; 64];
-        let (n, _) = sock.recv_from(&mut buf).unwrap();
-        assert_eq!(&buf[..n], b"ok");
-        *s2.lock().unwrap() = Some(Instant::now());
-    };
-    // 400 packets 10 ms apart: 1 s before the blackout, 3 s after it starts.
-    let replies = run_traffic(
-        &imp,
-        0,
-        400,
-        Duration::from_millis(10),
-        Duration::from_millis(300),
-        Some((100, &trigger)),
+    let sock = UdpSocket::bind("127.0.0.1:0").unwrap();
+    sock.connect(imp.listen).unwrap();
+    let mut sent = Vec::new();
+    let mut replies = Vec::new();
+
+    // 1 s of traffic, then stop and drain, so no reply to a packet sent
+    // before the blackout is still in flight when it starts.
+    send_for(&sock, &mut sent, &mut replies, Duration::from_secs(1));
+    drain(&sock, &mut replies, QUIET);
+    let sent_before = sent.len();
+    let replies_before = replies.len();
+
+    // The proxy starts the blackout when it handles the command: after
+    // ctl_sent and before ok_at.
+    let ctl_sent = Instant::now();
+    assert_eq!(control(&imp, "blackout 2000"), "ok");
+    let ok_at = Instant::now();
+    send_for(
+        &sock,
+        &mut sent,
+        &mut replies,
+        BLACKOUT + Duration::from_secs(1),
     );
-    let t0 = start.lock().unwrap().unwrap();
-    let before = replies.iter().filter(|r| r.at < t0).count();
-    let during = replies
-        .iter()
-        .filter(|r| r.at >= t0 && r.at < t0 + Duration::from_millis(2000))
-        .count();
-    let after = replies
-        .iter()
-        .filter(|r| r.at >= t0 + Duration::from_millis(2000))
-        .count();
-    let first_after = replies.iter().find(|r| r.at >= t0).map(|r| r.at - t0);
+    drain(&sock, &mut replies, QUIET);
+
+    // Sent after the blackout surely began and early enough to reach the
+    // proxy before it can have ended: the proxy must drop these.
+    let inside: Vec<u32> = (sent_before..sent.len())
+        .filter(|&i| sent[i] >= ok_at && sent[i] + TRANSIT <= ctl_sent + BLACKOUT)
+        .map(|i| i as u32)
+        .collect();
+    // Sent after the blackout surely ended: these must come back.
+    let after: Vec<u32> = (sent_before..sent.len())
+        .filter(|&i| sent[i] >= ok_at + BLACKOUT)
+        .map(|i| i as u32)
+        .collect();
+    let answered = |seqs: &[u32]| seqs.iter().filter(|s| replies.contains(s)).count();
+    let inside_answered = answered(&inside);
+    let after_answered = answered(&after);
     println!(
-        "blackout 2000: {before} replies before, {during} during the 2 s, {after} after; first reply {first_after:?} after blackout start; stats: {}",
+        "blackout 2000: before: {replies_before}/{sent_before} answered; sent inside the blackout: {} ({inside_answered} answered); sent after it: {} ({after_answered} answered); stats: {}",
+        inside.len(),
+        after.len(),
         control(&imp, "stats")
     );
-    assert!(before >= 90);
-    assert_eq!(during, 0, "replies arrived during blackout");
-    assert!(after >= 90, "traffic did not resume");
+    assert!(
+        replies_before * 10 >= sent_before * 9,
+        "traffic before the blackout"
+    );
+    assert!(
+        inside.len() >= 100,
+        "too few packets sent inside the blackout"
+    );
+    assert_eq!(
+        inside_answered, 0,
+        "replies to packets sent during the blackout"
+    );
+    assert!(after.len() >= 50, "too few packets sent after the blackout");
+    assert!(
+        after_answered * 10 >= after.len() * 9,
+        "traffic did not resume"
+    );
 }
 
 #[test]
@@ -428,7 +482,6 @@ fn stats_and_sigterm() {
         500,
         Duration::from_micros(500),
         Duration::from_millis(300),
-        None,
     );
     let line = control(&imp, "stats");
     println!("stats reply: {line}");
