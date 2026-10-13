@@ -254,3 +254,8 @@ Every CI run on main since cb37d80/cb9bfd2 fails on exactly one test, and the ma
    A reply sent just before the blackout started arrived after it. Timing race on a shared runner; the test should drain in-flight replies before starting the blackout window or allow replies sent before the window.
 
 Note: with the no-cancel rule, every queued commit now runs to completion, so one broken test shows up as many red runs at once. That is the pipeline working, not more bugs.
+
+## 2026-10-13 Phase 3 roaming test on the laptop (user): Wi-Fi off and on, PASSED
+
+- 12:40 Central. Windows Terminal, `mosh.exe --server=/home/ubuntu/mosh-rs/target/release/mosh-server devbox` (Rust client on Windows, Rust server on devbox over Tailscale), `top` running. The user turned Wi-Fi off, waited, turned it on: `top` kept updating and the session stayed live. No reconnect, no error text.
+- Still to run by the user: the sleep/wake variant (PLAN section 3 item 8) and, optionally, a hotspot switch (IP address change).
