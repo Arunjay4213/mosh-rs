@@ -138,7 +138,7 @@ rm -rf "$out_dir"
 mkdir -p "$out_dir"
 # tmux socket paths must stay under 108 bytes, so they live in /tmp.
 tmp=$(mktemp -d /tmp/scrollback.XXXXXX)
-sock=$tmp/tmux.sock
+sock=$tmp/tmux-0.sock
 printf 'set -g history-limit 200000\n' > "$tmp/tmux.conf"
 proxy_pid=
 
@@ -298,9 +298,23 @@ wait_history() {
     return 1
 }
 
+# new_tmux COMMAND: a fresh tmux server (80x24) running COMMAND, on a new
+# socket each time: a server just killed may still hold the old socket, and
+# a new session there fails with "server exited unexpectedly".
+tmux_count=0
+new_tmux() {
+    local err
+    tmux_count=$((tmux_count + 1))
+    sock=$tmp/tmux-$tmux_count.sock
+    if ! err=$(tmux -f "$tmp/tmux.conf" -S "$sock" new-session -d -s sb -x 80 -y 24 "$1" 2>&1); then
+        why="tmux new-session failed: $err"
+        return 1
+    fi
+}
+
 # Starts the client through our launcher (over ssh to localhost).
 start_launcher() {
-    tmux -f "$tmp/tmux.conf" -S "$sock" new-session -d -s sb -x 80 -y 24 \
+    new_tmux \
         "env LANG=C.UTF-8 '$bin/mosh' --scrollback --server='$bin/mosh-server' $* --client='$bin/mosh-client' -p $PORT_FIRST:$((PORT_FIRST + 9)) localhost -- sh; echo '[client exited with status '\$?']'; exec sleep 1000000"
 }
 
@@ -317,7 +331,7 @@ start_direct() {
         --control "127.0.0.1:$ctl_port" $2 > "$tmp/proxy.out" 2>&1 &
     proxy_pid=$!
     for _ in $(seq 50); do grep -qs '^udp-impair listen=' "$tmp/proxy.out" && break; sleep 0.1; done
-    tmux -f "$tmp/tmux.conf" -S "$sock" new-session -d -s sb -x 80 -y 24 \
+    new_tmux \
         "env MOSH_KEY='$key' MOSH_SCROLLBACK=1 LANG=C.UTF-8 '$bin/mosh-client' 127.0.0.1 $listen_port; echo '[client exited with status '\$?']'; exec sleep 1000000"
 }
 
@@ -515,8 +529,7 @@ v_altscreen() {
     # The reference: the same keys in a plain tmux pane (as over ssh), with
     # the TERM mosh-server gives the remote shell.
     mode=direct
-    tmux -f "$tmp/tmux.conf" -S "$sock" new-session -d -s sb -x 80 -y 24 \
-        "env TERM=xterm-256color LANG=C.UTF-8 sh; exec sleep 1000000"
+    new_tmux "env TERM=xterm-256color LANG=C.UTF-8 sh; exec sleep 1000000" || return 1
     alt_steps || { why="direct run: $why"; return 1; }
     end_session
     mode=mosh
@@ -585,6 +598,7 @@ for v in "${variants[@]}"; do
     else
         failed=1
         [ -s "$cap" ] || history > "$cap" 2> /dev/null
+        [ -n "$why" ] || why="a step failed without a recorded reason (screen below)"
         echo "FAIL $v ($(( ($(now_ms) - start) / 1000 )) s): $why"
         [ -n "$summary" ] && [[ $why != *"$summary"* ]] && sed 's/^/  /' <<< "$summary"
         for got in "$dir"/*.got; do
