@@ -124,6 +124,9 @@ jobs:
             echo "fmt: $R_FMT"; echo "clippy: $R_CLIPPY"; echo "test: $R_TEST"
             for d in logs/*/; do
               n=$(basename "$d"); f=$(ls "$d" | head -1)
+              echo; echo "## $n: failures"; echo '```'
+              sed 's/\x1b\[[0-9;]*m//g' "$d/$f" | grep -E -A4 'FAILED|panicked at|^run-all:|^error(\[E[0-9]+\])?:|SKIPPED|FAIL:' | head -n 200
+              echo '```'
               echo; echo "## $n (last 80 lines)"; echo '```'
               tail -n 80 "$d/$f" | sed 's/\x1b\[[0-9;]*m//g'
               echo '```'

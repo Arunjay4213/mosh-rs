@@ -169,3 +169,12 @@ Cause, verified by hand on the laptop:
 
 Fix for agent C: on Windows, do not single-quote the ProxyCommand arguments. Use Windows ssh quoting (double quotes only when an argument contains a space, backslashes untouched), or no quoting when the path has no spaces. The path-with-a-space case (agent C's open question) is being tested from the laptop; result follows in this file.
 Steps 4 to 6 are blocked on this fix. Fresh Windows binaries are needed after it lands; the laptop copies them from `target/dist/windows-x86_64/` and reruns.
+
+## 2026-10-13 Laptop: CI history and the two failures CI could not show
+
+- 37 CI runs on main so far, none green: 15 cancelled by later pushes (fixed 01:47 Central), the rest red for runner-environment gaps whose fixes waited for the laptop to push workflow changes.
+- The ci-status report only carried the last 80 lines of each job log, which for the test job were summaries, so the failing test names never reached devbox. The report now also extracts every `FAILED`, `panicked at`, `run-all:` and `error` line.
+- Still failing on the last completed run (fedc599), from the full log:
+  - `terminfo_table` (2 tests) and `colors_match_upstream_mosh_client`: missing ncurses-term and kitty-terminfo on the runner. Expected green after `ci/terminfo` (pushed 09:48 Central).
+  - `wrong_prediction_is_removed` (tests/tests/prediction_e2e.rs:395): "the prediction of q never showed". Timing-dependent e2e on a shared runner; needs a robustness fix (longer wait or a readiness check), not a product change.
+  - `tests/scrollback.sh`: `run-all: FAILED`, but the driver printed nothing except its header into the log, so the cause is unknown. The driver must print which variant failed and why, to stdout, so CI can show it.
