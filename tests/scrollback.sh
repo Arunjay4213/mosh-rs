@@ -34,9 +34,14 @@
 # Scrollback oracle (PLAN.md section 3 item 6, section 6).
 #
 # tests/scrollback.sh [VARIANT...]
+# tests/scrollback.sh --list
+# SCROLLBACK_VARIANTS=clean,vim tests/scrollback.sh
 #
 # VARIANT is one of clean loss30 vim clear altscreen resize shrink grow oldserver dropped (default:
-# all of them, in that order). Each runs a mosh-rs session in a fresh tmux
+# all of them, in that order). Variants come from the arguments, else from
+# SCROLLBACK_VARIANTS (comma- or space-separated); `--list` prints the names,
+# one per line. Each variant sets up and tears down its own session, so any
+# subset runs alone (a CI shard per variant or group). Each runs a mosh-rs session in a fresh tmux
 # server (80x24, history-limit 200000), which plays the host terminal, and
 # then reads the host's history plus screen with `capture-pane -S -200000`:
 #   clean     `mosh --scrollback localhost` (our launcher over ssh, our client
@@ -100,7 +105,14 @@ PORT_FIRST=61500
 PORT_LAST=61599
 ALL=(clean loss30 vim clear altscreen resize shrink grow oldserver dropped)
 
+if [ "${1:-}" = --list ]; then
+    printf '%s\n' "${ALL[@]}"
+    exit 0
+fi
 variants=("$@")
+if [ ${#variants[@]} -eq 0 ] && [ -n "${SCROLLBACK_VARIANTS:-}" ]; then
+    read -r -a variants <<< "${SCROLLBACK_VARIANTS//,/ }"
+fi
 [ ${#variants[@]} -eq 0 ] && variants=("${ALL[@]}")
 for v in "${variants[@]}"; do
     [[ " ${ALL[*]} " == *" $v "* ]] || { echo "scrollback: unknown variant $v (one of: ${ALL[*]})" >&2; exit 2; }

@@ -876,10 +876,13 @@ fn rendered_lines_match_upstream_cells() {
 }
 
 /// Live sessions: `scrollback-probe` (a client that sends the capability and
-/// does not render) against a real `mosh-server new -- seq 1 50000`, on
-/// ports 61200-61299. Our server runs with `-v`, so its log lists every
-/// fragment it sent; no instruction may need more fragments than the window
-/// allows.
+/// does not render) against a real `mosh-server new -- seq 1 N`, on ports
+/// 61200-61299. Our server runs with `-v`, so its log lists every fragment
+/// it sent; no instruction may need more fragments than the window allows.
+/// N is 50000, except through 30% loss, where 10000 lines (about 78 KB of
+/// history, some 16 windows, each lost and resent many times) prove the same
+/// in a fifth of the time; `tests/scrollback.sh loss30` sends the full
+/// 50000 through the same loss with the real client.
 #[cfg(unix)]
 mod live {
     use std::collections::HashMap;
@@ -947,9 +950,9 @@ mod live {
         ))
     }
 
-    /// `server new -i 127.0.0.1 -p PORT -- seq 1 50000`, with `-v` and its
+    /// `server new -i 127.0.0.1 -p PORT -- seq 1 LINES`, with `-v` and its
     /// output in `log` for our server; returns the key.
-    fn start_server(server: &str, port: u16, log: Option<&Path>) -> String {
+    fn start_server(server: &str, port: u16, log: Option<&Path>, lines: u64) -> String {
         let mut cmd = Command::new(server);
         cmd.args(["new", "-i", "127.0.0.1", "-p", &port.to_string()]);
         if let Some(log) = log {
@@ -961,7 +964,7 @@ mod live {
             cmd.stdout(Stdio::piped()).stderr(Stdio::null());
         }
         let out = cmd
-            .args(["--", "seq", "1", "50000"])
+            .args(["--", "seq", "1", &lines.to_string()])
             .env("LANG", "C.UTF-8")
             .stdin(Stdio::null())
             .output()
@@ -1061,8 +1064,8 @@ mod live {
             .unwrap_or_else(|| panic!("no {name} in {counts:?}"))
     }
 
-    fn first_difference(got: &[String]) -> String {
-        let want: Vec<String> = (1..=50000).map(|i| i.to_string()).collect();
+    fn first_difference(got: &[String], lines: u64) -> String {
+        let want: Vec<String> = (1..=lines).map(|i| i.to_string()).collect();
         match (0..got.len().max(want.len())).find(|&i| got.get(i) != want.get(i)) {
             None => "identical".to_string(),
             Some(i) => format!(
@@ -1075,38 +1078,38 @@ mod live {
         }
     }
 
-    /// Our server with default settings, `seq 1 50000`, the probe on `port`
+    /// Our server with default settings, `seq 1 LINES`, the probe on `port`
     /// directly or through a proxy that `link` sets up: the probe's output
-    /// must be exactly seq 1 50000 and no instruction may exceed the
+    /// must be exactly seq 1 LINES and no instruction may exceed the
     /// fragment bound.
-    fn session(what: &str, port: u16, link: impl FnOnce() -> (u16, Option<Impair>)) {
+    fn session(what: &str, port: u16, lines: u64, link: impl FnOnce() -> (u16, Option<Impair>)) {
         let _lock = lock();
         let log = temp("server", port);
         let server = release_dir().join("mosh-server").display().to_string();
-        let key = start_server(&server, port, Some(&log));
+        let key = start_server(&server, port, Some(&log), lines);
         let (probe_port, _impair) = link();
         let (shutdown, counts, got) = probe(probe_port, &key);
         let (max_fragments, instructions) = fragments(&log);
         let _ = std::fs::remove_file(&log);
         println!("{what}: {counts}");
         println!(
-            "{what}: instructions={instructions} max_fragments={max_fragments} (bound {MAX_FRAGMENTS}); vs seq 1 50000: {}",
-            first_difference(&got)
+            "{what}: instructions={instructions} max_fragments={max_fragments} (bound {MAX_FRAGMENTS}); vs seq 1 {lines}: {}",
+            first_difference(&got, lines)
         );
         assert!(shutdown, "the session must end with the server's shutdown");
         assert_eq!(count(&counts, "lost"), 0);
         assert!(max_fragments <= MAX_FRAGMENTS);
-        assert!(first_difference(&got) == "identical");
+        assert!(first_difference(&got, lines) == "identical");
     }
 
     #[test]
     fn rust_server_clean() {
-        session("rust server, clean", 61200, || (61200, None));
+        session("rust server, clean", 61200, 50000, || (61200, None));
     }
 
     #[test]
     fn rust_server_loss30_delay100() {
-        session("rust server, 30% loss, 100 ms delay", 61210, || {
+        session("rust server, 30% loss, 100 ms delay", 61210, 10000, || {
             (
                 61211,
                 Some(Impair::start(61211, 61210, 61212, "0.30", "100")),
@@ -1117,7 +1120,7 @@ mod live {
     /// 10 s of total silence while the history is still trickling in.
     #[test]
     fn rust_server_blackout_10s() {
-        session("rust server, 10 s blackout after 2 s", 61215, || {
+        session("rust server, 10 s blackout after 2 s", 61215, 50000, || {
             let impair = Impair::start(61216, 61215, 61217, "0", "0");
             std::thread::spawn(|| {
                 std::thread::sleep(Duration::from_secs(2));
@@ -1134,7 +1137,7 @@ mod live {
     #[test]
     fn cxx_server_ignores_capability() {
         let _lock = lock();
-        let key = start_server(CXX_SERVER, 61220, None);
+        let key = start_server(CXX_SERVER, 61220, None, 50000);
         let (shutdown, counts, got) = probe(61220, &key);
         println!("C++ server, capability sent: {counts}");
         assert!(shutdown, "the session must end with the server's shutdown");
