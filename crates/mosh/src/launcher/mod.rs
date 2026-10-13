@@ -592,7 +592,13 @@ pub fn main() -> ! {
         cmd.env("SHELL", "/bin/sh");
         let me =
             std::env::current_exe().map_or(argv0.clone(), |p| p.to_string_lossy().into_owned());
-        let quoted_proxy_command = shell_quote(&[me, format!("--family={family}")]);
+        // `shell_quote( $0, "--family=$family" )`, but quoted for how this
+        // system's ssh runs the ProxyCommand (no shell on Windows).
+        let quoted_proxy_command = [me, format!("--family={family}")]
+            .iter()
+            .map(|a| process::proxy_command_quote(a))
+            .collect::<Vec<_>>()
+            .join(" ");
         cmd.args(["-S", "none", "-o"]).arg(format!(
             "ProxyCommand={quoted_proxy_command} --fake-proxy -- %h %p"
         ));

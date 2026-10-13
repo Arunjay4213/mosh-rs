@@ -572,3 +572,9 @@ Rerun by the orchestrator at 728e468 (alternate screen forwarded to the host ter
 - Upstream's `make check` with both of our binaries (agent S2's run at 728e468): 30 PASS, 2 XFAIL, 0 FAIL.
 
 Gate not declared: CI is red until the laptop pushes branch `ci/terminfo`. Next: Phase 5 (one-hour bench rerun for the README, macOS compile check, README compatibility matrix and measured numbers, release workflow).
+
+## 2026-10-13 Launcher: Windows ProxyCommand quoting fixed (agent C)
+
+- Fix for the Phase 3 laptop failure (`CreateProcessW failed error:2`, INTERVENTIONS "Phase 3 Windows test, first pass"): the ProxyCommand words are quoted by `mosh_platform::process::proxy_command_quote`, POSIX single quotes on unix (unchanged byte for byte: `ProxyCommand='.../mosh' '--family=prefer-inet' --fake-proxy -- %h %p` seen in `ps` during a session) and Windows command-line rules on Windows (`windows_command_line_quote`), because Win32-OpenSSH runs no shell for ProxyCommand: `ssh_proxy_connect` passes the whole string to its `posix_spawnp`, whose `build_commandline_string` (contrib/win32/win32compat/misc.c) hands it to CreateProcessW unchanged when it starts with `"`, else quotes only up to the first space after `.exe`.
+- New check `windows_proxy_command_quoting` in `tests/tests/launcher.rs`: plain path unchanged, `C:\Program Files\mosh-rs\mosh.exe` -> `"C:\Program Files\mosh-rs\mosh.exe"`, `C:\dir with space\` -> `"C:\dir with space\\"`, forward slashes unchanged, embedded quotes escaped.
+- `cargo test --release -p mosh-tests --test launcher`: 5 passed, 0 failed (dual-stack case included). fmt, clippy native and Windows clean; Windows `mosh` builds. Laptop rerun of Phase 3 steps 3-6 needs fresh Windows binaries.

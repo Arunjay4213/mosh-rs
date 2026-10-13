@@ -260,3 +260,56 @@ fn launches_session_on_dual_stack_name() {
         );
     }
 }
+
+/// The ProxyCommand words on Windows, where ssh.exe runs no shell and the
+/// command line is split by the Windows rules (see
+/// `mosh_platform::process::proxy_command_quote`). Single quotes there made
+/// ssh look for a file named `'C:\...\mosh.exe'` (CreateProcessW error 2,
+/// found in the Phase 3 laptop test). Devbox cannot run ssh.exe, so this
+/// checks the exact strings the Windows launcher puts into ProxyCommand.
+#[test]
+fn windows_proxy_command_quoting() {
+    use mosh_platform::process::windows_command_line_quote as q;
+    let cases = [
+        // Plain path: no quotes, as verified by hand on the laptop.
+        (
+            r"C:\Users\arunj\mosh-rs-test\mosh.exe",
+            r"C:\Users\arunj\mosh-rs-test\mosh.exe",
+        ),
+        // Path with a space: double quotes, backslashes untouched.
+        (
+            r"C:\Program Files\mosh-rs\mosh.exe",
+            r#""C:\Program Files\mosh-rs\mosh.exe""#,
+        ),
+        // Trailing backslash with a space: doubled so it does not escape the closing quote.
+        (r"C:\dir with space\", r#""C:\dir with space\\""#),
+        // Forward slashes: unchanged.
+        (
+            "C:/Users/arunj/mosh-rs-test/mosh.exe",
+            "C:/Users/arunj/mosh-rs-test/mosh.exe",
+        ),
+        ("--family=prefer-inet", "--family=prefer-inet"),
+        // Embedded quotes and backslashes before them.
+        (r#"a"b"#, r#""a\"b""#),
+        (r#"a\"b"#, r#""a\\\"b""#),
+        ("tab\there", "\"tab\there\""),
+        ("", r#""""#),
+    ];
+    for (arg, want) in cases {
+        println!("{arg:<40} -> {}", q(arg));
+        assert_eq!(q(arg), want, "quoting {arg:?}");
+    }
+    // The whole ProxyCommand value for an install path with a space. It starts
+    // with a double quote, so Win32-OpenSSH's build_commandline_string passes
+    // it to CreateProcessW unchanged.
+    let proxy = format!(
+        "{} {} --fake-proxy -- %h %p",
+        q(r"C:\Program Files\mosh-rs\mosh.exe"),
+        q("--family=prefer-inet")
+    );
+    println!("ProxyCommand={proxy}");
+    assert_eq!(
+        proxy,
+        r#""C:\Program Files\mosh-rs\mosh.exe" --family=prefer-inet --fake-proxy -- %h %p"#
+    );
+}

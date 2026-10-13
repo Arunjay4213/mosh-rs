@@ -34,7 +34,8 @@
 
 //! Child processes for the launcher, ported from upstream `scripts/mosh.pl`:
 //! ssh with stdout and stderr merged into one pipe read by lines, exec, and
-//! ignoring SIGHUP in the `--fake-proxy` relay.
+//! ignoring SIGHUP in the `--fake-proxy` relay, and quoting for the
+//! ProxyCommand string ssh runs.
 
 use std::io::{self, BufRead, BufReader, PipeReader};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -84,6 +85,59 @@ impl LineProcess {
         drop(reader);
         child.wait()
     }
+}
+
+/// Quote one word of the ProxyCommand string for the way this system's ssh
+/// runs it. OpenSSH on unix runs ProxyCommand with `$SHELL -c` (mosh.pl
+/// sets SHELL=/bin/sh), so the word is single-quoted as mosh.pl's
+/// `shell_quote` does. Win32-OpenSSH runs no shell: `ssh_proxy_connect`
+/// (sshconnect.c, `FORK_NOT_SUPPORTED`) hands the whole string to its
+/// `posix_spawnp`, whose `build_commandline_string`
+/// (contrib/win32/win32compat/misc.c) passes it to `CreateProcessW`
+/// unchanged when it starts with `"`, and otherwise only adds double quotes
+/// around the part up to the first space after `.exe`. Single quotes there
+/// become part of the file name (CreateProcessW error 2), so on Windows the
+/// word is quoted with `windows_command_line_quote`.
+pub fn proxy_command_quote(arg: &str) -> String {
+    #[cfg(windows)]
+    {
+        windows_command_line_quote(arg)
+    }
+    #[cfg(not(windows))]
+    {
+        format!("'{}'", arg.replace('\'', "'\\''"))
+    }
+}
+
+/// Quote one argument by the Windows command-line rules that
+/// `CommandLineToArgvW`, the MSVC runtime and Rust's `std::env::args` use to
+/// split a command line: unchanged unless it is empty or has a space, tab or
+/// double quote; otherwise wrapped in double quotes, with each `"` written
+/// as `\"` and backslashes doubled only where they come right before a `"`
+/// or the closing quote. Pure string code, compiled everywhere so it can be
+/// checked on any system; only Windows uses it.
+pub fn windows_command_line_quote(arg: &str) -> String {
+    if !arg.is_empty() && !arg.contains([' ', '\t', '"']) {
+        return arg.to_string();
+    }
+    let mut quoted = String::from('"');
+    let mut backslashes = 0;
+    for c in arg.chars() {
+        if c == '\\' {
+            backslashes += 1;
+        } else {
+            if c == '"' {
+                /* Double the run of backslashes before a quote, then escape the quote. */
+                quoted.extend(std::iter::repeat_n('\\', backslashes + 1));
+            }
+            backslashes = 0;
+        }
+        quoted.push(c);
+    }
+    /* Double the trailing backslashes so they do not escape the closing quote. */
+    quoted.extend(std::iter::repeat_n('\\', backslashes));
+    quoted.push('"');
+    quoted
 }
 
 /// `$SIG{ 'HUP' } = 'IGNORE'` (mosh.pl line 305): ssh sends SIGHUP to its
