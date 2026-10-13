@@ -220,6 +220,7 @@ What is missing or broken:
   I could not run them here; the results claimed for the gate must come from a devbox run pasted into STATUS.md.
 - There is no record in the repo of the one-million-case fuzz run required by the Phase 1 gate, and the five saved failures show the last recorded run (seed 3) failed.
 - `transport_sync.rs` only exercises loss and address change when the orchestrator supplies the proxy environment; there is no committed driver script under `tests/*.sh` that sets `MOSH_IMPAIR_PROXY`, so `tests/run-all.sh` runs the clean-loopback case only.
+  Resolved by tests/transport-impaired.sh, commit 60ef500.
 - The `new_frame` oracle compares frames between prefixes of one input stream; it never compares a frame across a resize (different widths), which `Display::new_frame` handles in the row-extension code at `terminaldisplay.rs:270-285`.
   `resize.bin` only exercises that path if `vt-check` and `ref-term` apply the recorded resizes, which the `dump` mode (fixed W H) does not.
 
