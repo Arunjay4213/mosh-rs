@@ -1,7 +1,7 @@
 # Contributing to mosh-rs
 
 Thank you for helping.
-mosh-rs is a faithful port of mosh 1.4.0, so the bar for a change is simple to state: it must behave exactly like upstream, or be one of the deviations listed in [PLAN.md](PLAN.md) section 9.
+mosh-rs is a faithful port of mosh master (decd9b7, March 2026), wire-compatible with mosh 1.4.0, so the bar for a change is simple to state: it must behave exactly like upstream, or be one of the deviations listed in [PLAN.md](PLAN.md) section 9.
 Read [PLAN.md](PLAN.md) before writing code; this guide refers to its section numbers.
 
 ## Development setup
@@ -19,12 +19,10 @@ Build the upstream tree once:
 ```sh
 sudo apt install build-essential autoconf automake pkg-config protobuf-compiler \
   libprotobuf-dev libncurses-dev zlib1g-dev libssl-dev libutempter-dev perl tmux
-git clone https://github.com/mobile-shell/mosh ~/src/mosh
-cd ~/src/mosh
-git checkout mosh-1.4.0
-./autogen.sh && ./configure && make -j"$(nproc)"
-ln -s ~/src/mosh /path/to/mosh-rs/upstream
+scripts/build-upstream.sh
 ```
+
+The script clones mosh, checks out the reference commit decd9b7, builds it with the same configure line devbox uses, and links it as `upstream`.
 
 The default `./configure` uses OpenSSL's AES with mosh's internal OCB implementation, which is what the `ref-crypto` oracle links against.
 

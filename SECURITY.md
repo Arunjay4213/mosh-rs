@@ -24,7 +24,7 @@ You will be credited in the release notes unless you ask not to be.
 
 ## Cryptography
 
-mosh-rs uses AES-128 in OCB3 mode (RFC 7253), ported from upstream mosh 1.4.0 so that it interoperates with existing `mosh-server` and `mosh-client` installs.
+mosh-rs uses AES-128 in OCB3 mode (RFC 7253), ported from mosh master (decd9b7, March 2026) and wire-compatible with mosh 1.4.0, so that it interoperates with existing `mosh-server` and `mosh-client` installs.
 The key, nonce layout, and packet format must match upstream exactly, and this is checked byte for byte against upstream's own code by the `ref-crypto` oracle.
 Any difference between mosh-rs and upstream in key handling, nonce construction, encryption, authentication, or replay handling is treated as a vulnerability by definition, even if it looks harmless.
 

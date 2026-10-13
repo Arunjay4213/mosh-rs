@@ -28,7 +28,7 @@
 [mosh](https://mosh.org) is a remote terminal that survives what kills ssh: Wi-Fi to cellular handoffs, a laptop that sleeps overnight, and links with high latency or packet loss.
 It runs over UDP, keeps the screen in sync instead of streaming bytes, and echoes your keystrokes locally before the server answers.
 
-mosh-rs is a port of mosh 1.4.0 to Rust that speaks the same wire protocol, so that it works with the `mosh-server` already installed on your hosts.
+mosh-rs is a Rust port of mosh master (decd9b7, March 2026), wire-compatible with mosh 1.4.0, so that it works with the `mosh-server` already installed on your hosts.
 It is being built to add two things upstream mosh never had: a native Windows client, and scrollback that lands in your local terminal's history.
 Linux releases will be single static binaries.
 
@@ -218,7 +218,7 @@ Each check is a program that can be run, and the results go into [STATUS.md](STA
 
 ## Contributing
 
-Contributions are welcome, with one strong rule: behavior matches upstream mosh 1.4.0 exactly, except for the deviations listed in [PLAN.md](PLAN.md) section 9.
+Contributions are welcome, with one strong rule: behavior matches upstream mosh master (decd9b7, March 2026) exactly, except for the deviations listed in [PLAN.md](PLAN.md) section 9.
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and the [Code of Conduct](CODE_OF_CONDUCT.md) before joining a discussion.
 
 ## Security

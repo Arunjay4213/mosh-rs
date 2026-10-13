@@ -1,7 +1,7 @@
 # mosh-rs architecture
 
 This document is for contributors.
-It explains what a mosh session is made of, how mosh-rs splits that into crates, and how the two new features (scrollback and the Windows client) fit in without breaking compatibility with upstream mosh 1.4.0.
+It explains what a mosh session is made of, how mosh-rs splits that into crates, and how the two new features (scrollback and the Windows client) fit in without breaking wire compatibility with mosh 1.4.0. The code is ported from mosh master (decd9b7, March 2026).
 The authoritative plan is [PLAN.md](../PLAN.md); section numbers below refer to it.
 
 mosh-rs is under active development and most of what is described here is not built yet.
