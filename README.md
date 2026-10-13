@@ -9,11 +9,7 @@
 [![MSRV 1.89](https://img.shields.io/badge/MSRV-1.89-orange.svg)](https://blog.rust-lang.org/)
 [![GitHub release](https://img.shields.io/github/v/release/Arunjay4213/mosh-rs?include_prereleases)](https://github.com/Arunjay4213/mosh-rs/releases)
 
-<!--
-  Demo GIF slot. No recording has been made yet.
-  Until one is, this stays commented out so the README never shows a mock-up.
-  <img src="docs/assets/demo.gif" alt="mosh-rs keeping a session alive across a network change, with scrollback" width="720">
--->
+<img src="docs/assets/demo.gif" alt="A real mosh-rs session recorded in tmux: the Rust client connects to the Rust server through a UDP proxy, runs uname -a and ls --color, prints seq 1 300 and scrolls back through it in the local terminal history, keeps the session through a 12-second network blackout while the blue &quot;Last contact N seconds ago&quot; bar counts up, catches up, and quits with Ctrl-^ ." width="720">
 
 [Install](#install) · [Known limitations](#known-limitations) · [Usage](#usage) · [Compatibility](#compatibility) · [How it works](#how-it-works) · [How this was built](#how-this-was-built) · [Contributing](CONTRIBUTING.md)
 
