@@ -61,3 +61,8 @@ Rust reimplementation of mosh (upstream master commit decd9b7; compatible with m
 - A gate is not passed until STATUS.md has a "gate: PASSED" entry with the exact commands run and their numbers (fuzz cases and mismatches, interop cells, test counts). A commit message claiming a pass without that entry is reverted to WIP.
 - PLAN.md is the design of record. When reality differs (a dependency replaced, a module split, a constant found wrong), the agent edits PLAN.md in the same commit and logs the change in INTERVENTIONS.md, so the next agent reads the truth.
 - The orchestrator re-reads CLAUDE.md, STATUS.md and INTERVENTIONS.md before spawning each agent and includes their current state in the brief.
+
+## Models and effort (updated 2026-10-13, user instruction)
+
+- The orchestrator session runs Opus 5.5 at effort high, with Opus as the advisor.
+- Every spawned agent is Opus 5.5 (model "opus") at effort "high". Fable agents are not spawned from devbox; Fable reviews are run from the laptop at gates.
