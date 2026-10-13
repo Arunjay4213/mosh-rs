@@ -81,3 +81,12 @@ The full log is `target/upstream-check/make-check.log`, and per-test logs are in
 - Full matrix: `INTEROP_FULL=1 tests/interop.sh --client all --server all`, plus `tests/upstream-check.sh --client rust --server rust`.
 
 For a quicker loop while developing, add `--profile clean` or `--scenario NAME`, or set `INTEROP_BLACKOUT_MS=10000`.
+
+## tests/interop-setup-loss.sh
+
+Session setup under loss, which the matrix leaves out.
+Runs with `--run`, or with no arguments only when `INTEROP_FULL=1`, so `tests/run-all.sh` runs it only then.
+
+- 40 setups for each of cxx client x cxx server (the baseline), rust client x cxx server and cxx client x rust server, through `udp-impair --loss 0.30 --delay-ms 200 --jitter-ms 50 --reorder 0.10` from the first packet, 20 s budget each. Records success (READY on screen), time to that screen, time to first contact, and client packets sent before first contact.
+- 5 runs per client against a proxy that drops everything, counting packets sent in 12 s with no contact. Both clients send one packet every 3 s, then give up at 15 s with a burst of shutdown packets, so the window ends before 15 s.
+- Pass: for each Rust pair a one-sided Fisher exact test of its failures against the baseline's gives p >= 0.05, and the Rust client's median no-contact packet count is at least the C++ client's.

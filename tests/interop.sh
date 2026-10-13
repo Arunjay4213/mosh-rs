@@ -218,6 +218,36 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
+# stop_pids PID...: SIGTERM, then SIGKILL whatever is still alive after 2 s.
+# mosh-server answers SIGTERM by sending its client up to 16 shutdown
+# packets and waiting for an ack (upstream mosh-server.cc, SHUTDOWN_RETRIES),
+# holding its UDP port meanwhile; with the client gone that takes seconds,
+# and the next cell on the same slot would find the port busy.
+stop_pids() {
+    local p alive
+    [ $# -eq 0 ] && return 0
+    kill "$@" 2> /dev/null
+    for _ in $(seq 20); do
+        alive=
+        for p in "$@"; do kill -0 "$p" 2> /dev/null && alive=1; done
+        [ -z "$alive" ] && return 0
+        sleep 0.1
+    done
+    kill -KILL "$@" 2> /dev/null
+}
+
+# kill_client SOCKET: SIGKILL the client in the tmux pane, then the tmux
+# server. Killing only tmux would SIGHUP the client, and mosh-client answers
+# SIGHUP by sending shutdown packets for seconds (stmclient.cc). Those would
+# reach the next cell's proxy on the same port, which would then send the
+# server's replies to that dead client instead of the new one.
+kill_client() {
+    local pane
+    pane=$(tmux -S "$1" list-panes -a -F '#{pane_pid}' 2> /dev/null)
+    [ -n "$pane" ] && pkill -KILL -P "$pane"
+    tmux -S "$1" kill-server 2> /dev/null
+}
+
 now_ms() { echo $((${EPOCHREALTIME/./} / 1000)); }
 
 # Send one control datagram to the proxy and print the reply.
@@ -366,10 +396,11 @@ run_cell() {
     cell_body "$client" "$server" "$profile"
     local rc=$?
 
-    # Tear down: client tmux, proxy, server (its session gets SIGHUP).
-    tmux -S "$sock" kill-server 2> /dev/null
+    # Tear down: client, its tmux, proxy, server (its session gets SIGHUP).
+    kill_client "$sock"
     if [ -f "$cell_dir/pids" ]; then
-        xargs -r kill < "$cell_dir/pids" 2> /dev/null
+        # shellcheck disable=SC2046
+        stop_pids $(cat "$cell_dir/pids")
         rm -f "$cell_dir/pids"
     fi
     local secs
@@ -419,7 +450,7 @@ cell_body() {
     "$impair" --listen "127.0.0.1:$listen_port" --target "127.0.0.1:$port" \
         --control "127.0.0.1:$ctl_port" "${flags[@]}" > "$cell_dir/proxy.out" 2>&1 &
     echo $! >> "$cell_dir/pids"
-    for _ in $(seq 50); do grep -q '^udp-impair listen=' "$cell_dir/proxy.out" && break; sleep 0.1; done
+    for _ in $(seq 50); do grep -qs '^udp-impair listen=' "$cell_dir/proxy.out" && break; sleep 0.1; done
     if ! grep -q '^udp-impair listen=' "$cell_dir/proxy.out"; then
         why="udp-impair did not start: $(head -c 200 "$cell_dir/proxy.out")"
         return 1
