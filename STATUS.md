@@ -599,3 +599,8 @@ The README performance table now holds these numbers. Also verified: `cargo chec
 - Client: an injected line's line feed now goes to `CSI 9999;1H`, the last row by clamping. Before, it used the window size, so a resize the client had not processed yet (a taller host) left the line feed above the last row, and the line was lost. PLAN 6.4 updated.
 - Under load on devbox (tests and `stress-ng --cpu 12` pinned to 4 cores, load average 18): all 10 oracle variants pass. Unpinned, with `stress-ng --cpu 6` (load 6): all pass.
 - `wrong_prediction_is_removed`: a prediction is shown only in a confirmed epoch, and an echo that takes more than 50 ms on the server (upstream's ECHO_TIMEOUT) makes the epoch tentative again, so on a loaded machine `q` may legitimately not be predicted. Reproduced under the same load with the old test: it failed in 6 of 18 runs ("the prediction of q never showed"), for both the C++ and our client. The shell loop now swallows `q` without ending, and the test repeats the attempt (two echoed keys, then `q`) up to 10 times. A `q` on screen can only be the prediction, so the assertion keeps its meaning. New test under that load: 10 of 10 runs passed; 1 of 20 client sessions needed a second attempt.
+
+## 2026-10-13 Minimum Rust 1.89 (agent B, review G3)
+
+Portable code instead of a pinned toolchain: the two field-level `non_snake_case` allows moved to their structs, and the vt-fuzz byte-string arrays are typed local consts.
+`rust-version = "1.89"` (forced by `aes` 0.9.3; cargo refuses 1.88.0). Verified: `cargo +1.89.0` and `cargo +1.91.1` `clippy --workspace --all-targets -- -D warnings` clean and `test --release --workspace --no-run` build, as does stable 1.99.

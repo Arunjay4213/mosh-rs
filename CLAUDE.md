@@ -40,6 +40,7 @@ Rust reimplementation of mosh (upstream master commit decd9b7; compatible with m
 
 ## Code quality bar (checked at every commit, enforced at every gate)
 
+- The bar is measured with current stable (`cargo fmt`, `cargo clippy`) and must also pass on the minimum supported Rust, `rust-version` in the workspace `Cargo.toml` (1.89): `cargo +1.89.0 clippy --workspace --all-targets -- -D warnings` and `cargo +1.89.0 test --release --workspace --no-run`.
 - `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` must pass before any commit. A clippy error is a bug until proven otherwise; fix the code, do not add `#[allow]`.
 - `#[allow(...)]` needs a one-line comment on the line above saying why. Blanket allows at module or crate level are forbidden.
 - `unsafe` is allowed only in `crates/platform`, and every `unsafe` block has a `// SAFETY:` comment stating the invariant. Other crates carry `#![forbid(unsafe_code)]`.

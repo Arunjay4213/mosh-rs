@@ -65,12 +65,13 @@ pub struct Function {
 pub type dispatch_map_t = BTreeMap<Vec<u8>, Function>;
 
 /// The three dispatch tables.
+// Upstream field name `CSI`, kept for line-by-line comparison; the allow is on
+// the struct because older rustc checks field names at the struct's lint level.
+#[allow(non_snake_case)]
 pub struct DispatchRegistry {
     /// ESC sequences.
     pub escape: dispatch_map_t,
     /// CSI sequences.
-    // Upstream name, kept so the port can be compared line by line.
-    #[allow(non_snake_case)]
     pub CSI: dispatch_map_t,
     /// Control characters.
     pub control: dispatch_map_t,
@@ -122,6 +123,9 @@ pub fn get_global_dispatch_registry() -> &'static DispatchRegistry {
 const MAXIMUM_CLIPBOARD_SIZE: usize = 16 * 1024;
 
 /// Upstream `Terminal::Dispatcher`: collects parameters, intermediates and OSC strings, and dispatches functions.
+// Upstream field name `OSC_string`, kept for line-by-line comparison; the allow
+// is on the struct because older rustc checks field names at the struct's lint level.
+#[allow(non_snake_case)]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Dispatcher {
     params: Vec<u8>,
@@ -129,8 +133,6 @@ pub struct Dispatcher {
     parsed: bool,
 
     dispatch_chars: Vec<u8>,
-    // Upstream name, kept so the port can be compared line by line.
-    #[allow(non_snake_case)]
     pub(crate) OSC_string: Vec<wchar_t>,
 
     /// this is the reply string

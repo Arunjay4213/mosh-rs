@@ -200,8 +200,14 @@ fn piece(r: &mut Rng, out: &mut Vec<u8>) {
                     }
                 }
                 4 => out.extend_from_slice(b"52;c;"),
-                5 => out.extend_from_slice(r.pick(&[&b";"[..], b"8", b"8;", b"52;", b"3;", b"0"])),
-                _ => out.extend_from_slice(r.pick(&[&b"0;"[..], b"2;", b"8;;", b"52;c;"])),
+                5 => out.extend_from_slice({
+                    const V: [&[u8]; 6] = [b";", b"8", b"8;", b"52;", b"3;", b"0"];
+                    r.pick::<&[u8]>(&V)
+                }),
+                _ => out.extend_from_slice({
+                    const V: [&[u8]; 4] = [b"0;", b"2;", b"8;;", b"52;c;"];
+                    r.pick::<&[u8]>(&V)
+                }),
             }
             let n = r.below(20) as usize;
             text(r, out, n);
@@ -216,21 +222,13 @@ fn piece(r: &mut Rng, out: &mut Vec<u8>) {
         10..=11 => {
             out.push(0x1b);
             match r.below(4) {
-                0 => out.extend_from_slice(r.pick(&[
-                    &b"7"[..],
-                    b"8",
-                    b"c",
-                    b"#8",
-                    b"D",
-                    b"E",
-                    b"H",
-                    b"M",
-                    b"(B",
-                    b"(0",
-                    b")0",
-                    b"=",
-                    b">",
-                ])),
+                0 => out.extend_from_slice({
+                    const V: [&[u8]; 13] = [
+                        b"7", b"8", b"c", b"#8", b"D", b"E", b"H", b"M", b"(B", b"(0", b")0", b"=",
+                        b">",
+                    ];
+                    r.pick::<&[u8]>(&V)
+                }),
                 1 => {
                     out.push(r.range(0x20, 0x2f) as u8);
                     out.push(r.range(0x20, 0x7e) as u8);
@@ -385,19 +383,20 @@ fn piece(r: &mut Rng, out: &mut Vec<u8>) {
         // DCS / SOS / PM / APC strings, random raw bytes.
         _ => {
             if r.chance(1, 2) {
-                out.extend_from_slice(r.pick(&[
-                    &b"\x1bP"[..],
-                    b"\x1bX",
-                    b"\x1b^",
-                    b"\x1b_",
-                    "\u{90}".as_bytes(),
-                ]));
+                out.extend_from_slice({
+                    const V: [&[u8]; 5] =
+                        [b"\x1bP", b"\x1bX", b"\x1b^", b"\x1b_", "\u{90}".as_bytes()];
+                    r.pick::<&[u8]>(&V)
+                });
                 if r.chance(1, 2) {
                     out.extend_from_slice(params(r, 2).as_bytes());
                 }
                 let n = r.below(10) as usize;
                 text(r, out, n);
-                out.extend_from_slice(r.pick(&[&b"\x1b\\"[..], "\u{9c}".as_bytes(), b"\x07", b""]));
+                out.extend_from_slice({
+                    const V: [&[u8]; 4] = [b"\x1b\\", "\u{9c}".as_bytes(), b"\x07", b""];
+                    r.pick::<&[u8]>(&V)
+                });
             } else {
                 let n = r.range(1, 8);
                 for _ in 0..n {

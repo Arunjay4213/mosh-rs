@@ -3,6 +3,15 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+
+## 2026-10-13 Minimum Rust 1.89 verified; older toolchains installed on devbox (agent B, review G3)
+
+- Devbox change: `rustup toolchain install 1.91.1 1.89.0 1.88.0 --profile minimal -c clippy`, to reproduce review G3 and find the minimum supported Rust. These builds use the separate `target-old/` directory in agent B's worktree.
+- The fix makes the code portable instead of pinning a toolchain:
+  - In `terminaldispatcher.rs`, the `non_snake_case` allows move from the two fields to their structs, each with a reason. Older rustc checks field names at the struct's lint level.
+  - The five vt-fuzz byte-string arrays become typed local consts, with `pick::<&[u8]>`.
+- Minimum: 1.89, because the `aes` 0.9.3 dependency declares 1.89 and cargo refuses 1.88.0. 1.89.0 and 1.91.1 pass clippy `-D warnings` and `test --release --workspace --no-run`.
+- `rust-version = "1.89"` is now in the workspace `Cargo.toml` and inherited by every member, and CLAUDE.md states the bar must also pass on it.
 ## 2026-10-13 NEEDS THE USER: Windows test, rerun steps 3-6 with fixed binaries
 
 - Agent C fixed the ProxyCommand quoting (8a32d96): on Windows each argument is quoted by the Windows command-line rules (no quotes unless it has a space, tab or double quote; then double quotes), following how Win32-OpenSSH's `posix_spawnp` builds the command line it gives `CreateProcessW` (`contrib/win32/win32compat/misc.c`). Unix quoting is unchanged; launcher tests 5/5 on devbox.
