@@ -1,7 +1,7 @@
 name: Open PR
 
 # A push to an agent/ or laptop/ branch opens a PR against main if that branch has none open.
-# CI runs on the push itself (ci.yml), and auto-merge.yml lands the branch when CI is green.
+# CI runs on the push itself (ci.yml),  and auto-merge.yml lands the branch when CI is green.
 on:
   push:
     branches: ['agent/**', 'laptop/**']
