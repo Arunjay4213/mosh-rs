@@ -148,3 +148,24 @@ The lid-close test (sleep the laptop, wake it, the session is still live) is the
 ## 2026-10-13 Laptop: pushed ci/terminfo
 
 - The laptop oversight tick fetched branch `ci/terminfo` (3092b5d) from devbox, reviewed the workflow change (x86 runner pinned to ubuntu-24.04; installs vim, ncurses-term, kitty-terminfo and sysstat so the terminfo table check, the vim interop scenario and the idle-CPU tests run), merged it into main and pushed.
+
+## 2026-10-13 Phase 3 Windows test, first pass (laptop): launcher fails before ssh connects
+
+Steps 1 and 2 of the checklist pass: hashes match SHA256SUMS; `mosh-client.exe -c` prints 256 with no TERM set.
+Step 3 fails in Windows Terminal (PowerShell, OpenSSH_for_Windows_9.5p2):
+
+```
+PS C:\Users\arunj\mosh-rs-test> .\mosh.exe devbox
+CreateProcessW failed error:2
+posix_spawnp: No such file or directory
+C:\Users\arunj\mosh-rs-test\mosh.exe: Did not find remote IP address (is SSH ProxyCommand disabled?).
+```
+
+Cause, verified by hand on the laptop:
+- The launcher builds the ProxyCommand with POSIX single-quote quoting (`shell_quote` in `crates/mosh/src/launcher/mod.rs`, used at the `ProxyCommand=` line). Windows ssh.exe does not run ProxyCommand through a POSIX shell; it splits the string itself and treats `'C:\Users\arunj\mosh-rs-test\mosh.exe'` as a literal file name including the quotes, so CreateProcessW returns error 2 (file not found).
+- Reproduced exactly with `ssh -o ProxyCommand="'C:\Users\arunj\mosh-rs-test\mosh.exe' '--family=prefer-inet' --fake-proxy -- %h %p" devbox`: same two error lines.
+- The same command with the path unquoted (`ProxyCommand=C:\Users\arunj\mosh-rs-test\mosh.exe --family=prefer-inet --fake-proxy -- %h %p`) works: the proxy prints `MOSH IP 100.117.252.57` and the ssh command runs. Forward slashes and doubled backslashes also work unquoted.
+- `--fake-proxy` itself is correct on Windows; only the quoting is wrong.
+
+Fix for agent C: on Windows, do not single-quote the ProxyCommand arguments. Use Windows ssh quoting (double quotes only when an argument contains a space, backslashes untouched), or no quoting when the path has no spaces. The path-with-a-space case (agent C's open question) is being tested from the laptop; result follows in this file.
+Steps 4 to 6 are blocked on this fix. Fresh Windows binaries are needed after it lands; the laptop copies them from `target/dist/windows-x86_64/` and reruns.
