@@ -180,7 +180,7 @@ jobs:
               n=$(basename "$d"); f=$(ls "$d" | head -1)
               echo; echo "## $n: failures"; echo '```'
               # grep exits 1 when a log has no failures; that is the passing case, not an error.
-              sed 's/\x1b\[[0-9;]*m//g' "$d/$f" | grep -E -A4 'FAILED|panicked at|^run-all:|^shard .*: FAILED|^error(\[E[0-9]+\])?:|SKIPPED|FAIL:' | head -n 200 || true
+              sed 's/\x1b\[[0-9;]*m//g' "$d/$f" | grep -E -A4 'FAILED|panicked at|^run-all:|^shard .*: FAILED|^error(\[E[0-9]+\])?:|SKIPPED|FAIL:|^FAIL ' | head -n 200 || true
               echo '```'
               echo; echo "## $n (last 80 lines)"; echo '```'
               tail -n 80 "$d/$f" | sed 's/\x1b\[[0-9;]*m//g'
