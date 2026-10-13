@@ -265,3 +265,11 @@ Measured on devbox at origin/main 9d41baf plus the server commits:
 - Idle CPU, `pidstat -p <pid> 1 60` on a connected idle session with the C++ client: `/usr/bin/mosh-server` Average 0.00 %CPU, ours Average 0.00 %CPU.
 - Earlier manual check, before the harness landed: our server with `-v` behind `udp-impair` at 30% loss and 200 ms delay, a rebind and a 20 s blackout; typed lines echoed after each, and the server log shows a second `Server now attached to client at 127.0.0.1:<new port>` after the rebind.
 - `cargo test --release -p mosh-tests --test platform_tty --test launcher` after the `pty.rs` additions: 1 and 4 passed.
+
+## 2026-10-13 mosh-client: interop and upstream gates pass (agent E)
+
+Measured on devbox at origin/main ab9562e:
+- `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client rust --server cxx`: 30 cells, 30 passed, 0 failed, wall time 40s.
+- `INTEROP_FULL=1 tests/interop.sh --client rust --server cxx` (120 s blackouts): 30 cells, 30 passed, 0 failed, wall time 135s.
+- `tests/upstream-check.sh --client rust --server cxx`: total=32 pass=30 xfail=2 fail=0 error=0 xpass=0, 238 s.
+- About agent M's one rust x rust loss30 vim failure (no contact within 15 s, 8 client packets seen): before first contact both clients send few packets. Through `udp-impair` to a port with nothing behind it, `/usr/bin/mosh-client` sent 1, 2, 4, 5 packets by 2, 5, 10, 15 s and ours 1, 2, 4, 6. With 30% loss each way, a cold start can lose all of them, so that cell can fail now and then with any client; it does not point at a client bug.
