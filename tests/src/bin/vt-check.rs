@@ -103,6 +103,28 @@ fn do_steps(w: usize, h: usize, recs: &[&[u8]]) -> String {
     o
 }
 
+/// `frame-resize`: like `do_frame`, but the emulator is resized to `w2` x `h2`
+/// (a Resize action) between the old and the new bytes.
+fn do_frame_resize(
+    w: usize,
+    h: usize,
+    w2: usize,
+    h2: usize,
+    oldb: &[u8],
+    newb: &[u8],
+    initialized: bool,
+) -> String {
+    let mut emu = Emulator::new(w, h);
+    let mut parser = UTF8Parser::new();
+    let mut to_host = Vec::new();
+    feed(&mut parser, &mut emu, oldb, &mut to_host);
+    let last = emu.get_fb().clone();
+    Resize::new(w2, h2).act_on_terminal(&mut emu);
+    feed(&mut parser, &mut emu, newb, &mut to_host);
+    let display = Display::new(false);
+    display.new_frame(initialized, &last, emu.get_fb())
+}
+
 fn do_frame(w: usize, h: usize, oldb: &[u8], newb: &[u8], initialized: bool) -> String {
     let mut emu = Emulator::new(w, h);
     let mut parser = UTF8Parser::new();
@@ -120,7 +142,7 @@ fn die(msg: &str) -> ! {
 }
 
 fn usage() -> ! {
-    die("usage: vt-check dump W H < input\n       vt-check steps W H < tagged records\n       vt-check batch W H < records\n       vt-check frame W H OLDFILE NEWFILE [initialized]\n       vt-check frame-batch W H [initialized] < record pairs")
+    die("usage: vt-check dump W H < input\n       vt-check steps W H < tagged records\n       vt-check batch W H < records\n       vt-check frame W H OLDFILE NEWFILE [initialized]\n       vt-check frame-batch W H [initialized] < record pairs\n       vt-check frame-resize-batch W H [initialized] < (size, old, new) triples")
 }
 
 fn read_stdin() -> Vec<u8> {
@@ -182,6 +204,32 @@ fn main() {
                 initialized,
             );
             let _ = out.write_all(f.as_bytes());
+        }
+        ("frame-resize-batch", 4) | ("frame-resize-batch", 5) => {
+            let initialized = if args.len() == 5 {
+                atoi(&args[4]) != 0
+            } else {
+                true
+            };
+            let input = read_stdin();
+            let recs = records(&input);
+            if !recs.len().is_multiple_of(3) {
+                die("vt-check: frame-resize-batch needs records in threes");
+            }
+            for t in recs.chunks(3) {
+                let z = t[0];
+                if z.len() != 8 {
+                    die("vt-check: size record must be 8 bytes");
+                }
+                let w2 = u32::from_be_bytes([z[0], z[1], z[2], z[3]]) as usize;
+                let h2 = u32::from_be_bytes([z[4], z[5], z[6], z[7]]) as usize;
+                if w2 < 1 || h2 < 1 {
+                    die("vt-check: resize to zero");
+                }
+                let f = do_frame_resize(w, h, w2, h2, t[1], t[2], initialized);
+                let _ = out.write_all(&(f.len() as u32).to_be_bytes());
+                let _ = out.write_all(f.as_bytes());
+            }
         }
         ("frame-batch", 4) | ("frame-batch", 5) => {
             let initialized = if args.len() == 5 {

@@ -37,7 +37,8 @@
 use std::path::PathBuf;
 
 use mosh_tests::oracle::{
-    build_ref_term, corpus_files, first_difference, prefix_offsets, record, run, split_records,
+    build_ref_term, corpus_files, first_difference, prefix_offsets, record, run, seed_of,
+    split_records, Rng,
 };
 
 const SIZES: [(usize, usize); 2] = [(80, 24), (132, 43)];
@@ -53,6 +54,7 @@ fn terminal_conformance() {
     let mut failures = 0usize;
     let mut dumps = 0usize;
     let mut frames = 0usize;
+    let mut resize_frames = 0usize;
 
     for file in &files {
         let name = file
@@ -103,13 +105,50 @@ fn terminal_conformance() {
                 );
             }
 
-            for (input, init, count) in [(&pairs, "1", npairs), (&uninit, "0", 1)] {
-                let a = run(&ref_term, &args("frame-batch", &[init]), input);
-                let b = run(&vt_check, &args("frame-batch", &[init]), input);
+            // Frames across a resize: (size, old, new) triples. The targets
+            // cover width grow (new_frame's row-extension path), width shrink,
+            // height-only grow and shrink, one column, one row, and a seeded
+            // random size; each uses a seeded prefix pair.
+            let mut rng = Rng(seed_of(&data) ^ (w as u64) << 32 ^ h as u64);
+            let targets = [
+                (w + 17, h),
+                (w - 31, h),
+                (w, h + 9),
+                (w, h - 11),
+                (1, h),
+                (w, 1),
+                (
+                    (rng.next_u64() % 200 + 1) as usize,
+                    (rng.next_u64() % 60 + 1) as usize,
+                ),
+            ];
+            let mut triples = Vec::new();
+            for &(w2, h2) in &targets {
+                let k = (rng.next_u64() % offsets.len() as u64) as usize;
+                let (lo, hi) = (if k == 0 { 0 } else { offsets[k - 1] }, offsets[k]);
+                let mut z = (w2 as u32).to_be_bytes().to_vec();
+                z.extend_from_slice(&(h2 as u32).to_be_bytes());
+                record(&mut triples, &z);
+                record(&mut triples, &data[..lo]);
+                record(&mut triples, &data[lo..hi]);
+            }
+
+            let jobs = [
+                ("frame-batch", &pairs, "1", npairs),
+                ("frame-batch", &uninit, "0", 1),
+                ("frame-resize-batch", &triples, "1", targets.len()),
+                ("frame-resize-batch", &triples, "0", targets.len()),
+            ];
+            for (mode, input, init, count) in jobs {
+                let a = run(&ref_term, &args(mode, &[init]), input);
+                let b = run(&vt_check, &args(mode, &[init]), input);
                 let (ra, rb) = (split_records(&a), split_records(&b));
                 assert_eq!(ra.len(), count);
                 assert_eq!(rb.len(), count);
                 frames += count;
+                if mode == "frame-resize-batch" {
+                    resize_frames += count;
+                }
                 for (i, (x, y)) in ra.iter().zip(rb.iter()).enumerate() {
                     if x != y {
                         failures += 1;
@@ -119,7 +158,8 @@ fn terminal_conformance() {
                             .position(|(p, q)| p != q)
                             .unwrap_or(x.len().min(y.len()));
                         println!(
-                            "FRAME MISMATCH {} {}x{} pair {} initialized={}: first difference at byte {}\n    ref-term: {}\n    vt-check: {}",
+                            "FRAME MISMATCH {} {} {}x{} pair {} initialized={}: first difference at byte {}\n    ref-term: {}\n    vt-check: {}",
+                            mode,
                             name,
                             w,
                             h,
@@ -136,10 +176,11 @@ fn terminal_conformance() {
     }
 
     println!(
-        "corpus files={} dumps compared={} frames compared={} mismatches={}",
+        "corpus files={} dumps compared={} frames compared={} (resize frames {}) mismatches={}",
         files.len(),
         dumps,
         frames,
+        resize_frames,
         failures
     );
     assert_eq!(failures, 0, "terminal conformance FAILED");

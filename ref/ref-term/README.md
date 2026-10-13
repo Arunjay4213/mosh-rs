@@ -32,6 +32,11 @@ The emulator size is fixed; no resize is applied.
 - `frame-batch W H [initialized] < records`: records come in pairs (old, new), each handled like `frame`.
   Output per pair is a big-endian `u32` length followed by the `new_frame` bytes.
 
+- `frame-resize-batch W H [initialized] < records`: records come in threes (size, old, new).
+  The size record is 8 bytes: big-endian `u32` width then big-endian `u32` height (both at least 1).
+  Like `frame`, but after feeding old and copying `last`, a `Parser::Resize` action resizes the emulator to that size before new is fed, so `new_frame` compares framebuffers of different sizes.
+  Output per triple is a big-endian `u32` length followed by the `new_frame` bytes.
+
 Exit status is 0 on success and 2 on usage or input errors.
 An upstream assertion failure aborts ref-term; a Rust `assert!` panics vt-check.
 

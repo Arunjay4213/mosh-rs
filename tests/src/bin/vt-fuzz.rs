@@ -37,7 +37,9 @@
 //
 // With --frames, each case is a pair (old, new) of random inputs and the
 // programs' `frame-batch` output (Display::new_frame bytes) is compared
-// instead; one batch in four uses initialized=0.
+// instead; every other batch also resizes the emulator to a random size
+// between old and new (`frame-resize-batch`), and one batch in four of each
+// kind uses initialized=0.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -438,9 +440,12 @@ enum Mode {
     Dump,
     /// `frame-batch` with this `initialized` flag: compare new_frame bytes.
     Frame(bool),
+    /// `frame-resize-batch`: like Frame, with a resize between old and new.
+    FrameResize(bool),
 }
 
-/// One fuzz case: one input for Dump, an (old, new) pair for Frame.
+/// One fuzz case: one input for Dump, an (old, new) pair for Frame, and
+/// (old, new, 8-byte target size) for FrameResize.
 type Case = Vec<Vec<u8>>;
 
 struct Progs {
@@ -451,7 +456,7 @@ struct Progs {
 fn gen(r: &mut Rng, mode: Mode) -> Case {
     match mode {
         Mode::Dump => vec![gen_case(r)],
-        Mode::Frame(_) => {
+        Mode::Frame(_) | Mode::FrameResize(_) => {
             let old = gen_case(r);
             // Half the time a small update, like successive server snapshots.
             let new = if r.chance(1, 2) {
@@ -460,7 +465,16 @@ fn gen(r: &mut Rng, mode: Mode) -> Case {
             } else {
                 gen_case(r)
             };
-            vec![old, new]
+            let mut case = vec![old, new];
+            if let Mode::FrameResize(_) = mode {
+                // Random target, biased to small sizes and to 1-wide/1-tall.
+                let w2 = if r.chance(1, 8) { 1 } else { r.range(1, 160) } as u32;
+                let h2 = if r.chance(1, 8) { 1 } else { r.range(1, 60) } as u32;
+                let mut z = w2.to_be_bytes().to_vec();
+                z.extend_from_slice(&h2.to_be_bytes());
+                case.push(z);
+            }
+            case
         }
     }
 }
@@ -475,8 +489,19 @@ fn run_batch(prog: &Path, mode: Mode, w: usize, h: usize, cases: &[Case]) -> Opt
             args.insert(0, "frame-batch".into());
             args.push(if init { "1" } else { "0" }.into());
         }
+        Mode::FrameResize(init) => {
+            args.insert(0, "frame-resize-batch".into());
+            args.push(if init { "1" } else { "0" }.into());
+        }
     }
-    let parts: Vec<Vec<u8>> = cases.iter().flatten().cloned().collect();
+    // The programs read (size, old, new) triples; cases keep the size last.
+    let parts: Vec<Vec<u8>> = match mode {
+        Mode::FrameResize(_) => cases
+            .iter()
+            .flat_map(|c| [c[2].clone(), c[0].clone(), c[1].clone()])
+            .collect(),
+        _ => cases.iter().flatten().cloned().collect(),
+    };
     let input = records(&parts);
     let mut child = Command::new(prog)
         .args(&args)
@@ -507,7 +532,7 @@ fn run_batch(prog: &Path, mode: Mode, w: usize, h: usize, cases: &[Case]) -> Opt
                 }
             }
         }
-        Mode::Frame(_) => loop {
+        Mode::Frame(_) | Mode::FrameResize(_) => loop {
             let mut hdr = [0u8; 4];
             if out.read_exact(&mut hdr).is_err() {
                 break;
@@ -543,7 +568,13 @@ fn differs(p: &Progs, mode: Mode, w: usize, h: usize, case: &Case) -> bool {
 /// Remove chunks of each part while the mismatch persists (delta debugging,
 /// chunk halving), one part at a time.
 fn minimize(p: &Progs, mode: Mode, w: usize, h: usize, mut case: Case) -> Case {
-    for part in 0..case.len() {
+    // The size record of a FrameResize case is not minimized.
+    let nparts = if let Mode::FrameResize(_) = mode {
+        2
+    } else {
+        case.len()
+    };
+    for part in 0..nparts {
         let mut chunk = case[part].len().div_ceil(2).max(1);
         loop {
             let mut i = 0;
@@ -589,17 +620,25 @@ fn record_failure(p: &Progs, mode: Mode, seed: u64, n: usize, w: usize, h: usize
             std::fs::write(base.with_extension("bin"), &min[0]).expect("write failure");
             (base, format!("input {}", hex(&min[0])))
         }
-        Mode::Frame(init) => {
+        Mode::Frame(init) | Mode::FrameResize(init) => {
             let base = dir.join(format!("frame-{}-{}", seed, n));
             std::fs::write(base.with_extension("old.bin"), &min[0]).expect("write failure");
             std::fs::write(base.with_extension("new.bin"), &min[1]).expect("write failure");
+            let resize = match min.get(2) {
+                Some(z) => {
+                    std::fs::write(base.with_extension("size.bin"), z).expect("write failure");
+                    format!(" resize-to {}", hex(z))
+                }
+                None => String::new(),
+            };
             (
                 base,
                 format!(
-                    "initialized={} old {} new {}",
+                    "initialized={} old {} new {}{}",
                     init as u8,
                     hex(&min[0]),
-                    hex(&min[1])
+                    hex(&min[1]),
+                    resize
                 ),
             )
         }
@@ -688,8 +727,12 @@ fn main() {
                 let first = b * BATCH;
                 let count = BATCH.min(cases - first);
                 let (w, h) = size.unwrap_or(SIZES[b % SIZES.len()]);
-                let mode = if frames {
-                    Mode::Frame(b % 4 != 3)
+                // --frames: even batches plain pairs, odd batches with a
+                // resize between old and new; one batch in four uninitialized.
+                let mode = if frames && b % 2 == 1 {
+                    Mode::FrameResize(b % 4 != 3)
+                } else if frames {
+                    Mode::Frame(b % 4 != 2)
                 } else {
                     Mode::Dump
                 };

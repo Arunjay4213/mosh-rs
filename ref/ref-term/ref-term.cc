@@ -285,6 +285,28 @@ static std::string do_steps( int w, int h, const std::vector<std::string>& recs 
   return o;
 }
 
+/* frame-resize: like do_frame, but the emulator is resized to w2 x h2 (a
+   Parser::Resize action) between the old and the new bytes. */
+static std::string do_frame_resize( int w,
+                                    int h,
+                                    size_t w2,
+                                    size_t h2,
+                                    const std::string& oldb,
+                                    const std::string& newb,
+                                    bool initialized )
+{
+  Emulator emu( w, h );
+  Parser::UTF8Parser parser;
+  std::string to_host;
+  feed( parser, emu, oldb, to_host );
+  Framebuffer last( emu.get_fb() );
+  Parser::Resize act( w2, h2 );
+  act.act_on_terminal( &emu );
+  feed( parser, emu, newb, to_host );
+  Display display( false );
+  return display.new_frame( initialized, last, emu.get_fb() );
+}
+
 static std::string do_frame( int w, int h, const std::string& oldb, const std::string& newb, bool initialized )
 {
   Emulator emu( w, h );
@@ -309,7 +331,8 @@ static void usage( void )
            "       ref-term steps W H < tagged records\n"
            "       ref-term batch W H < records\n"
            "       ref-term frame W H OLDFILE NEWFILE [initialized]\n"
-           "       ref-term frame-batch W H [initialized] < record pairs\n" );
+           "       ref-term frame-batch W H [initialized] < record pairs\n"
+           "       ref-term frame-resize-batch W H [initialized] < (size, old, new) triples\n" );
   exit( 2 );
 }
 
@@ -340,6 +363,33 @@ int main( int argc, char** argv )
   } else if ( mode == "frame" && ( argc == 6 || argc == 7 ) ) {
     bool initialized = argc == 7 ? atoi( argv[6] ) != 0 : true;
     out( do_frame( w, h, read_file( argv[4] ), read_file( argv[5] ), initialized ) );
+  } else if ( mode == "frame-resize-batch" && ( argc == 4 || argc == 5 ) ) {
+    bool initialized = argc == 5 ? atoi( argv[4] ) != 0 : true;
+    std::vector<std::string> recs = records( read_all( std::cin ) );
+    if ( recs.size() % 3 ) {
+      fprintf( stderr, "ref-term: frame-resize-batch needs records in threes\n" );
+      return 2;
+    }
+    for ( size_t i = 0; i < recs.size(); i += 3 ) {
+      const unsigned char* p = (const unsigned char*)recs[i].data();
+      if ( recs[i].size() != 8 ) {
+        fprintf( stderr, "ref-term: size record must be 8 bytes\n" );
+        return 2;
+      }
+      size_t w2 = ( (size_t)p[0] << 24 ) | ( (size_t)p[1] << 16 ) | ( (size_t)p[2] << 8 ) | p[3];
+      size_t h2 = ( (size_t)p[4] << 24 ) | ( (size_t)p[5] << 16 ) | ( (size_t)p[6] << 8 ) | p[7];
+      if ( w2 < 1 || h2 < 1 ) {
+        fprintf( stderr, "ref-term: resize to zero\n" );
+        return 2;
+      }
+      std::string f = do_frame_resize( w, h, w2, h2, recs[i + 1], recs[i + 2], initialized );
+      unsigned char hdr[4] = { (unsigned char)( f.size() >> 24 ),
+                               (unsigned char)( f.size() >> 16 ),
+                               (unsigned char)( f.size() >> 8 ),
+                               (unsigned char)f.size() };
+      fwrite( hdr, 1, 4, stdout );
+      out( f );
+    }
   } else if ( mode == "frame-batch" && ( argc == 4 || argc == 5 ) ) {
     bool initialized = argc == 5 ? atoi( argv[4] ) != 0 : true;
     std::vector<std::string> recs = records( read_all( std::cin ) );
