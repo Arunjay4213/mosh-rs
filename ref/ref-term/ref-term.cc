@@ -324,10 +324,35 @@ static void out( const std::string& s )
   fwrite( s.data(), 1, s.size(), stdout );
 }
 
+static std::string capstr( const char* s )
+{
+  return s ? hex( s ) : std::string( "none" );
+}
+
+/* caps: for each name on stdin, upstream's Display(true) decisions under
+   TERM=<name> (setupterm and the TERM title whitelist), one line each. */
+static void do_caps( void )
+{
+  std::string name;
+  while ( std::getline( std::cin, name ) ) {
+    setenv( "TERM", name.c_str(), 1 );
+    std::string line = hex( name ) + " ";
+    try {
+      Display d( true );
+      line += std::string( "ech " ) + ( d.has_ech ? "1" : "0" ) + " bce " + ( d.has_bce ? "1" : "0" ) + " title "
+              + ( d.has_title ? "1" : "0" ) + " smcup " + capstr( d.smcup ) + " rmcup " + capstr( d.rmcup );
+    } catch ( const std::exception& e ) {
+      line += std::string( "error " ) + e.what();
+    }
+    out( line + "\n" );
+  }
+}
+
 static void usage( void )
 {
   fprintf( stderr,
            "usage: ref-term dump W H < input\n"
+           "       ref-term caps < terminal type names\n"
            "       ref-term steps W H < tagged records\n"
            "       ref-term batch W H < records\n"
            "       ref-term frame W H OLDFILE NEWFILE [initialized]\n"
@@ -341,6 +366,10 @@ int main( int argc, char** argv )
   if ( NULL == setlocale( LC_ALL, "C.UTF-8" ) ) {
     fprintf( stderr, "ref-term: setlocale(C.UTF-8) failed\n" );
     return 1;
+  }
+  if ( argc == 2 && std::string( argv[1] ) == "caps" ) {
+    do_caps();
+    return 0;
   }
   if ( argc < 4 ) {
     usage();

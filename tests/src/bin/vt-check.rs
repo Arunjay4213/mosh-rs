@@ -34,7 +34,7 @@
 use std::io::{Read, Write};
 
 use mosh_terminal::{Actions, Display, Emulator, Resize, UTF8Parser};
-use mosh_tests::dump::dump;
+use mosh_tests::dump::{dump, hex};
 
 /// Feed bytes exactly as Terminal::Complete::act does.
 fn feed(parser: &mut UTF8Parser, emu: &mut Emulator, s: &[u8], to_host: &mut Vec<u8>) {
@@ -142,7 +142,7 @@ fn die(msg: &str) -> ! {
 }
 
 fn usage() -> ! {
-    die("usage: vt-check dump W H < input\n       vt-check steps W H < tagged records\n       vt-check batch W H < records\n       vt-check frame W H OLDFILE NEWFILE [initialized]\n       vt-check frame-batch W H [initialized] < record pairs\n       vt-check frame-resize-batch W H [initialized] < (size, old, new) triples")
+    die("usage: vt-check dump W H < input\n       vt-check caps < terminal type names\n       vt-check steps W H < tagged records\n       vt-check batch W H < records\n       vt-check frame W H OLDFILE NEWFILE [initialized]\n       vt-check frame-batch W H [initialized] < record pairs\n       vt-check frame-resize-batch W H [initialized] < (size, old, new) triples")
 }
 
 fn read_stdin() -> Vec<u8> {
@@ -162,8 +162,40 @@ fn atoi(s: &str) -> i64 {
     s.trim().parse().unwrap_or(0)
 }
 
+/// `caps`: for each name on stdin, `Display::new(true)`'s decisions under
+/// TERM=<name>, in ref-term's format.
+fn do_caps() {
+    let capstr = |c: Option<&[u8]>| c.map_or("none".to_string(), hex);
+    let stdout = std::io::stdout();
+    let mut out = std::io::BufWriter::new(stdout.lock());
+    let input = read_stdin();
+    for name in input.split(|&c| c == b'\n') {
+        if name.is_empty() {
+            continue;
+        }
+        let name_str = String::from_utf8_lossy(name).into_owned();
+        std::env::set_var("TERM", &name_str);
+        let (caps, title) = Display::new(true).debug_caps();
+        let _ = writeln!(
+            out,
+            "{} ech {} bce {} title {} smcup {} rmcup {}",
+            hex(name),
+            caps.ech as u8,
+            caps.bce as u8,
+            title as u8,
+            capstr(caps.smcup),
+            capstr(caps.rmcup)
+        );
+    }
+    let _ = out.flush();
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() == 2 && args[1] == "caps" {
+        do_caps();
+        return;
+    }
     if args.len() < 4 {
         usage();
     }

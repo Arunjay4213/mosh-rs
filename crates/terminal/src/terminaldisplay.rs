@@ -182,25 +182,27 @@ pub struct Display {
     pub(crate) has_title: bool,
 
     /// enter and exit alternate screen mode
-    pub(crate) smcup: Option<&'static str>,
-    pub(crate) rmcup: Option<&'static str>,
+    pub(crate) smcup: Option<&'static [u8]>,
+    pub(crate) rmcup: Option<&'static [u8]>,
 }
 
 impl Display {
-    /// Escape sequences to start using the terminal (alternate screen, application cursor keys).
-    pub fn open(&self) -> String {
-        format!("{}{}", self.smcup.unwrap_or(""), "\x1b[?1h")
+    /// Escape sequences to start using the terminal (alternate screen,
+    /// application cursor keys). Bytes: terminfo strings may hold any byte.
+    pub fn open(&self) -> Vec<u8> {
+        let mut ret = self.smcup.unwrap_or(b"").to_vec();
+        ret.extend_from_slice(b"\x1b[?1h");
+        ret
     }
 
     /// Escape sequences to restore the terminal on exit.
-    pub fn close(&self) -> String {
-        format!(
-            "{}{}",
-            "\x1b[?1l\x1b[0m\x1b[?25h\
+    pub fn close(&self) -> Vec<u8> {
+        let mut ret = b"\x1b[?1l\x1b[0m\x1b[?25h\
              \x1b[?1003l\x1b[?1002l\x1b[?1001l\x1b[?1000l\
-             \x1b[?1015l\x1b[?1006l\x1b[?1005l",
-            self.rmcup.unwrap_or("")
-        )
+             \x1b[?1015l\x1b[?1006l\x1b[?1005l"
+            .to_vec();
+        ret.extend_from_slice(self.rmcup.unwrap_or(b""));
+        ret
     }
 
     /// The bytes that turn a terminal showing `last` into one showing `f`; `initialized` false means the terminal state is unknown.

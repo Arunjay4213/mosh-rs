@@ -19,7 +19,17 @@ gen-wcwidth: gen-wcwidth.c
 wcwidth: gen-wcwidth
 	./gen-wcwidth "$$(ldd --version | head -1)" > ../../crates/terminal/src/wcwidth.rs
 
-clean:
-	rm -f ref-term gen-wcwidth
+gen-terminfo: gen-terminfo.c
+	$(CC) -O2 -Wall -o $@ gen-terminfo.c -ltinfo
 
-.PHONY: all wcwidth clean
+# Regenerate the Rust terminfo table from every entry in the local terminfo
+# database (toe -a) and its aliases. Records the package versions in the header.
+terminfo: gen-terminfo
+	toe -a | awk '{print $$1}' | ./gen-terminfo \
+	  "ncurses $$(dpkg-query -W -f='$${Version}' ncurses-base) (ncurses-base, ncurses-term), kitty-terminfo $$(dpkg-query -W -f='$${Version}' kitty-terminfo)" \
+	  "$$(ldd --version | head -1)" > ../../crates/terminal/src/terminfo.rs
+
+clean:
+	rm -f ref-term gen-wcwidth gen-terminfo
+
+.PHONY: all wcwidth terminfo clean

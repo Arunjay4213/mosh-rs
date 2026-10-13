@@ -29,124 +29,32 @@
 // also delete it here.
 // Ported from: upstream/src/terminal/terminaldisplayinit.cc
 //
-// PLAN.md section 9.6: there is no terminfo lookup. Upstream asks terminfo
-// (via setupterm/tigetstr/tigetflag) for "ech", "bce", "smcup" and
-// "rmcup". Here the same control flow reads those four answers from the fixed
-// table `TERMINFO` below, keyed on TERM, whose rows are copied from
-// `infocmp -1 <name>` on devbox (ncurses 6.4). Unknown TERMs get xterm's.
+// PLAN.md section 9.6: there is no runtime terminfo lookup. Upstream calls
+// setupterm() for $TERM and reads "ech", "bce", "smcup" and "rmcup"; here the
+// same control flow reads those answers from `crate::terminfo`, a table
+// generated from every entry of the devbox terminfo database by
+// ref/ref-term/gen-terminfo.c. An unknown TERM (where upstream would fail to
+// start) gets xterm's answers.
 
-//! Choosing the local terminal's capabilities. Port of upstream `src/terminal/terminaldisplayinit.cc`, without terminfo (PLAN.md 9.6).
+//! Choosing the local terminal's capabilities. Port of upstream
+//! `src/terminal/terminaldisplayinit.cc`, with the generated `terminfo` table in
+//! place of runtime terminfo (PLAN.md 9.6).
 
 use crate::terminaldisplay::Display;
+use crate::terminfo::{lookup, TermCaps};
 
-/// The terminfo answers upstream would get for one terminal type.
-/// `None` for smcup/rmcup means the capability is absent (tigetstr NULL).
-struct TermCaps {
-    ech: bool,
-    bce: bool,
-    smcup: Option<&'static str>,
-    rmcup: Option<&'static str>,
-}
-
-const fn caps(
-    ech: bool,
-    bce: bool,
-    smcup: Option<&'static str>,
-    rmcup: Option<&'static str>,
-) -> TermCaps {
-    TermCaps {
-        ech,
-        bce,
-        smcup,
-        rmcup,
-    }
-}
-
-const XTERM_ALT: (Option<&str>, Option<&str>) = (
-    Some("\x1b[?1049h\x1b[22;0;0t"),
-    Some("\x1b[?1049l\x1b[23;0;0t"),
-);
-const PLAIN_ALT: (Option<&str>, Option<&str>) = (Some("\x1b[?1049h"), Some("\x1b[?1049l"));
-const RXVT_ALT: (Option<&str>, Option<&str>) =
-    (Some("\x1b7\x1b[?47h"), Some("\x1b[2J\x1b[?47l\x1b8"));
-const URXVT_ALT: (Option<&str>, Option<&str>) = (Some("\x1b[?1049h"), Some("\x1b[r\x1b[?1049l"));
-const NO_ALT: (Option<&str>, Option<&str>) = (None, None);
-
-/// ech, bce, smcup and rmcup per TERM, copied from `infocmp -1 <name>`
-/// (ncurses 6.4.20240113 terminfo on devbox, Ubuntu 24.04).
-const TERMINFO: &[(&str, TermCaps)] = &[
-    ("xterm", caps(true, true, XTERM_ALT.0, XTERM_ALT.1)),
-    ("xterm-256color", caps(true, true, XTERM_ALT.0, XTERM_ALT.1)),
-    ("screen", caps(false, false, PLAIN_ALT.0, PLAIN_ALT.1)),
-    (
-        "screen-256color",
-        caps(false, false, PLAIN_ALT.0, PLAIN_ALT.1),
-    ),
-    ("tmux", caps(false, false, PLAIN_ALT.0, PLAIN_ALT.1)),
-    (
-        "tmux-256color",
-        caps(false, false, PLAIN_ALT.0, PLAIN_ALT.1),
-    ),
-    ("rxvt", caps(false, true, RXVT_ALT.0, RXVT_ALT.1)),
-    ("rxvt-256color", caps(false, true, RXVT_ALT.0, RXVT_ALT.1)),
-    ("rxvt-unicode", caps(true, true, URXVT_ALT.0, URXVT_ALT.1)),
-    (
-        "rxvt-unicode-256color",
-        caps(true, true, URXVT_ALT.0, URXVT_ALT.1),
-    ),
-    ("linux", caps(true, true, NO_ALT.0, NO_ALT.1)),
-    ("vt100", caps(false, false, NO_ALT.0, NO_ALT.1)),
-    ("vt102", caps(false, false, NO_ALT.0, NO_ALT.1)),
-    ("vt220", caps(true, false, NO_ALT.0, NO_ALT.1)),
-    ("alacritty", caps(true, true, XTERM_ALT.0, XTERM_ALT.1)),
-    ("kitty", caps(true, false, PLAIN_ALT.0, PLAIN_ALT.1)),
-    ("foot", caps(true, true, XTERM_ALT.0, XTERM_ALT.1)),
-    ("st-256color", caps(true, true, PLAIN_ALT.0, PLAIN_ALT.1)),
-    ("putty", caps(true, true, PLAIN_ALT.0, PLAIN_ALT.1)),
-    ("dumb", caps(false, false, NO_ALT.0, NO_ALT.1)),
-    ("iterm2", caps(false, true, XTERM_ALT.0, XTERM_ALT.1)),
-    ("kterm", caps(false, false, RXVT_ALT.0, RXVT_ALT.1)),
-    ("cygwin", caps(false, false, RXVT_ALT.0, RXVT_ALT.1)),
-    ("xterm-color", caps(false, false, RXVT_ALT.0, RXVT_ALT.1)),
-    ("eterm", caps(false, false, RXVT_ALT.0, RXVT_ALT.1)),
-    ("Eterm", caps(true, true, RXVT_ALT.0, RXVT_ALT.1)),
-    ("ansi", caps(true, false, NO_ALT.0, NO_ALT.1)),
-    (
-        "screen.xterm-256color",
-        caps(true, false, XTERM_ALT.0, XTERM_ALT.1),
-    ),
-    ("konsole", caps(true, true, RXVT_ALT.0, RXVT_ALT.1)),
-    ("gnome", caps(true, true, RXVT_ALT.0, RXVT_ALT.1)),
-];
-
-/// The capabilities for `term_type`: an exact entry from `TERMINFO`, else the
-/// entry of its family (a TERM that starts with "screen", "tmux",
-/// "rxvt-unicode" or "rxvt" behaves like the base entry in terminfo), else
-/// xterm's.
+/// The terminfo answers for `term_type`: its own entry, or xterm's when it is
+/// unset or not in the database.
 fn term_caps(term_type: Option<&str>) -> &'static TermCaps {
-    let lookup = |name: &str| {
-        TERMINFO
-            .iter()
-            .find(|(n, _)| *n == name)
-            .map(|(_, c)| c)
-            .expect("name is in TERMINFO")
-    };
-    let Some(t) = term_type else {
-        return lookup("xterm");
-    };
-    if let Some((_, c)) = TERMINFO.iter().find(|(n, _)| *n == t) {
-        return c;
-    }
-    for family in ["screen", "tmux", "rxvt-unicode", "rxvt"] {
-        if t.starts_with(family) {
-            return lookup(family);
-        }
-    }
-    lookup("xterm")
+    term_type
+        .and_then(lookup)
+        .or_else(|| lookup("xterm"))
+        .expect("the generated terminfo table has an xterm entry")
 }
 
 impl Display {
-    /// Terminal capabilities; with `use_environment`, chosen from `TERM` and `MOSH_NO_TERM_INIT` (no terminfo, PLAN.md 9.6).
+    /// Terminal capabilities. With `use_environment`, from `TERM` (via the
+    /// generated terminfo table) and `MOSH_NO_TERM_INIT`, as upstream.
     pub fn new(use_environment: bool) -> Display {
         let mut d = Display {
             has_ech: true,
@@ -157,8 +65,11 @@ impl Display {
         };
 
         if use_environment {
-            let term_type = std::env::var("TERM").ok();
-            let caps = term_caps(term_type.as_deref());
+            // getenv( "TERM" ): raw bytes; a non-UTF-8 value cannot name a
+            // table entry, so it gets the xterm fallback.
+            let term_os = std::env::var_os("TERM");
+            let term_bytes = term_os.as_ref().map(|t| t.as_encoded_bytes());
+            let caps = term_caps(term_bytes.and_then(|b| std::str::from_utf8(b).ok()));
 
             /* check for ECH */
             d.has_ech = caps.ech;
@@ -180,9 +91,9 @@ impl Display {
             ];
 
             d.has_title = false;
-            if let Some(term_type) = term_type.as_deref() {
+            if let Some(term_type) = term_bytes {
                 for t in TITLE_TERM_TYPES {
-                    if term_type.starts_with(t) {
+                    if term_type.starts_with(t.as_bytes()) {
                         d.has_title = true;
                         break;
                     }
@@ -195,5 +106,18 @@ impl Display {
             }
         }
         d
+    }
+
+    /// Debug accessor (not upstream): the decisions upstream's
+    /// `Display(true)` makes (ech, bce, smcup, rmcup as a `TermCaps`, and
+    /// has_title), for comparing with ref-term's `caps` mode.
+    pub fn debug_caps(&self) -> (TermCaps, bool) {
+        let caps = TermCaps {
+            ech: self.has_ech,
+            bce: self.has_bce,
+            smcup: self.smcup,
+            rmcup: self.rmcup,
+        };
+        (caps, self.has_title)
     }
 }

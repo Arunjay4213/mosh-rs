@@ -49,6 +49,7 @@ pub mod terminaldisplayinit;
 pub mod terminalframebuffer;
 pub mod terminalfunctions;
 pub mod terminaluserinput;
+pub mod terminfo;
 pub mod wcwidth;
 
 pub use parser::UTF8Parser;
