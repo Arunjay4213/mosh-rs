@@ -1,0 +1,13 @@
+[package]
+name = "mosh-network"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aes.workspace = true
+ocb3.workspace = true
+rand.workspace = true
+prost.workspace = true
+flate2.workspace = true

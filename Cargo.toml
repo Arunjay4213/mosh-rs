@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/terminal",
+    "crates/network",
+    "crates/platform",
+    "crates/mosh",
+    "tests",
+    "tools",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+repository = "https://example.invalid/mosh-rs"
+
+[workspace.dependencies]
+aes = "^0.9.3"
+ocb3 = "^0.2.0"
+rand = "^0.10.3"
+prost = "^0.14.4"
+flate2 = { version = "^1.1.10", default-features = false, features = ["zlib-rs"] }
+nix = { version = "^0.31.3", features = ["term", "process", "poll", "signal", "fs", "ioctl", "socket", "net"] }
+libc = "^0.2.190"
+windows-sys = { version = "^0.61.2", features = ["Win32_System_Console", "Win32_Foundation", "Win32_System_Threading"] }
+unicode-width = "^0.2.2"
+lexopt = "^0.3.2"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "unwind"

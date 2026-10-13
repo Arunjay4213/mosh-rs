@@ -1,0 +1,13 @@
+[package]
+name = "mosh"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+mosh-terminal = { path = "../terminal" }
+mosh-network = { path = "../network" }
+mosh-platform = { path = "../platform" }
+lexopt.workspace = true
+libc.workspace = true

@@ -1,0 +1,9 @@
+[package]
+name = "mosh-terminal"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+unicode-width.workspace = true
