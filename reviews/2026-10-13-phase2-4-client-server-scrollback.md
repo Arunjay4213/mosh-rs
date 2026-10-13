@@ -164,3 +164,4 @@ Method note: the allocation numbers in G1 come from a 40-line program in the scr
 
 | Finding | Status | Commit | Note |
 |---------|--------|--------|------|
+| G3 | fixed | 077968f | portable code, not a pinned toolchain: struct-level `non_snake_case` allows (with reason) in terminaldispatcher.rs, typed byte-string consts in vt-fuzz; `rust-version = "1.89"` (aes 0.9.3 needs it; 1.88.0 refused); clippy -D warnings and `test --release --workspace --no-run` pass on 1.89.0, 1.91.1 and stable 1.99; CLAUDE.md states it |
