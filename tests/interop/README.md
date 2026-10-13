@@ -25,6 +25,7 @@ Profiles:
 - `clean`: no impairment, still through the proxy.
 - `loss5`: 5% loss each way.
 - `loss30`: 30% loss, 200 ms delay plus 0-50 ms jitter, 10% reordering.
+- In both loss profiles the loss starts once `READY-<name>` is on screen, so connection setup is not lossy, and everything after it is. Reason: like upstream (`stmclient.cc`, "Timed out waiting for server..."), a client that has heard nothing from the server for 15 s gives up, and at 30% loss from the first packet that can happen by chance alone. One Rust-client, Rust-server cell failed this way in a 120-cell run before this change; whether that was chance or a bug is still open.
 - `blackout`: all traffic dropped for `INTEROP_BLACKOUT_MS` (120 s by default) right after the scenario starts. Afterwards the screen must still match, and typed keys must echo within 10 s.
 - `rebind`: the proxy moves to a new source port right after the scenario starts. Afterwards typed keys must echo within 10 s, and the proxy must have forwarded server-to-client packets after the rebind. The proxy closes the old port, so those packets prove the server now sends to the new address. This check reads the proxy's counters, not the server's logs, so it works for both servers.
 
@@ -39,7 +40,8 @@ A lock file (`/tmp/mosh-rs-interop.lock`) makes a second run on the same machine
 With no arguments, as `tests/run-all.sh` runs it, the script runs the quick subset: cxx client by cxx server, every profile and scenario, with a 10 s blackout.
 With any argument, or with `INTEROP_FULL=1`, the blackout is the 120 s that PLAN.md asks for.
 `INTEROP_BLACKOUT_MS` overrides both.
-`INTEROP_CORRUPT_DIRECT=<scenario>` adds a line to that scenario's expected screen, which shows the harness fails when screens differ.
+`INTEROP_CORRUPT_DIRECT=<scenario>` adds a line to the top of that scenario's expected screen, which shows the harness fails when screens differ.
+It has no effect on `seq`, whose 2000 lines scroll the extra line away.
 
 Prerequisites: tmux, vim, ss, python3, flock, cargo, and the C.UTF-8 locale.
 A missing one fails the run and is named.

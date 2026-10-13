@@ -57,6 +57,12 @@
 #   clean    no impairment (still through the proxy)
 #   loss5    5% loss each way
 #   loss30   30% loss, 200 ms delay + 0-50 ms jitter, 10% reordering
+#            Loss starts once READY is on screen, so the session is up
+#            and everything after (Enter, output, keystrokes) is lossy.
+#            Connection setup is not tested under loss: like upstream
+#            (stmclient.cc, "Timed out waiting for server..."), a client
+#            that hears nothing for 15 s gives up, and at 30% loss that
+#            happens now and then by chance alone.
 #   blackout clean, plus all traffic dropped for INTEROP_BLACKOUT_MS just
 #            after the scenario starts; afterwards typed keys must echo
 #            within 10 s
@@ -400,11 +406,15 @@ cell_body() {
     fi
     echo "$pid" >> "$cell_dir/pids"
 
-    # Proxy.
-    local flags=()
+    # Proxy. Delay, jitter and reordering apply from the start; loss is
+    # switched on below once the session is up (see the header comment).
+    local flags=() loss=
     case $profile in
-        loss5) flags=(--loss 0.05) ;;
-        loss30) flags=(--loss 0.30 --delay-ms 200 --jitter-ms 50 --reorder 0.10) ;;
+        loss5) loss=0.05 ;;
+        loss30)
+            loss=0.30
+            flags=(--delay-ms 200 --jitter-ms 50 --reorder 0.10)
+            ;;
     esac
     "$impair" --listen "127.0.0.1:$listen_port" --target "127.0.0.1:$port" \
         --control "127.0.0.1:$ctl_port" "${flags[@]}" > "$cell_dir/proxy.out" 2>&1 &
@@ -420,9 +430,13 @@ cell_body() {
         "env MOSH_KEY='$key' TERM=xterm-256color LANG=C.UTF-8 '$client_bin' 127.0.0.1 $listen_port; echo \"[client exited with status \$?]\"; exec sleep 1000000"
 
     wait_text "READY-$scen" || return 1
+    local reply s2c_before=0
+    if [ -n "$loss" ]; then
+        reply=$(control "loss $loss")
+        [ "$reply" = ok ] || { why="proxy refused loss $loss: $reply"; return 1; }
+    fi
     keys Enter
 
-    local reply s2c_before=0
     case $profile in
         blackout)
             sleep 0.2
