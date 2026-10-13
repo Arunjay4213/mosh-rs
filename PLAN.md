@@ -61,7 +61,7 @@ One Cargo workspace, four crates, plus tooling that is not shipped.
   Transport is generic over a `State` trait with exactly the methods upstream's template requires: `diff_from`, `init_diff`, `apply_string`, `subtract`, `reset_input`, `compare` (the sender's verbose round-trip check, which upstream's `make check` greps for), and equality, plus `subtract_self` for upstream's `subtract( this )` call on the front state, which Rust borrows cannot express as aliasing (default: subtract a copy; `UserStream` overrides with clear, `Complete` with nothing).
   Sockets via `mosh-platform` (`mosh_platform::socket`); the crate itself has no `unsafe` and no `#[cfg]` platform code (`#![forbid(unsafe_code)]`).
   Ported from `upstream/src/crypto` and `upstream/src/network`.
-- `crates/platform`: the only crate with `#[cfg(unix)]` and `#[cfg(windows)]` code.
+- `crates/platform`: the only crate with `#[cfg(unix)]` and `#[cfg(windows)]` code, apart from the `#[cfg(unix)]` on `crates/mosh/src/server` and the `mosh-server` binary (the server is Unix-only).
   Local terminal: raw mode on and off, size query, resize detection, blocking byte reads on a thread, byte writes.
   Pseudoterminal: forkpty, window size, child wait (unix only).
   Process: spawn `ssh` and read its output (both platforms).
@@ -73,7 +73,9 @@ One Cargo workspace, four crates, plus tooling that is not shipped.
 - `tools/`: `udp-impair` (a UDP proxy with loss, delay, reordering, and client-address change), corpus recorder, perf bench. Not shipped.
 - `tests/`: the end-to-end and conformance tests described in section 3, run with `cargo test --release` plus shell drivers.
 
-Dependencies: `aes`, `ocb3`, `rand`, `prost`, `flate2` (with the `zlib-rs` backend), `nix`, `libc`, `windows-sys`, `unicode-width`, `lexopt`.
+Dependencies: `aes` (with its `zeroize` feature), `ocb3`, `rand`, `prost`, `flate2` (with the `zlib-rs` backend), `nix` (unix only), `libc`, `windows-sys` (Windows only), and `zeroize` (wipes the session key copy without `unsafe`, review F23).
+`unicode-width` was replaced by a width table generated from glibc `wcwidth` (INTERVENTIONS.md, Phase 0); it is still declared in the workspace `Cargo.toml` but no crate uses it.
+`lexopt` is still declared by `crates/mosh` but unused: the launcher ports mosh.pl's Getopt::Long parsing by hand (section 8), and `mosh-client` and `mosh-server` port upstream's `getopt`.
 Nothing else without a reason written in the PR.
 
 ## 3. Correctness strategy (the oracles)
@@ -81,29 +83,34 @@ Nothing else without a reason written in the PR.
 Each oracle is a program we can run, not an opinion.
 
 1. Reference harnesses in `ref/`, built against upstream object files on devbox.
-   - `ref-term`: reads bytes on stdin, feeds them to upstream `Terminal::Complete` at a given size, dumps the framebuffer in a fixed text format (every cell: text, width, attributes, fg, bg; cursor; cursor visibility; title; mode flags).
-   - `ref-term --frame OLD NEW`: feeds two byte streams, dumps upstream `Display(false).new_frame(true, old, new)` as bytes.
-   - `ref-crypto`: key, direction, sequence number, and payload in; wire packet out, and the reverse.
-   Our Rust binaries `vt-check` and `crypto-check` print the identical formats.
+   - `ref-term dump W H`: reads bytes on stdin, feeds them to upstream `Terminal::Complete` at that size, dumps the framebuffer in a fixed text format (every cell: text, width, attributes, fg, bg; cursor; cursor visibility; title; mode flags).
+   - `ref-term frame W H OLDFILE NEWFILE [initialized]`: feeds two byte streams, dumps upstream `Display(false).new_frame(initialized, old, new)` as bytes (`initialized` defaults to 1).
+   - More modes for speed and later phases: `batch`, `steps` (byte and resize records, for the statesync round trip), `frame-batch`, `frame-resize-batch`, and `caps` (`ref/ref-term/README.md`).
+   - `ref-crypto enc KEY DIR SEQ TS TSR` and `ref-crypto dec KEY`: key, direction, sequence number, timestamps and payload in, wire packet out, and the reverse; `ref-crypto vectors` prints the RFC 7253 vectors.
+   Our Rust binaries `vt-check` and `crypto-check` take the same modes and print the identical formats; `tests/tests/terminal_conformance.rs` and `tests/tests/crypto_conformance.rs` run them.
    Conformance means `diff` is empty.
 2. Differential fuzzing of the emulator.
-   A generator biased toward escape sequences (CSI with random params, SGR, OSC, DEC private modes, UTF-8 including wide and combining characters, invalid bytes) produces millions of inputs.
+   `vt-fuzz --cases N --jobs J --seed S [--size WxH] [--frames]` (`tests/src/bin/vt-fuzz.rs`) generates inputs biased toward escape sequences (CSI with random params, SGR, OSC, DEC private modes, UTF-8 including wide and combining characters, invalid bytes); with `--frames` it checks `new_frame` on random screen pairs, half of them across a resize.
    Each is run through `ref-term` and `vt-check`; the first mismatch is minimized and fixed.
-   `new_frame` must be byte-exact against the reference on every pair of corpus states.
-3. Corpus of real sessions, recorded on devbox with a pty recorder: bash with colors, vim editing a file, less on a man page, htop, tmux inside the session, the Claude Code TUI, `seq 1 100000`, a 256-color and truecolor test, a wide-character and emoji test.
-   Every corpus file is a conformance input for oracle 1.
-4. Interop matrix over loopback through `udp-impair`.
-   {Rust client, C++ client} × {Rust server, C++ server} × {clean, 5% loss, 30% loss with 200 ms delay and reordering, 2-minute blackout, client address change mid-session}.
+   It is run by hand at gates (STATUS.md has each run), not by `tests/run-all.sh`.
+   `new_frame` must be byte-exact against the reference on every pair of corpus states (`terminal_conformance`).
+3. Corpus of real sessions, recorded on devbox with a pty recorder (`tools/src/bin/pty-record`, scripts in `tools/corpus/`): bash with colors, vim editing a file, less on a man page, htop, tmux inside the session, the Claude Code TUI, `seq 1 100000`, a 256-color and truecolor test, a wide-character and emoji test, and a resize.
+   Every corpus file (`tests/corpus/sessions/`, plus the 17 inputs from upstream's emulation tests in `tests/corpus/emulation/`) is a conformance input for oracle 1.
+4. Interop matrix over loopback through `udp-impair` (`tests/interop.sh`; the C++ side is apt mosh 1.4.0).
+   {Rust client, C++ client} × {Rust server, C++ server} × {clean, 5% loss, 30% loss with 200 ms delay and reordering, 2-minute blackout, client address change mid-session} (profiles `clean`, `loss5`, `loss30`, `blackout`, `rebind`) × six scenarios (seq, colors, vim, wide, resize, typing).
    Each cell runs a scripted session inside tmux and compares the final `tmux capture-pane` to a direct (no mosh) run of the same script.
-   Also asserts: the session is still live after the blackout, and the server adopted the new address after the change.
-5. Upstream's own test suite.
-   Copy our `mosh-client` and `mosh-server` over the binaries in `upstream/src/frontend/` and run `make check` in `upstream/`.
+   Also asserts: typed keys echo after the blackout, and after the change the proxy forwards the server's packets to the client's new port.
+   With no arguments it runs only the C++ pair with a 10 s blackout; `INTEROP_FULL=1` gives the 2-minute blackout.
+   Loss starts once the session is up; `tests/interop-setup-loss.sh --run` covers setup with 30% loss from the first packet.
+5. Upstream's own test suite (`tests/upstream-check.sh --client cxx|rust --server cxx|rust`).
+   It copies the upstream tree to `target/upstream-check/mosh`, puts our `mosh-client` and `mosh-server` over the binaries in its `src/frontend/`, and runs `make check` there; `upstream/` is never written.
    Every upstream e2e test must pass with our binaries.
 6. Scrollback oracle.
    tmux is the host terminal with `history-limit 200000`.
    Run `seq 1 50000` over mosh-rs, then `tmux capture-pane -S -200000` and compare scrollback plus screen to `seq 1 50000` exactly: no gaps, no duplicates, no blank lines.
    Repeat with 30% loss, with a vim excursion in the middle (vim output must not appear in scrollback), and with a resize in the middle.
-7. Performance bench, compared with C++ mosh in the same harness (section 5).
+   `tests/scrollback.sh` runs this as ten variants: clean, loss30, vim, clear, altscreen, resize, shrink, grow, oldserver and dropped (the vim, clear and resize variants use `seq 1 3000` and `seq 3001 6000` around the event).
+7. Performance bench, compared with C++ mosh in the same harness (section 5): `tools/src/bin/bench` (`target/release/bench`), against apt mosh 1.4.0.
 8. Human end-to-end.
    `mosh devbox` from WSL and from Windows Terminal over Tailscale, sleep the laptop, wake it, the session is live and scrollback works.
 
@@ -230,11 +237,13 @@ Design, all gated on negotiation so old peers see byte-identical behavior:
 
 ## 7. Windows client
 
-- Console setup: `SetConsoleMode` with `ENABLE_VIRTUAL_TERMINAL_PROCESSING` on stdout and `ENABLE_VIRTUAL_TERMINAL_INPUT` on stdin, processed input off, `SetConsoleCP`/`SetConsoleOutputCP` to UTF-8.
+- Console setup: `SetConsoleMode` with `ENABLE_VIRTUAL_TERMINAL_PROCESSING` and `DISABLE_NEWLINE_AUTO_RETURN` on stdout and `ENABLE_VIRTUAL_TERMINAL_INPUT` on stdin, processed, line and echo input off, `SetConsoleCP`/`SetConsoleOutputCP` to UTF-8; the saved modes and code pages are restored on exit.
   After that, keys arrive as the same escape-sequence bytes a unix tty produces, and output is plain VT bytes.
   No key-event decoding and re-encoding layer.
-- Resize: poll `GetConsoleScreenBufferInfo` on every loop iteration (the loop already wakes at least every 50 ms).
+- Input: the select loop polls sockets only, so a thread reads the console with `ReadConsoleW` (UTF-16, converted to UTF-8) and forwards the bytes over a loopback TCP connection whose receiving socket the loop watches.
+- Resize: while the client watches SIGWINCH, `Select::select` caps its wait at 50 ms and compares the `GetConsoleScreenBufferInfo` window size after every call, raising SIGWINCH when it changed.
 - Ctrl+C arrives as byte 0x03 and goes to the server like any key.
+  The escape key is Ctrl-^ as upstream, typed as Ctrl+6 in Windows Terminal.
 - ssh: spawn `ssh.exe` from the Windows OpenSSH that ships with Windows 10 and later.
 - Build: cross-compile on devbox for `x86_64-pc-windows-gnu` with the mingw package already available there, copy the exe to the laptop for testing. Releases use the MSVC target built on a Windows GitHub Actions runner.
 - `mosh-server` is unix only, as upstream.
@@ -259,6 +268,7 @@ The default client is `mosh-client` from PATH, as mosh.pl. On Windows only, `mos
 ## 9. Deviations from upstream (the only allowed ones)
 
 1. Withdrawn (was: launcher uses `ssh -G` instead of `--fake-proxy`). The launcher ports `--fake-proxy` as mosh.pl does (section 8). The number is kept so references to items 2-10 stay valid.
+   Windows-only launcher behavior (the sibling `mosh-client.exe` lookup and the Windows quoting of the ProxyCommand) has no upstream counterpart and is described in sections 7 and 8.
 2. utmp/wtmp records are not written.
 3. `--bind-server` supports `ssh` and `any` only.
 4. Scrollback extension (section 6), alternate-screen flag in `DrawState`.
@@ -272,8 +282,14 @@ The default client is `mosh-client` from PATH, as mosh.pl. On Windows only, `mos
 9. Two places where upstream dereferences an erased iterator (undefined behavior) are made defined: `add_sent_state` moves `assumed_receiver_state` to the previous element when the assumed one is erased, and `Transport::recv` looks the reference state up again after `process_throwaway_until` and drops the instruction if it is gone.
 10. Withdrawn (was: the `State` trait omits upstream's `compare`). `compare` is back in the trait and the sender runs upstream's verbose round-trip check, so upstream's `make check` catches a wrong server diff in our binaries too. The number is kept so references to item 11 stay valid.
 11. Where upstream's client crashes or aborts with the terminal left raw, the client exits cleanly: if the window size cannot be read at startup it prints the error and exits 1 (upstream returns early from `STMClient::init` and then dereferences a missing network object, `stmclient.cc` lines 247-250), and a panic restores the terminal through the panic hook (section 5).
-11a. Where upstream formats a notification with `swprintf( tmp, 128, ... )` into an uninitialized buffer (`terminaloverlay.cc` network errors and the bar text, `stmclient.cc` "Nothing received" and crypto messages) and the text does not fit, glibc returns -1 without a terminator, so upstream shows whatever follows in memory; the client keeps exactly the first 127 characters (`swprintf128`), the sensible reading of that undefined result (review G5).
+11a. Where upstream formats a notification with `swprintf( tmp, 128, ... )` (`terminaloverlay.cc` network errors and the bar text, `stmclient.cc` "Nothing received" and crypto messages) and the text does not fit, the client keeps exactly the first 127 characters (`swprintf128`, review G5).
+     On glibc this is not a deviation: measured on devbox (2026-10-13), glibc returns -1 but leaves the first 127 characters and a terminator in the buffer, which upstream then shows.
+     The item is kept so the review's reference stays valid.
 12. On Windows only, `mosh` and `mosh-client` set `TERM=xterm-256color` for themselves when TERM is unset or empty at startup (section 7). Upstream's client prints "TERM environment variable not set." and exits 1 there, so the launcher stops with "Can't count colors" and a stock Windows Terminal could never connect. Unix keeps upstream's behavior.
+13. Version strings name mosh-rs, not upstream: `mosh --version` prints `mosh-rs 0.1.0 [build 0.1.0]`, and `mosh-client` and `mosh-server` print `(mosh-rs 0.1.0) [build 0.1.0]` where upstream prints `(mosh 1.4.0) [build decd9b7]`, also in the server's banner (review G6; the binaries must not claim to be upstream).
+14. The server session child flushes stdout before `execvp`.
+    Upstream does not, so when `mosh-server new`'s stdout is a file or pipe (fully buffered), its motd and detached-session warning are lost at the exec; ours prints them.
+    Through ssh's terminal, the normal case, both print them (STATUS.md, detached-session warning).
 
 Anything else that differs from upstream is a bug.
 
@@ -284,13 +300,21 @@ Each agent owns one directory, reads the upstream files named in its brief, and 
 After each agent finishes, the orchestrator reruns its oracle before anything is built on top.
 A reviewer agent reads the port against upstream for the three hard modules (terminal, transport sender, overlay) and lists every semantic deviation.
 
+Status of each phase, from STATUS.md and INTERVENTIONS.md, is noted under its heading; the plan text itself is unchanged.
+
 ### Phase 0: setup (done or one agent, under an hour)
+
+Done: gate PASSED (STATUS.md).
+Differences: `tests/` and `tools/` became workspace packages (`mosh-tests`, `mosh-tools`); `unicode-width` was replaced by a generated `wcwidth` table; the mingw linker and Windows target had to be installed.
 
 - Devbox has apt mosh, build tools, rustup, upstream built at `~/src/mosh`. Done.
 - Create the workspace, `CLAUDE.md`, `.gitignore`, release profile, four empty crates with their `Cargo.toml` and the dependency list from section 2.
 - Verify `cargo build` of the empty workspace and `x86_64-pc-windows-gnu` target installation.
 
 ### Phase 1: four agents in parallel
+
+Done: gate PASSED at green CI c64e97d (STATUS.md).
+Differences: the launcher first used `ssh -G` (old item 9.1) and was rewritten to port `--fake-proxy` after a dual-stack bug; the TERM table became a generated one (9.6); an impaired-transport driver (`tests/transport-impaired.sh`) was added after review.
 
 - A. `crates/network`, medium effort. First builds `ref-crypto`. Gate: RFC 7253 vectors, random differential encrypt/decrypt both ways against `ref-crypto`, fragment and instruction round trips, two Rust endpoints syncing a toy state over `udp-impair` with 30% loss and an address change.
 - B. `crates/terminal`, medium effort. First builds `ref-term` and `vt-check`. Gate: cell-exact on every upstream `emulation-*.test` input and every corpus file, byte-exact `new_frame` on all corpus state pairs, one million differential fuzz cases with zero mismatches.
@@ -299,6 +323,9 @@ A reviewer agent reads the port against upstream for the three hard modules (ter
 
 ### Phase 2: state sync, server, client
 
+Done: gate PASSED at green CI c64e97d (STATUS.md), including the 120-cell matrix with 2-minute blackouts and `make check` with both of our binaries.
+Differences: agent E ported the whole overlay in one landing; agent M built the interop harness; agent F restored `compare` (9.10 withdrawn); the overlay review was run from the laptop.
+
 - B continues into `crates/mosh/src/statesync` (it knows the terminal API). Gate: `Complete` diff and apply round trips are cell-exact against `ref-term`.
 - D. server, medium effort. Gate: C++ client connects to the Rust server and the interop matrix column passes.
 - E. client without prediction, then the prediction overlay, medium effort. Gate: Rust client against C++ server passes the matrix column; prediction e2e shows the predicted character within 50 ms at 300 ms RTT and corrects on mismatch.
@@ -306,13 +333,22 @@ A reviewer agent reads the port against upstream for the three hard modules (ter
 
 ### Phase 3: Windows
 
+Partly done: the user ran the checklist in Windows Terminal against devbox and it passed after the ProxyCommand quoting fix (INTERVENTIONS.md).
+Not yet done: the lid-close (sleep and wake) test.
+
 - Cross-compile, copy to laptop, run `mosh.exe devbox` in Windows Terminal. The lid-close test is manual.
 
 ### Phase 4: scrollback
 
+Done: gate PASSED at green CI 157a55a (STATUS.md).
+Differences: Phase 4 started before the Phase 2 gate was declared (INTERVENTIONS.md); the server side was reworked to a paced, windowed backlog that never blocks the program (6.2, 6.3); the stretch item 6.6 (alternate screen forwarded) was done.
+
 - Server side, then client side, by two agents in sequence, medium effort, following section 6 exactly. Gate: oracle 6, plus the full interop matrix still green (old peers unaffected).
 
 ### Phase 5: performance and release
+
+Partly done: `tools/bench` was built early, during Phase 4, and the one-hour run at 7cab26f is in the README; the static musl build script and `.github/workflows/release.yml` exist.
+Not yet done: public repo, tag v0.1.0.
 
 - `tools/bench` against C++ mosh, numbers into README.
 - Public GitHub repo, GPLv3 with upstream COPYING and attribution, README with the compatibility matrix and measured numbers.
