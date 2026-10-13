@@ -344,3 +344,16 @@ Agent F (Opus, medium effort, own worktree) takes three small items found by age
 - Restore upstream's `compare` in the `State` trait and the verbose round-trip check that prints "round-trip Instruction verification failed", so upstream's `make check` can catch that failure in our binaries (it currently passes silently). Withdraws PLAN 9.10.
 - `cargo build --workspace --target x86_64-pc-windows-gnu` fails because unix-only test tools are not gated; gate them.
 - Diagnostic messages in the network and platform crates use `eprintln!`, which panics if stderr is closed (for example after ssh exits); C's stdio ignores that error.
+
+## 2026-10-13 Server (agent D) verified by the orchestrator
+
+Rerun by the orchestrator at afa5b47:
+- `server_e2e`: 4 passed, each case run against the C++ server first. Network timeout: both servers exit 4.76 s after the client is killed (`MOSH_SERVER_NETWORK_TMOUT=5`). Signal timeout: both ignore an early SIGUSR1 and exit 4.06 s after a late one (`MOSH_SERVER_SIGNAL_TMOUT=5`).
+- `tests/upstream-check.sh --client cxx --server rust`: upstream's own `make check` with our server, 30 PASS, 2 XFAIL, 0 FAIL, 0 ERROR, 0 XPASS.
+- Interop with our server was already covered by the 120-cell run (all four pairs, 120/120).
+- Agent D measured first contact with 10 runs per server at 200 ms delay: both servers reply to the client's first packet at once (Rust under 1 ms, C++ 5 ms), and the following packets come at the same times. The jump in median contact time seen under loss comes from two groups of trials (first exchange survives, or the client waits for its 3 s retry), not from the server.
+- Agent D saw one failure of the Rust client with the C++ server under 30% loss. The orchestrator repeated that profile 10 times at current main: 60 of 60 cells passed. Most likely it was the test-teardown bug agent M fixed (e697c96).
+- Idle CPU over 60 s: 0.00% for both servers (agent D's measurement).
+
+Answers to agent D's questions: the version banner stays `mosh-rs 0.1.0` (it must not claim to be upstream); reading utmp to warn about unattached sessions stays (PLAN 9.2 excludes writing records only); no `setsid` in the server's own fork, as upstream.
+Open, assigned to agent F: upstream's "round-trip Instruction verification failed" check cannot fire for our binaries until `compare` is restored (PLAN 9.10).
