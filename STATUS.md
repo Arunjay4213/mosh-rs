@@ -310,3 +310,11 @@ Not yet passed: the line-by-line review of the prediction overlay, which now run
 - cxx client x rust server: 40/40, 1347 ms, 716 ms, 1 packet. Fisher p=1.000.
 - With no contact for 12 s: both clients sent 4 packets in each of 5 runs (one every 3 s, upstream ACK_INTERVAL; both give up at 15 s with a burst of shutdown packets).
 Harness bug found and fixed in `tests/interop.sh` too: teardown killed the client's tmux, the SIGHUPed mosh-client kept sending shutdown packets for seconds, and they reached the next cell's proxy on the same port, which then sent the server's replies to the dead client. Before the fix the same driver gave 1 rust-client failure in 40 and median packets before contact of 3, and blackhole counts swung between 5 and 21. The rust x rust loss30 vim failure reported above (proxy saw 1 server packet in 15.8 s) fits this bug but is not proven to be it. After the fix: `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client all --server all` 120/120, and the full cxx x cxx matrix with the 120 s blackout 30/30.
+
+## 2026-10-13 Interop harness (agent M) verified by the orchestrator
+
+Rerun by the orchestrator at e697c96:
+- `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client all --server all`: 120 cells (C++ and Rust clients x C++ and Rust servers x clean, 5% loss, 30% loss with 200 ms delay and reordering, blackout, address change x six screen scenarios), 120 passed, 0 failed, 97 s.
+- `tests/interop-setup-loss.sh --run` (30% loss from the first packet, 40 setups per pair): C++ client with Rust server 40/40, Rust client with C++ server 40/40, C++ with C++ 39/40. With no server reachable both clients send exactly 4 packets in 12 s.
+- Open question sent to agent D: with the Rust server the client's first reply arrives when the session is ready (median 2074 ms), with the C++ server much earlier (780 ms). D is checking whether our server skips an early acknowledgement that upstream sends.
+- Not yet run by the orchestrator: the full matrix with 2-minute blackouts for the Rust pairs (agent E ran it for the Rust client: 30/30).
