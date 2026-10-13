@@ -157,3 +157,8 @@ Agent spawns and why (all Opus, medium effort, each in its own git worktree):
 - D, server. Ports `mosh-server.cc`. Independent of E: it is tested first against the real C++ client.
 - E, client. Ports `mosh-client.cc` and `stmclient.cc`, then the prediction overlay `terminaloverlay.cc`. Independent of D: it is tested first against the real C++ server.
 - B and C get small follow-ups (state subtraction without a full-screen copy, malformed diffs return errors; the proxy ignores SIGHUP like mosh.pl).
+
+## 2026-10-13 Launcher: --fake-proxy ignores SIGHUP as mosh.pl does (agent C)
+
+- The proxy relay now ignores SIGHUP at the point mosh.pl does (line 305) via `mosh_platform::process::ignore_sighup()` (no-op on Windows), so the copy finishes after ssh exits. Before: a running `mosh --fake-proxy -- localhost 22` died on `kill -HUP`; after: alive, as `/usr/bin/mosh --fake-proxy` is.
+- `cargo test --release -p mosh-tests --test launcher`, 3 runs: 4 passed, 0 failed each (4.44 s, 4.25 s, 4.20 s), including the dual-stack case with no flag, `-4` and `-6`.
