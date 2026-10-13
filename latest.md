@@ -1,7 +1,7 @@
 result: failure
-commit: 64efb73e881d82f2fe9b9b22c530ed33beea58c3
-subject: mosh-client: prediction_e2e at 300 ms RTT; messages ignore write errors as C stdio does
-run: https://github.com/Arunjay4213/mosh-rs/actions/runs/38365964782
+commit: 9d41baffa5afb60d492f01d4378636aa89a9cf7c
+subject: tests/interop/README.md: interop matrix and upstream-check usage and gate commands
+run: https://github.com/Arunjay4213/mosh-rs/actions/runs/38366296147
 fmt: success
 clippy: success
 test: failure
@@ -15,7 +15,7 @@ test: failure
     Checking mosh-tools v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tools)
     Checking mosh v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/mosh)
     Checking mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.18s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.50s
 ```
 
 ## log-fmt (last 80 lines)
@@ -24,168 +24,168 @@ test: failure
 
 ## log-test-ubuntu-24.04-arm (last 80 lines)
 ```
-
-     Running unittests src/bin/pty-record.rs (target/release/deps/pty_record-a2763de2ee3ea8db)
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-     Running unittests src/bin/udp-impair.rs (target/release/deps/udp_impair-c3da5e153e8983fb)
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-   Doc-tests mosh
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-   Doc-tests mosh_network
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-   Doc-tests mosh_platform
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-   Doc-tests mosh_terminal
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-   Doc-tests mosh_tests
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-   Doc-tests mosh_tools
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-error: 2 targets failed:
-    `-p mosh-tests --test prediction_e2e`
     `-p mosh-tests --test terminfo_table`
+== interop.sh
+interop: clients=(cxx) servers=(cxx) profiles=(blackout clean loss5 loss30 rebind) scenarios=(seq colors vim wide resize typing) blackout_ms=10000 jobs=10
+PASS client=cxx server=cxx profile=clean scenario=wide seconds=0.7
+PASS client=cxx server=cxx profile=clean scenario=seq seconds=0.7
+PASS client=cxx server=cxx profile=clean scenario=colors seconds=1.4
+PASS client=cxx server=cxx profile=clean scenario=resize seconds=1.0
+PASS client=cxx server=cxx profile=clean scenario=vim seconds=1.9
+PASS client=cxx server=cxx profile=loss5 scenario=colors seconds=1.0
+PASS client=cxx server=cxx profile=loss5 scenario=wide seconds=0.5
+PASS client=cxx server=cxx profile=loss5 scenario=vim seconds=1.7
+PASS client=cxx server=cxx profile=loss5 scenario=resize seconds=1.0
+PASS client=cxx server=cxx profile=loss5 scenario=seq seconds=3.3
+PASS client=cxx server=cxx profile=loss30 scenario=colors seconds=4.3
+PASS client=cxx server=cxx profile=loss30 scenario=seq seconds=5.4
+PASS client=cxx server=cxx profile=blackout scenario=seq seconds=12.7
+PASS client=cxx server=cxx profile=blackout scenario=wide seconds=12.8
+PASS client=cxx server=cxx profile=blackout scenario=typing seconds=12.9
+PASS client=cxx server=cxx profile=blackout scenario=resize seconds=13.0
+PASS client=cxx server=cxx profile=blackout scenario=colors seconds=13.0
+PASS client=cxx server=cxx profile=blackout scenario=vim seconds=14.0
+PASS client=cxx server=cxx profile=rebind scenario=colors seconds=1.1
+PASS client=cxx server=cxx profile=rebind scenario=wide seconds=0.9
+PASS client=cxx server=cxx profile=loss30 scenario=wide seconds=5.1
+PASS client=cxx server=cxx profile=clean scenario=typing seconds=16.2
+PASS client=cxx server=cxx profile=loss5 scenario=typing seconds=13.5
+PASS client=cxx server=cxx profile=rebind scenario=seq seconds=4.6
+PASS client=cxx server=cxx profile=rebind scenario=vim seconds=4.7
+PASS client=cxx server=cxx profile=rebind scenario=resize seconds=3.9
+PASS client=cxx server=cxx profile=loss30 scenario=resize seconds=7.5
+PASS client=cxx server=cxx profile=loss30 scenario=vim seconds=17.3
+PASS client=cxx server=cxx profile=loss30 scenario=typing seconds=14.5
+PASS client=cxx server=cxx profile=rebind scenario=typing seconds=14.9
+interop: 30 cells, 30 passed, 0 failed, wall time 42s
 == transport-impaired.sh
     Finished `release` profile [optimized] target(s) in 0.01s
-    Finished `release` profile [optimized] target(s) in 0.01s
+    Finished `release` profile [optimized] target(s) in 0.03s
 --- loss30-rebind: proxy --loss 0.30 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
-control at 5s: rebind -> ok rebind port=34118
-Server now attached to client at 127.0.0.1:46701
-Server now attached to client at 127.0.0.1:34118
-elapsed 10.93s; client: status=done elapsed_ms=10928 packets_received=16 acked_ts_advance=10858; server: packets_received=47 acked_ts_advance=9930 remote_addr=127.0.0.1:34118; state 5944 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.93s
-proxy stats: c2s forwarded=47 dropped=15 reordered=4 s2c forwarded=16 dropped=6 reordered=2
-PASS loss30-rebind: converged in 10.93s, 2 client address(es)
+control at 5s: rebind -> ok rebind port=52005
+Server now attached to client at 127.0.0.1:34868
+Server now attached to client at 127.0.0.1:52005
+elapsed 10.97s; client: status=done elapsed_ms=10968 packets_received=14 acked_ts_advance=10921; server: packets_received=51 acked_ts_advance=9783 remote_addr=127.0.0.1:52005; state 6265 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.97s
+proxy stats: c2s forwarded=51 dropped=16 reordered=5 s2c forwarded=14 dropped=5 reordered=1
+PASS loss30-rebind: converged in 10.97s, 2 client address(es)
 --- loss5: proxy --loss 0.05 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
-Server now attached to client at 127.0.0.1:50075
-elapsed 10.43s; client: status=done elapsed_ms=10431 packets_received=44 acked_ts_advance=10059; server: packets_received=71 acked_ts_advance=9909 remote_addr=127.0.0.1:50075; state 6041 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.43s
-proxy stats: c2s forwarded=71 dropped=7 reordered=7 s2c forwarded=44 dropped=1 reordered=2
-PASS loss5: converged in 10.43s, 1 client address(es)
+Server now attached to client at 127.0.0.1:32827
+elapsed 13.44s; client: status=done elapsed_ms=13440 packets_received=46 acked_ts_advance=13278; server: packets_received=77 acked_ts_advance=10160 remote_addr=127.0.0.1:32827; state 6042 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.44s
+proxy stats: c2s forwarded=77 dropped=8 reordered=7 s2c forwarded=46 dropped=2 reordered=3
+PASS loss5: converged in 13.44s, 1 client address(es)
 --- loss30-blackout: proxy --loss 0.30 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
 control at 4s: blackout 3000 -> ok
-Server now attached to client at 127.0.0.1:47874
-elapsed 10.47s; client: status=done elapsed_ms=10469 packets_received=9 acked_ts_advance=10268; server: packets_received=36 acked_ts_advance=9273 remote_addr=127.0.0.1:47874; state 5590 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.47s
-proxy stats: c2s forwarded=36 dropped=39 reordered=6 s2c forwarded=9 dropped=6 reordered=0
-PASS loss30-blackout: converged in 10.47s, 1 client address(es)
+Server now attached to client at 127.0.0.1:57731
+elapsed 10.46s; client: status=done elapsed_ms=10455 packets_received=11 acked_ts_advance=10060; server: packets_received=38 acked_ts_advance=9810 remote_addr=127.0.0.1:57731; state 6136 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.46s
+proxy stats: c2s forwarded=38 dropped=52 reordered=4 s2c forwarded=11 dropped=6 reordered=2
+PASS loss30-blackout: converged in 10.46s, 1 client address(es)
 transport-impaired: all 3 runs passed
+== upstream-check.sh
+upstream-check: client=cxx (/home/runner/src/mosh/src/frontend/mosh-client) server=cxx (/home/runner/src/mosh/src/frontend/mosh-server)
+upstream-check: copying /home/runner/src/mosh to /home/runner/work/mosh-rs/mosh-rs/target/upstream-check/mosh
+upstream-check: make -n -C src/frontend mosh-client mosh-server:
+  make: Entering directory '/home/runner/work/mosh-rs/mosh-rs/target/upstream-check/mosh/src/frontend'
+  make: 'mosh-client' is up to date.
+  make: 'mosh-server' is up to date.
+  make: Leaving directory '/home/runner/work/mosh-rs/mosh-rs/target/upstream-check/mosh/src/frontend'
+upstream-check: make -q says both binaries are up to date
+upstream-check: running make check (log: /home/runner/work/mosh-rs/mosh-rs/target/upstream-check/make-check.log)
+# TOTAL: 32
+# PASS:  30
+# SKIP:  0
+# XFAIL: 2
+# FAIL:  0
+# XPASS: 0
+# ERROR: 0
+PASS upstream-check client=cxx server=cxx total=32 pass=30 xfail=2 fail=0 error=0 xpass=0 seconds=236
 
-run-all: cargo test plus 1 shell driver(s)
+run-all: cargo test plus 3 shell driver(s)
 run-all: FAILED: cargo test --release --workspace --no-fail-fast
 ```
 
 ## log-test-ubuntu-latest (last 80 lines)
 ```
-
-     Running unittests src/bin/pty-record.rs (target/release/deps/pty_record-b9b1ffcf70908418)
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-     Running unittests src/bin/udp-impair.rs (target/release/deps/udp_impair-2c17e91983d2db3a)
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-   Doc-tests mosh
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
-
-   Doc-tests mosh_network
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-   Doc-tests mosh_platform
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-   Doc-tests mosh_terminal
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-   Doc-tests mosh_tests
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-   Doc-tests mosh_tools
-
-running 0 tests
-
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
-
-error: 2 targets failed:
-    `-p mosh-tests --test prediction_e2e`
     `-p mosh-tests --test terminfo_table`
+== interop.sh
+interop: clients=(cxx) servers=(cxx) profiles=(blackout clean loss5 loss30 rebind) scenarios=(seq colors vim wide resize typing) blackout_ms=10000 jobs=10
+PASS client=cxx server=cxx profile=clean scenario=seq seconds=0.8
+PASS client=cxx server=cxx profile=clean scenario=wide seconds=0.8
+PASS client=cxx server=cxx profile=clean scenario=resize seconds=1.0
+PASS client=cxx server=cxx profile=clean scenario=colors seconds=1.9
+PASS client=cxx server=cxx profile=clean scenario=vim seconds=2.2
+PASS client=cxx server=cxx profile=loss5 scenario=seq seconds=0.6
+PASS client=cxx server=cxx profile=loss5 scenario=colors seconds=1.2
+PASS client=cxx server=cxx profile=loss5 scenario=vim seconds=1.8
+PASS client=cxx server=cxx profile=loss5 scenario=resize seconds=0.8
+PASS client=cxx server=cxx profile=loss5 scenario=wide seconds=3.4
+PASS client=cxx server=cxx profile=loss30 scenario=seq seconds=4.5
+PASS client=cxx server=cxx profile=blackout scenario=seq seconds=12.8
+PASS client=cxx server=cxx profile=loss30 scenario=colors seconds=6.9
+PASS client=cxx server=cxx profile=blackout scenario=wide seconds=13.0
+PASS client=cxx server=cxx profile=blackout scenario=resize seconds=13.2
+PASS client=cxx server=cxx profile=blackout scenario=colors seconds=13.2
+PASS client=cxx server=cxx profile=blackout scenario=vim seconds=13.7
+PASS client=cxx server=cxx profile=blackout scenario=typing seconds=14.0
+PASS client=cxx server=cxx profile=rebind scenario=seq seconds=1.2
+PASS client=cxx server=cxx profile=clean scenario=typing seconds=13.7
+PASS client=cxx server=cxx profile=rebind scenario=colors seconds=1.7
+PASS client=cxx server=cxx profile=rebind scenario=wide seconds=1.2
+PASS client=cxx server=cxx profile=rebind scenario=resize seconds=1.3
+PASS client=cxx server=cxx profile=rebind scenario=vim seconds=2.2
+PASS client=cxx server=cxx profile=loss5 scenario=typing seconds=13.6
+PASS client=cxx server=cxx profile=loss30 scenario=wide seconds=5.1
+PASS client=cxx server=cxx profile=loss30 scenario=resize seconds=6.6
+PASS client=cxx server=cxx profile=loss30 scenario=vim seconds=15.1
+PASS client=cxx server=cxx profile=rebind scenario=typing seconds=13.1
+PASS client=cxx server=cxx profile=loss30 scenario=typing seconds=21.3
+interop: 30 cells, 30 passed, 0 failed, wall time 46s
 == transport-impaired.sh
-    Finished `release` profile [optimized] target(s) in 0.01s
-    Finished `release` profile [optimized] target(s) in 0.03s
+    Finished `release` profile [optimized] target(s) in 0.02s
+    Finished `release` profile [optimized] target(s) in 0.06s
 --- loss30-rebind: proxy --loss 0.30 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
-control at 5s: rebind -> ok rebind port=45448
-Server now attached to client at 127.0.0.1:48035
-Server now attached to client at 127.0.0.1:45448
-elapsed 10.41s; client: status=done elapsed_ms=10404 packets_received=20 acked_ts_advance=10016; server: packets_received=49 acked_ts_advance=9838 remote_addr=127.0.0.1:45448; state 5788 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.41s
-proxy stats: c2s forwarded=49 dropped=12 reordered=4 s2c forwarded=20 dropped=9 reordered=2
-PASS loss30-rebind: converged in 10.41s, 2 client address(es)
+control at 5s: rebind -> ok rebind port=35795
+Server now attached to client at 127.0.0.1:41590
+Server now attached to client at 127.0.0.1:35795
+elapsed 10.93s; client: status=done elapsed_ms=10926 packets_received=16 acked_ts_advance=10855; server: packets_received=47 acked_ts_advance=9928 remote_addr=127.0.0.1:35795; state 5851 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.93s
+proxy stats: c2s forwarded=47 dropped=15 reordered=4 s2c forwarded=16 dropped=6 reordered=2
+PASS loss30-rebind: converged in 10.93s, 2 client address(es)
 --- loss5: proxy --loss 0.05 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
-Server now attached to client at 127.0.0.1:40557
-elapsed 10.42s; client: status=done elapsed_ms=10418 packets_received=43 acked_ts_advance=10037; server: packets_received=71 acked_ts_advance=9887 remote_addr=127.0.0.1:40557; state 6052 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.42s
-proxy stats: c2s forwarded=71 dropped=7 reordered=7 s2c forwarded=43 dropped=1 reordered=2
-PASS loss5: converged in 10.42s, 1 client address(es)
+Server now attached to client at 127.0.0.1:52857
+elapsed 10.34s; client: status=done elapsed_ms=10342 packets_received=41 acked_ts_advance=10110; server: packets_received=72 acked_ts_advance=9499 remote_addr=127.0.0.1:52857; state 5760 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.34s
+proxy stats: c2s forwarded=72 dropped=7 reordered=7 s2c forwarded=41 dropped=1 reordered=2
+PASS loss5: converged in 10.34s, 1 client address(es)
 --- loss30-blackout: proxy --loss 0.30 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
 control at 4s: blackout 3000 -> ok
-Server now attached to client at 127.0.0.1:56739
-elapsed 10.47s; client: status=done elapsed_ms=10463 packets_received=9 acked_ts_advance=10263; server: packets_received=36 acked_ts_advance=9270 remote_addr=127.0.0.1:56739; state 6049 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.47s
-proxy stats: c2s forwarded=36 dropped=45 reordered=6 s2c forwarded=9 dropped=6 reordered=0
-PASS loss30-blackout: converged in 10.47s, 1 client address(es)
+Server now attached to client at 127.0.0.1:57013
+elapsed 10.32s; client: status=done elapsed_ms=10321 packets_received=13 acked_ts_advance=9977; server: packets_received=40 acked_ts_advance=9748 remote_addr=127.0.0.1:57013; state 6198 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.32s
+proxy stats: c2s forwarded=40 dropped=39 reordered=4 s2c forwarded=13 dropped=7 reordered=2
+PASS loss30-blackout: converged in 10.32s, 1 client address(es)
 transport-impaired: all 3 runs passed
+== upstream-check.sh
+upstream-check: client=cxx (/home/runner/src/mosh/src/frontend/mosh-client) server=cxx (/home/runner/src/mosh/src/frontend/mosh-server)
+upstream-check: copying /home/runner/src/mosh to /home/runner/work/mosh-rs/mosh-rs/target/upstream-check/mosh
+upstream-check: make -n -C src/frontend mosh-client mosh-server:
+  make: Entering directory '/home/runner/work/mosh-rs/mosh-rs/target/upstream-check/mosh/src/frontend'
+  make: 'mosh-client' is up to date.
+  make: 'mosh-server' is up to date.
+  make: Leaving directory '/home/runner/work/mosh-rs/mosh-rs/target/upstream-check/mosh/src/frontend'
+upstream-check: make -q says both binaries are up to date
+upstream-check: running make check (log: /home/runner/work/mosh-rs/mosh-rs/target/upstream-check/make-check.log)
+# TOTAL: 32
+# PASS:  30
+# SKIP:  0
+# XFAIL: 2
+# FAIL:  0
+# XPASS: 0
+# ERROR: 0
+PASS upstream-check client=cxx server=cxx total=32 pass=30 xfail=2 fail=0 error=0 xpass=0 seconds=239
 
-run-all: cargo test plus 1 shell driver(s)
+run-all: cargo test plus 3 shell driver(s)
 run-all: FAILED: cargo test --release --workspace --no-fail-fast
 ```
