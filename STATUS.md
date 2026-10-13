@@ -449,3 +449,14 @@ PLAN section 6 now records the settled details (capture interface, line format, 
 - Deliberate failure, `--rust-dir` with a client wrapper that sleeps 50 ms and sets `MOSH_PREDICTION_DISPLAY=never`, a server wrapper that runs the server under qemu-aarch64 emulation, and a launcher padded to 4.8 MB: binary_size mosh FAIL, startup 307.77 ms FAIL, keystroke 311.42 ms with 0 renders FAIL, seq 788.05 ms against 130.18 ms FAIL.
 - Finding for the orchestrator (PLAN, not code): the 20 ms startup target cannot be met while keeping upstream's timing. The server sends its first frame after its send interval, `ceil(SRTT/2)` clamped to 20-250 ms, and SRTT starts at 1000 ms (upstream `transportsender-impl.h` `send_interval`, `network.cc` `SRTT( 1000 )`), so the first frame waits about 250 ms. Both implementations measure 252-257 ms. Either the target or the measured quantity has to change.
 - Finding (product, not fixed): in the static musl build `getutxent` is a musl stub that always returns NULL, so `warn_unattached` never sees detached sessions. With a detached C++ session in utmp, the glibc `mosh-server` printed "Mosh: You have a detached Mosh session on this server (mosh [2300237])." and the musl one printed nothing. The musl build also warns that `libc::time_t` is deprecated (`crates/platform/src/select.rs:254`).
+
+## 2026-10-13 Bench and static build (agent P) verified by the orchestrator
+
+Rerun by the orchestrator at ef1c4e7 (`scripts/build-release.sh`, then `target/release/bench` short mode, side by side with C++ mosh 1.4.0 on devbox):
+- Static aarch64 musl binaries: mosh 0.76 MiB, mosh-client 1.17 MiB, mosh-server 1.05 MiB; `file` says statically linked, `readelf` shows no shared libraries and no interpreter. Target under 4 MB: met.
+- Client startup to its first terminal write: 1.49 ms median (C++ 3.08 ms). First frame: about 252 ms for both, set by upstream's initial 250 ms send interval (PLAN 5 target updated, INTERVENTIONS.md).
+- Keystroke at 300 ms round trip with prediction: 0.09 ms median, one render per key (C++ 0.08 ms, one render).
+- `seq 1 100000` until done on screen: 129.88 ms median (C++ 149.66 ms).
+- Idle CPU over 60 s: 0.00% for client and server (C++ the same).
+- Memory after a 5-minute active session: client 3.7 MB (C++ 14.5 MB), server 2.6 MB (C++ 10.1 MB). Part of the gap is shared-library pages the C++ binaries load and the static ones do not.
+- Agent P's 1-hour run: client 3.9 MB (C++ 14.6 MB), server 2.5 MB (C++ 10.1 MB). Not rerun by the orchestrator; it will be rerun once for the README after scrollback lands.
