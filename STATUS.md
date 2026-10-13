@@ -543,3 +543,12 @@ Decisions (2) and (3) taken: no change to the emulator's resize; PLAN 6.6 stays 
 - Oracle 6, `tests/scrollback.sh`, all variants: clean, loss30 (147 s), vim, clear and resize exact (`gaps=none`, nothing from vim in history); shrink and grow exactly as documented (6 duplicates and 2995-3000 missing; 2972-2977 missing); oldserver and dropped as before.
 - `scrollback_server`: `digests_differing=0 capture_on_frame_mismatches=0`; the alternate-screen test now expects the screen captured on entry and 1-6000 exact; new test: `clear` in both forms keeps 1-3000 exact. `terminal_conformance`, `statesync_roundtrip`: pass. vt-fuzz 200,000 cases and 200,000 `--frames`: 0 mismatches.
 - `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client all --server all`: 120 of 120; scrollback client column: 60 of 60. `tests/upstream-check.sh --client rust --server rust`: 30 PASS, 2 XFAIL, 0 FAIL. `cargo test --release --workspace`: all pass. fmt and clippy (native and Windows) clean.
+
+## 2026-10-13 Phase 4: scrollback oracle passes, gate pending CI and the full-blackout matrix
+
+Rerun by the orchestrator at 2d9f52a:
+- Oracle 6 (`tests/scrollback.sh`, tmux with a 200,000-line history, `mosh --scrollback`): `seq 1 50000` exact on a clean link (9 s) and through 30% loss (131 s); `seq 1 3000`, vim, `seq 3001 6000` exact with nothing from vim in history; `seq`, `clear`, `seq` exact; width resize exact; old C++ server falls back to upstream behavior with a notice; backlog overflow shows one dim "lines were dropped" line in place. Height shrink and grow keep their documented limit (about 6 rows lost or repeated, because host terminals keep the bottom of the screen on resize and upstream's emulator keeps the top).
+- Old peers untouched: corpus replay with scrollback off byte-identical to before scrollback; 3024 screen redraws identical to upstream; statesync round trip 2214 steps 0 mismatches; vt-fuzz 200,000 frame cases 0 mismatches.
+- Quick interop matrix, all four client/server pairs: 120 of 120.
+
+Next: the live scrollback tests take the shared port lock (one collided with a concurrent run), the full matrix with 2-minute blackouts including the scrollback client, and the PLAN 6.6 stretch (forward the alternate screen to the host terminal).
