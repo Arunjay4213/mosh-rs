@@ -32,13 +32,29 @@
 //! echo-ack bookkeeping, and its protobuf diff format
 //! (`HostBuffers::HostMessage`, whose host bytes come from
 //! `Display::new_frame`). Port of upstream `src/statesync/completeterminal.{h,cc}`.
+//!
+//! mosh-rs scrollback (PLAN.md section 6, 9.4), not in upstream. On the
+//! server, once the client's capabilities ask for it (`act_action`), the
+//! framebuffer collects the rows that scroll off the top (see
+//! `Framebuffer::scroll`); `act` renders them into a `ScrolledRing` shared by
+//! every copy of this state, and the state itself only counts them
+//! (`scrolled_total`). `diff_from` sends the lines numbered
+//! `(existing.scrolled_total, self.scrolled_total]` as a `ScrolledLines`
+//! instruction placed after the echo ack and before the resize and host
+//! bytes, so a client can print the lines first and then the new frame. On
+//! the client, `apply_string` hands received lines to a `ReceivedScrollback`
+//! shared by every copy, which drops by number the lines it already has
+//! (a retransmitted diff repeats them). Without the capability nothing here
+//! is active and every diff is byte-identical to upstream's.
 
 use mosh_platform::errln;
+use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::rc::Rc;
 
 use mosh_network::prost::Message;
 use mosh_network::proto::host_buffers::{
-    EchoAck, HostBytes, HostMessage, Instruction, ResizeMessage,
+    EchoAck, HostBytes, HostMessage, Instruction, ResizeMessage, ScrolledLines,
 };
 use mosh_network::transport::dos_detected;
 use mosh_network::{CryptoError, State};
@@ -49,6 +65,101 @@ use super::user::UserAction;
 
 /// Upstream `std::list<std::pair<uint64_t, uint64_t>>`: (frame number, time).
 type InputHistoryType = VecDeque<(u64, u64)>;
+
+/// mosh-rs scrollback, server side: the newest rendered lines that scrolled
+/// off the screen, numbered from 1. Holds lines `(total - len, total]`.
+#[derive(Debug)]
+pub struct ScrolledRing {
+    lines: VecDeque<Vec<u8>>,
+    limit: usize,
+    total: u64,
+}
+
+impl ScrolledRing {
+    fn new(limit: usize) -> ScrolledRing {
+        ScrolledRing {
+            lines: VecDeque::new(),
+            limit,
+            total: 0,
+        }
+    }
+
+    fn push(&mut self, line: Vec<u8>) {
+        if self.lines.len() == self.limit {
+            self.lines.pop_front();
+        }
+        self.lines.push_back(line);
+        self.total += 1;
+    }
+
+    /// The `ScrolledLines` for lines `(from, to]`: those still held, and how
+    /// many before them were evicted.
+    fn scrolled_lines(&self, from: u64, to: u64) -> ScrolledLines {
+        let oldest = self.total - self.lines.len() as u64 + 1;
+        let start = (from + 1).max(oldest).min(to + 1);
+        let line = (start..=to)
+            .map(|i| self.lines[(i - oldest) as usize].clone())
+            .collect();
+        let dropped = start - (from + 1);
+        ScrolledLines {
+            first_index: Some(start),
+            line,
+            dropped: (dropped > 0).then_some(dropped),
+        }
+    }
+}
+
+/// mosh-rs scrollback, client side: lines received from the server, each
+/// with its number, in order and without duplicates, until the client takes
+/// them. Shared by every copy of the client's `Complete`.
+#[derive(Debug)]
+pub struct ReceivedScrollback {
+    pending: VecDeque<(u64, Vec<u8>)>,
+    /// Number of the next line not yet received (lines start at 1).
+    next_index: u64,
+    /// Lines the server could no longer send (evicted from its ring).
+    lost: u64,
+}
+
+impl ReceivedScrollback {
+    fn new() -> ReceivedScrollback {
+        ReceivedScrollback {
+            pending: VecDeque::new(),
+            next_index: 1,
+            lost: 0,
+        }
+    }
+
+    /// Takes the lines received since the last call, oldest first, each with
+    /// its number. Numbers are consecutive except where lines were lost.
+    pub fn take_pending(&mut self) -> VecDeque<(u64, Vec<u8>)> {
+        std::mem::take(&mut self.pending)
+    }
+
+    /// How many lines the server reported as evicted before it could send them.
+    pub fn lost(&self) -> u64 {
+        self.lost
+    }
+
+    /// Lines numbered `first_index, first_index + 1, ...`. Numbers already
+    /// received are skipped (a retransmitted diff repeats them); a jump
+    /// forward, including one past the last line, counts as lost.
+    fn receive(&mut self, first_index: u64, lines: &[Vec<u8>]) {
+        let mut index = first_index;
+        for line in lines {
+            if index >= self.next_index {
+                self.lost += index - self.next_index;
+                self.pending.push_back((index, line.clone()));
+                self.next_index = index + 1;
+            }
+            index += 1;
+        }
+        if index > self.next_index {
+            self.lost += index - self.next_index;
+            self.next_index = index;
+        }
+    }
+}
 
 /// Upstream `Terminal::Complete`: a UTF8Parser feeding Actions to an Emulator.
 #[derive(Clone, Debug)]
@@ -63,6 +174,17 @@ pub struct Complete {
 
     input_history: InputHistoryType,
     echo_ack: u64,
+
+    /// mosh-rs scrollback: ring size the server allows (0 = never capture).
+    scrollback_limit: usize,
+    /// mosh-rs scrollback, server: the shared ring; `Some` once the client's
+    /// capabilities asked for scrollback.
+    ring: Option<Rc<RefCell<ScrolledRing>>>,
+    /// mosh-rs scrollback: number of lines that scrolled off up to this
+    /// state (server: captured; client: covered by applied diffs).
+    scrolled_total: u64,
+    /// mosh-rs scrollback, client: where `apply_string` puts received lines.
+    received: Option<Rc<RefCell<ReceivedScrollback>>>,
 }
 
 impl Complete {
@@ -78,11 +200,50 @@ impl Complete {
             actions: Actions::new(),
             input_history: VecDeque::new(),
             echo_ack: 0,
+            scrollback_limit: 0,
+            ring: None,
+            scrolled_total: 0,
+            received: None,
         }
+    }
+
+    /// mosh-rs scrollback, server: the most lines to keep for a client that
+    /// asks for scrollback (`mosh-server --scrollback N`); 0 never captures.
+    pub fn set_scrollback_limit(&mut self, limit: usize) {
+        self.scrollback_limit = limit;
+    }
+
+    /// mosh-rs scrollback, client: from now on `apply_string` delivers
+    /// received lines to the returned queue (shared by every copy of this
+    /// state, so it can be read whichever copy the transport applied to).
+    pub fn enable_scrollback_receive(&mut self) -> Rc<RefCell<ReceivedScrollback>> {
+        self.received
+            .get_or_insert_with(|| Rc::new(RefCell::new(ReceivedScrollback::new())))
+            .clone()
+    }
+
+    /// mosh-rs scrollback: lines that scrolled off up to this state.
+    pub fn get_scrolled_total(&self) -> u64 {
+        self.scrolled_total
     }
 
     /// Feeds host output bytes; returns the replies for the host.
     pub fn act(&mut self, s: &[u8]) -> Vec<u8> {
+        let terminal_to_host = self.act_octets(s);
+        // mosh-rs scrollback: render the rows that scrolled off into the ring.
+        if let Some(ring) = &self.ring {
+            let rows = self.terminal.get_fb_mut().take_scrolled_rows();
+            let mut ring = ring.borrow_mut();
+            for row in &rows {
+                ring.push(Display::render_scrolled_row(row).into_bytes());
+            }
+            self.scrolled_total = ring.total;
+        }
+        terminal_to_host
+    }
+
+    /// Upstream's `act( const std::string& )`.
+    fn act_octets(&mut self, s: &[u8]) -> Vec<u8> {
         for &c in s {
             /* parse octet into up to three actions */
             self.parser.input(c, &mut self.actions);
@@ -104,6 +265,15 @@ impl Complete {
         match act {
             UserAction::UserByte(u) => u.act_on_terminal(&mut self.terminal),
             UserAction::Resize(r) => r.act_on_terminal(&mut self.terminal),
+            UserAction::Capabilities(c) => {
+                // mosh-rs (PLAN.md 6.1): the session turns scrollback on once.
+                if c.scrollback && self.scrollback_limit > 0 && self.ring.is_none() {
+                    self.ring = Some(Rc::new(RefCell::new(ScrolledRing::new(
+                        self.scrollback_limit,
+                    ))));
+                    self.terminal.get_fb_mut().set_scroll_capture(true);
+                }
+            }
         }
         self.terminal.read_octets_to_host()
     }
@@ -170,7 +340,12 @@ impl PartialEq for Complete {
         // Emulator equality is Framebuffer equality, which compares row
         // pointers: two Completes are equal only when one is a copy of the
         // other with no row written since.
-        (self.terminal == x.terminal) && (self.echo_ack == x.echo_ack)
+        // mosh-rs scrollback: scrolled_total too, or lines that scroll off
+        // without changing the final screen would never be sent. It is 0 on
+        // both sides unless the client asked for scrollback.
+        (self.terminal == x.terminal)
+            && (self.echo_ack == x.echo_ack)
+            && (self.scrolled_total == x.scrolled_total)
     }
 }
 
@@ -190,6 +365,31 @@ impl State for Complete {
                 echoack: Some(EchoAck {
                     echo_ack_num: Some(self.get_echo_ack()),
                 }),
+                ..Default::default()
+            });
+        }
+
+        // mosh-rs scrollback (PLAN.md 6.3): the lines that scrolled off since
+        // `existing`, before the resize and host bytes, so a client prints
+        // them first. Never present unless the client asked for scrollback.
+        if existing.scrolled_total != self.scrolled_total {
+            assert!(self.scrolled_total > existing.scrolled_total);
+            let lines = match &self.ring {
+                Some(ring) => ring
+                    .borrow()
+                    .scrolled_lines(existing.scrolled_total, self.scrolled_total),
+                None => {
+                    // A client-side state, which keeps no lines (it is never
+                    // asked for a diff in practice): all are reported dropped.
+                    ScrolledLines {
+                        first_index: Some(self.scrolled_total + 1),
+                        line: Vec::new(),
+                        dropped: Some(self.scrolled_total - existing.scrolled_total),
+                    }
+                }
+            };
+            output.instruction.push(Instruction {
+                scrolledlines: Some(lines),
                 ..Default::default()
             });
         }
@@ -243,7 +443,11 @@ impl State for Complete {
 
         for inst in &input.instruction {
             if let Some(hb) = &inst.hostbytes {
-                let terminal_to_host = self.act(hb.hoststring.as_deref().unwrap_or(&[]));
+                let terminal_to_host = self.act_octets(hb.hoststring.as_deref().unwrap_or(&[]));
+                // mosh-rs scrollback: a copy of a server state (the sender's
+                // round-trip check) may have capture on; rows scrolled by a
+                // diff are not new history, so they are discarded.
+                self.terminal.get_fb_mut().take_scrolled_rows();
                 if !terminal_to_host.is_empty() {
                     /* server never interrogates client terminal */
                     return Err(dos_detected(
@@ -273,6 +477,21 @@ impl State for Complete {
                     ));
                 }
                 self.echo_ack = inst_echo_ack_num;
+            } else if let Some(sl) = &inst.scrolledlines {
+                // mosh-rs scrollback (PLAN.md 6.3), after upstream's arms.
+                // `end` is one past the last line number the diff covers.
+                let first_index = sl.first_index.unwrap_or(0);
+                let end = first_index.saturating_add(sl.line.len() as u64);
+                if first_index == 0 || end - 1 < self.scrolled_total {
+                    return Err(dos_detected(
+                        "scrolled lines do not go backwards",
+                        "Complete::apply_string",
+                    ));
+                }
+                if let Some(received) = &self.received {
+                    received.borrow_mut().receive(first_index, &sl.line);
+                }
+                self.scrolled_total = end - 1;
             }
         }
         Ok(())
@@ -324,6 +543,16 @@ impl State for Complete {
             ret = true;
         }
         /* XXX should compare other terminal state too (mouse mode, bell. etc.) */
+
+        // mosh-rs scrollback: 0 on both sides unless the client asked for it.
+        if self.scrolled_total != other.scrolled_total {
+            errln!(
+                "Scrolled line count mismatch: {} vs. {}.",
+                self.scrolled_total,
+                other.scrolled_total
+            );
+            ret = true;
+        }
 
         ret
     }

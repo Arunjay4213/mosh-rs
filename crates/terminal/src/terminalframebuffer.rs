@@ -629,6 +629,12 @@ pub struct Row {
     // in scrolling.
     /// Generation number from a process-wide counter; part of row equality, used by scroll detection.
     pub gen: u64,
+    /// mosh-rs scrollback (PLAN.md 6.2, 9.4), not in upstream and not part
+    /// of row equality: the row was created or last written while
+    /// `DrawState::alternate_screen` was on. Such a row is not history, so
+    /// `Framebuffer::scroll` does not capture it even after the program left
+    /// the alternate screen (upstream keeps that screen's rows on display).
+    pub alternate: bool,
 }
 
 impl PartialEq for Row {
@@ -643,6 +649,7 @@ impl Row {
         Row {
             cells: vec![Cell::new(background_color); s_width],
             gen: Row::get_gen(),
+            alternate: false,
         }
     }
 
@@ -819,6 +826,14 @@ pub struct DrawState {
 
     /// DECCKM.
     pub application_mode_cursor_keys: bool,
+
+    /// mosh-rs scrollback (PLAN.md 6.2, 9.4), not in upstream: DEC private
+    /// mode 47, 1047 or 1049 was last set (true) or reset (false). Upstream
+    /// ignores these modes, so the flag changes nothing upstream observes: it
+    /// is not part of `DrawState` equality, not drawn by `new_frame` and not
+    /// in the ref-term/vt-check dump. It only stops `Framebuffer::scroll`
+    /// from capturing rows for scrollback while a full-screen program runs.
+    pub alternate_screen: bool,
 }
 
 impl PartialEq for DrawState {
@@ -877,6 +892,7 @@ impl DrawState {
             mouse_alternate_scroll: false,
             mouse_encoding_mode: MOUSE_ENCODING_DEFAULT,
             application_mode_cursor_keys: false,
+            alternate_screen: false,
         };
         ds.reinitialize_tabs(0);
         ds
@@ -1203,6 +1219,13 @@ pub struct Framebuffer {
 
     /// Cursor, modes and renditions.
     pub ds: DrawState,
+
+    /// mosh-rs scrollback (PLAN.md 6.2, 9.4), not in upstream. `None`: rows
+    /// that scroll off are discarded, as upstream. `Some`: `scroll` also
+    /// appends here every row that leaves the top of a full-screen scrolling
+    /// region while `ds.alternate_screen` is off, oldest first, for the owner
+    /// to take with `take_scrolled_rows`. Not part of equality.
+    scrolled_rows: Option<Vec<row_pointer>>,
 }
 
 impl PartialEq for Framebuffer {
@@ -1226,7 +1249,9 @@ impl Framebuffer {
     fn newrow(&self) -> row_pointer {
         let w = idx(self.ds.get_width());
         let c = self.ds.get_background_rendition() as color_type;
-        Rc::new(Row::new(w, c))
+        let mut row = Row::new(w, c);
+        row.alternate = self.ds.alternate_screen; /* mosh-rs scrollback */
+        Rc::new(row)
     }
 
     /// A blank `s_width` x `s_height` framebuffer.
@@ -1244,6 +1269,30 @@ impl Framebuffer {
             bell_count: 0,
             title_initialized: false,
             ds: DrawState::new(s_width, s_height),
+            scrolled_rows: None,
+        }
+    }
+
+    /// mosh-rs scrollback (not upstream): a one-row framebuffer holding
+    /// `row`, so `Display::put_row` can render a row that left the screen.
+    pub(crate) fn from_row(row: row_pointer) -> Framebuffer {
+        let mut f = Framebuffer::new(row.cells.len() as i32, 1);
+        f.rows[0] = row;
+        f
+    }
+
+    /// mosh-rs scrollback (not upstream): starts (true) or stops (false)
+    /// collecting the rows that scroll off the top; see `scrolled_rows`.
+    pub fn set_scroll_capture(&mut self, on: bool) {
+        self.scrolled_rows = if on { Some(Vec::new()) } else { None };
+    }
+
+    /// mosh-rs scrollback (not upstream): the rows collected since the last
+    /// call, oldest first (empty when capture is off).
+    pub fn take_scrolled_rows(&mut self) -> Vec<row_pointer> {
+        match &mut self.scrolled_rows {
+            Some(v) => std::mem::take(v),
+            None => Vec::new(),
         }
     }
 
@@ -1255,6 +1304,19 @@ impl Framebuffer {
     /// Scrolls the scrolling region up by `n` rows (down if negative).
     pub fn scroll(&mut self, n: i32) {
         if n >= 0 {
+            // mosh-rs scrollback (PLAN.md 6.2): the rows delete_line is about to
+            // drop from the top of the screen. Only a full-screen region counts;
+            // a partial region (a status bar, a pager) scrolls content that is
+            // not history, and so does the alternate screen.
+            if let Some(out) = &mut self.scrolled_rows {
+                if self.ds.get_scrolling_region_top_row() == 0
+                    && self.ds.get_scrolling_region_bottom_row() == self.ds.get_height() - 1
+                    && !self.ds.alternate_screen
+                {
+                    let k = n.min(self.ds.get_height()) as usize;
+                    out.extend(self.rows[..k].iter().filter(|r| !r.alternate).cloned());
+                }
+            }
             self.delete_line(self.ds.get_scrolling_region_top_row(), n);
         } else {
             self.insert_line(self.ds.get_scrolling_region_top_row(), -n);
@@ -1310,8 +1372,11 @@ impl Framebuffer {
         if row == -1 {
             row = self.ds.get_cursor_row();
         }
+        let alternate = self.ds.alternate_screen;
         // If the row is shared, copy it.
-        Rc::make_mut(&mut self.rows[idx(row)])
+        let r = Rc::make_mut(&mut self.rows[idx(row)]);
+        r.alternate = alternate; /* mosh-rs scrollback: see Row::alternate */
+        r
     }
 
     /// Cell at `row`, `col` (-1 = cursor), its row copied first if shared.

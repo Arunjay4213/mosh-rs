@@ -276,6 +276,8 @@ pub fn main() -> i32 {
     let mut desired_port: Option<String> = None;
     let mut command_argv: Option<Vec<OsString>> = None;
     let mut colors: i32 = 0;
+    /* mosh-rs scrollback (PLAN.md 6.2): lines kept for a client that asks */
+    let mut scrollback: usize = 10000;
     let mut verbose: u32 = 0; /* don't close stdin/stdout/stderr */
     /* Will cause mosh-server not to correctly detach on old versions of sshd. */
     let mut locale_vars: Vec<OsString> = Vec::new();
@@ -302,8 +304,42 @@ pub fn main() -> i32 {
 
     /* Parse new command-line syntax */
     if argc >= 2 && argv[1] == "new" {
+        /* mosh-rs scrollback (PLAN.md 6.2): `--scrollback N` or
+        `--scrollback=N`, taken out before upstream's getopt sees the rest. */
+        let mut new_args: Vec<OsString> = Vec::new();
+        let mut i = 1;
+        while i < argc {
+            let value = if argv[i] == "--scrollback" {
+                i += 1;
+                Some(if i < argc {
+                    argv[i].clone()
+                } else {
+                    OsString::new()
+                })
+            } else {
+                argv[i]
+                    .as_bytes()
+                    .strip_prefix(b"--scrollback=")
+                    .map(|v| OsStr::from_bytes(v).to_os_string())
+            };
+            match value {
+                None => new_args.push(argv[i].clone()),
+                Some(v) => {
+                    let v = v.to_string_lossy().into_owned();
+                    match myatoi(&v) {
+                        Ok(n) if n >= 0 && !v.is_empty() => scrollback = n as usize,
+                        _ => {
+                            errln!("{argv0}: Bad scrollback size ({v})");
+                            print_usage(&mut io::stderr(), &argv0);
+                            exit(1);
+                        }
+                    }
+                }
+            }
+            i += 1;
+        }
         /* new option syntax */
-        getopt(&argv[1..argc], "@:i:p:c:svl:", |opt, optarg| {
+        getopt(&new_args, "@:i:p:c:svl:", |opt, optarg| {
             let optarg = optarg.map(|a| a.to_string_lossy().into_owned());
             match opt {
                 /*
@@ -467,6 +503,7 @@ pub fn main() -> i32 {
         colors,
         verbose,
         with_motd,
+        scrollback,
     ) {
         Ok(code) => code,
         Err(Error::Network(e)) => {
@@ -500,6 +537,8 @@ fn get_timeout_env(name: &str) -> i64 {
     timeout
 }
 
+// Upstream's seven parameters plus the mosh-rs scrollback limit.
+#[allow(clippy::too_many_arguments)]
 fn run_server(
     desired_ip: Option<&str>,
     desired_port: Option<&str>,
@@ -508,6 +547,7 @@ fn run_server(
     colors: i32,
     verbose: u32,
     with_motd: bool,
+    scrollback: usize,
 ) -> Result<i32, Error> {
     /* get network idle timeout */
     let network_timeout = get_timeout_env("MOSH_SERVER_NETWORK_TMOUT");
@@ -530,6 +570,8 @@ fn run_server(
 
     /* open parser and terminal */
     let mut terminal = Complete::new(window_size.ws_col as usize, window_size.ws_row as usize);
+    /* mosh-rs scrollback: used only if the client's capabilities ask for it */
+    terminal.set_scrollback_limit(scrollback);
 
     /* open network */
     let blank = UserStream::new();

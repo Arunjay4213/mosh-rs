@@ -36,4 +36,5 @@ pub mod completeterminal;
 pub mod user;
 
 pub use completeterminal::Complete;
-pub use user::{UserAction, UserEvent, UserEventType, UserStream};
+pub use completeterminal::{ReceivedScrollback, ScrolledRing};
+pub use user::{ClientCapabilities, UserAction, UserEvent, UserEventType, UserStream};

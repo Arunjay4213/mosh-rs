@@ -72,6 +72,12 @@ impl Emulator {
         &self.fb
     }
 
+    /// mosh-rs scrollback (not upstream): the framebuffer, mutable, to turn
+    /// scroll capture on and take the captured rows.
+    pub fn get_fb_mut(&mut self) -> &mut Framebuffer {
+        &mut self.fb
+    }
+
     pub(crate) fn execute(&mut self, act: &Action) {
         self.dispatch
             .dispatch(Function_Type::CONTROL, act, &mut self.fb);

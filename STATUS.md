@@ -423,3 +423,13 @@ Answers to agent F: the extra "generated diff does not apply" warning stays (it 
 ## 2026-10-13 Spawn: agent P, performance bench and static release build
 
 Agent P (Opus, medium effort, own worktree) builds `tools/bench` (every PLAN section 5 target, measured side by side with C++ mosh 1.4.0) and the static musl Linux build. Started during Phase 4 because it shares no files with scrollback and the 1-hour memory run is slow; see INTERVENTIONS.md.
+
+## 2026-10-13 Scrollback, server side (agent S1)
+
+PLAN section 6 items 1-3 and 5: the capability event (`ClientBuffers::Instruction` field 4), the alternate-screen flag (DEC 47/1047/1049, plus a per-row mark so rows drawn on the alternate screen never become history), capture of rows leaving a full-screen region into a 10,000-line ring (`mosh-server --scrollback N`, 0 disables), and `ScrolledLines` (`HostBuffers::Instruction` field 9) between the echo ack and the resize and host bytes.
+PLAN section 6 now records the settled details (capture interface, line format, numbering, instruction order, client-side duplicate handling) and one open question.
+- Old peers: per-step server diffs for every corpus file (27 files, 2 sizes, 40 and 400 chunks, 23,868 diffs, 1,166,280 bytes) are byte-identical to those of b5393e7 (`cmp` of the full dumps, and the digests in `tests/scrollback-server-baseline.txt`). With the capability, every diff minus `ScrolledLines` is the same bytes.
+- Upstream's own `UserStream::apply_string`, fed our capability plus a keystroke and a resize, returned only the keystroke and the resize; the C++ `mosh-server` ran a live session with our capability-sending probe and sent no lines.
+- `scrollback_server`: seq 1 50000 through a lossy simulated link (86 deliveries, 37,931 repeated lines skipped) arrives with no gap and no duplicate; also with resizes, a vim-like alternate-screen excursion (0 lines containing VIM), a partial scrolling region (nothing captured), and a 100-line ring (`dropped` exactly 377 and 4400). 374 colored, linked, wide and wrapped rendered lines match upstream's cells in ref-term.
+- `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client all --server all`: 120 of 120. `tests/upstream-check.sh --client cxx --server rust`: 30 PASS, 2 XFAIL, 0 FAIL, 0 ERROR. vt-fuzz 200,000 cases and 200,000 `--frames` cases: 0 mismatches. `cargo test --release --workspace`: all pass.
+- Open, blocks the client agent's oracle 6: one diff can carry any number of lines. Live `seq 1 50000` with the default ring delivered 10,000 lines and reported 39,977 dropped; with `--scrollback 60000` the single 87-fragment diff got through in 5 of 7 runs; through 30% loss and 100 ms delay nothing arrived in 30 s or 120 s. Two live tests are `#[ignore]` until this is decided.

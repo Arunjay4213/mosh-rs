@@ -294,6 +294,10 @@ fn get_DEC_mode(param: i32, fb: &mut Framebuffer) -> Option<&mut bool> {
             /* bracketed paste */
             Some(&mut fb.ds.bracketed_paste)
         }
+        // mosh-rs scrollback (PLAN.md 6.2, 9.4): upstream ignores the
+        // alternate-screen modes (default: NULL). Only a flag is recorded; the
+        // screen is not switched, so nothing upstream observes changes.
+        47 | 1047 | 1049 => Some(&mut fb.ds.alternate_screen),
         _ => None,
     }
 }

@@ -39,6 +39,12 @@
 //! `Instruction { extensions 2 to max; }` and `extend` it. An extension
 //! field is encoded exactly like a regular field with the same number,
 //! so the extensions are ordinary optional fields here.
+//!
+//! mosh-rs scrollback (PLAN.md section 6, 9.4) adds two extensions that
+//! upstream does not know: `ClientBuffers::Instruction` field 4
+//! (`ClientCapabilities`) and `HostBuffers::Instruction` field 9
+//! (`ScrolledLines`). Upstream parses them as unknown extensions and its
+//! `apply_string` if/else-if chains skip them.
 
 /// `package TransportBuffers`
 pub mod transport_buffers {
@@ -88,6 +94,17 @@ pub mod client_buffers {
         /// extension `resize = 3`
         #[prost(message, optional, tag = "3")]
         pub resize: Option<ResizeMessage>,
+        /// mosh-rs extension `capabilities = 4` (PLAN.md 6.1)
+        #[prost(message, optional, tag = "4")]
+        pub capabilities: Option<ClientCapabilities>,
+    }
+
+    /// mosh-rs `ClientBuffers::ClientCapabilities` (PLAN.md 6.1).
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct ClientCapabilities {
+        /// The client wants the lines that scroll off the server's screen.
+        #[prost(bool, optional, tag = "1")]
+        pub scrollback: Option<bool>,
     }
 
     /// `ClientBuffers::Keystroke`.
@@ -132,6 +149,26 @@ pub mod host_buffers {
         /// extension `echoack = 7`
         #[prost(message, optional, tag = "7")]
         pub echoack: Option<EchoAck>,
+        /// mosh-rs extension `scrolledlines = 9` (PLAN.md 6.3)
+        #[prost(message, optional, tag = "9")]
+        pub scrolledlines: Option<ScrolledLines>,
+    }
+
+    /// mosh-rs `HostBuffers::ScrolledLines` (PLAN.md 6.3): lines that left
+    /// the top of the server's screen, numbered from 1 in the order they left.
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct ScrolledLines {
+        /// Number of `line[0]`; when `line` is empty, one past the last
+        /// number the diff covers.
+        #[prost(uint64, optional, tag = "1")]
+        pub first_index: Option<u64>,
+        /// Each line, rendered as terminal output (`Display::render_scrolled_row`).
+        #[prost(bytes = "vec", repeated, tag = "2")]
+        pub line: Vec<Vec<u8>>,
+        /// How many lines just before `first_index` the diff covers but no
+        /// longer has (evicted from the server's ring); absent when none.
+        #[prost(uint64, optional, tag = "3")]
+        pub dropped: Option<u64>,
     }
 
     /// `HostBuffers::HostBytes`.

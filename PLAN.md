@@ -141,15 +141,32 @@ Design, all gated on negotiation so old peers see byte-identical behavior:
    The client puts it as the first event in its `UserStream`.
    Upstream `UserStream::apply_string` ignores unknown extensions (`user.cc` if/else-if chain), so an old server sees nothing.
    A new server that applies it turns scrollback mode on for that session.
+   Encoded alone it is the `UserMessage` bytes `0a 04 22 02 08 01`; upstream's `UserStream::apply_string` was fed those bytes plus a keystroke and a resize and returned only the keystroke and the resize.
+   Like any non-empty user diff, a diff holding only the capability registers an input frame on the server (one echo ack).
 2. Server capture.
    The `Framebuffer::scroll` path records each row that leaves the top when the scroll region is the full screen and the remote program has not enabled the alternate screen (DEC mode 1049, 1047 or 47, tracked as a new flag in `DrawState`; upstream ignores those modes entirely).
    Rows are rendered to ANSI strings with the same row renderer `new_frame` uses, and appended to a ring buffer (default 10,000 lines, server flag `--scrollback N`).
    The ring lives outside the state object, shared by `Rc`, so copying `Complete` for the sender's state history stays cheap.
    `Complete` carries only `scrolled_total: u64`.
+   Capture interface (settled by the server agent): the terminal crate knows nothing of mosh.
+   `Framebuffer::set_scroll_capture(true)` makes `scroll` append the leaving rows (shared `Rc<Row>`, no copy) to a list that `Framebuffer::take_scrolled_rows` empties; `Complete::act` empties it after every call, renders each row and pushes it into the ring, so the list is always empty when a state is copied.
+   Diffs applied with `apply_string` discard captured rows (a copy of a server state applying a diff, as the sender's round-trip check does, must not add history).
+   Rows created or last written while the alternate-screen flag is on carry a mark (`Row::alternate`, not part of row equality) and are never captured, also after the program left the alternate screen: upstream keeps that screen's rows on display, so vim's last screen would otherwise scroll into history when the shell continues.
+   Line format (`Display::render_scrolled_row`): `put_row` on an uninitialized one-row frame, assuming neither ECH nor back-color erase.
+   The line is written at row 1 column 1 with default renditions and no hyperlink, ends with default renditions and no hyperlink, holds no line feed and no cursor visibility change, and its only cursor movement is `CSI 1 ; <col> H` before the last cell of a row that wrapped.
+   Blank runs are spaces except default-colored blanks at the end of the row, which are `CSI K`.
+   A wrapped row does not carry its soft-wrap flag.
 3. Wire.
    New `HostBuffers::Instruction` field 9, `ScrolledLines { optional uint64 first_index = 1; repeated bytes line = 2; optional uint64 dropped = 3; }`.
    `Complete::diff_from(existing)` includes the lines with index in `(existing.scrolled_total, self.scrolled_total]` that are still in the ring, and `dropped` for any that were evicted.
    `Complete` equality includes `scrolled_total` when scrollback mode is on (otherwise `yes | head` would scroll without the framebuffer changing and nothing would be sent).
+   Settled by the server agent: lines are numbered from 1 in the order they left the screen.
+   `first_index` is the number of `line[0]` (one past the last number covered when no line is left), and `dropped` (absent when 0) counts the evicted lines just before it, so a diff from `existing` covers exactly `(existing.scrolled_total, first_index - 1 + line count]`.
+   Instruction order in a `HostMessage`: echo ack, scrolled lines, resize, host bytes.
+   A client prints the lines first, then applies the frame.
+   Client side: `Complete::enable_scrollback_receive` returns a queue shared by every copy of the client's state; `apply_string` adds each line with its number, skips numbers it already has (a diff from an older state, sent again after loss, repeats lines) and counts a jump forward as lost.
+   Open (server agent's report, 2026-10-13): nothing bounds the size of one diff, and `seq 1 50000` puts the whole burst in one diff.
+   Then the oldest lines are evicted before they are sent (default ring), or the diff is about 87 fragments, sent as one burst, of which the client's UDP receive buffer drops some, and every resend has a new instruction id, so it seldom completes; under 30% loss even 10,000 lines (about 17 fragments) never arrived in 120 s.
 4. Client rendering.
    In scrollback mode the client does not send smcup, and runs `new_frame` with scroll detection off.
    Before each render, for each pending scrolled line L: cursor to row 1 column 1, write L, cursor to the last row, write `\n`.

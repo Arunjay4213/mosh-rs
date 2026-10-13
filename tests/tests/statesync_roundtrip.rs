@@ -349,6 +349,7 @@ fn userstream_roundtrip() {
         match e.r#type {
             UserEventType::UserByteType => older.push_back_userbyte(e.userbyte),
             UserEventType::ResizeType => older.push_back_resize(e.resize),
+            UserEventType::CapabilitiesType => older.push_back_capabilities(e.capabilities),
         }
     }
 
@@ -393,9 +394,10 @@ fn userstream_roundtrip() {
     tail.subtract(&older);
     assert_eq!(tail.events().iter().copied().collect::<Vec<_>>(), newer);
 
-    // An instruction with only field 4 (a length-delimited blob, like a future
-    // extension) is ignored; a keystroke after it still applies.
-    let unknown_inst = [0x22u8, 0x03, b'a', b'b', b'c'];
+    // An instruction with only field 5 (a length-delimited blob, like a future
+    // extension; field 4 is the mosh-rs capabilities) is ignored; a keystroke
+    // after it still applies.
+    let unknown_inst = [0x2au8, 0x03, b'a', b'b', b'c'];
     let keystroke_inst = [0x12u8, 0x03, 0x22, 0x01, b'x'];
     let mut bytes = vec![0x0a, unknown_inst.len() as u8];
     bytes.extend_from_slice(&unknown_inst);

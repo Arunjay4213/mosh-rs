@@ -35,22 +35,36 @@
 use std::collections::VecDeque;
 
 use mosh_network::prost::Message;
-use mosh_network::proto::client_buffers::{Instruction, Keystroke, ResizeMessage, UserMessage};
+use mosh_network::proto::client_buffers::{
+    self, Instruction, Keystroke, ResizeMessage, UserMessage,
+};
 use mosh_network::transport::dos_detected;
 use mosh_network::{CryptoError, State};
 use mosh_terminal::{Resize, UserByte};
 
-/// Which of the two actions a `UserEvent` holds.
+/// Which of the actions a `UserEvent` holds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UserEventType {
     /// A keystroke byte.
     UserByteType = 0,
     /// A window resize.
     ResizeType = 1,
+    /// mosh-rs (PLAN.md 6.1): the client's capabilities.
+    CapabilitiesType = 2,
 }
 
-/// One user event. As upstream, both actions are stored and compared; the
-/// unused one holds upstream's placeholder (`UserByte(0)` or `Resize(-1, -1)`).
+/// mosh-rs (PLAN.md 6.1), not upstream: what a client supports beyond
+/// upstream, sent once as the first event of its `UserStream`
+/// (`ClientBuffers::Instruction` field 4).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ClientCapabilities {
+    /// The client wants the lines that scroll off the server's screen.
+    pub scrollback: bool,
+}
+
+/// One user event. As upstream, every action is stored and compared; the
+/// unused ones hold placeholders (`UserByte(0)`, `Resize(-1, -1)` as upstream,
+/// and no capabilities).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct UserEvent {
     /// Which action is meaningful.
@@ -59,6 +73,8 @@ pub struct UserEvent {
     pub userbyte: UserByte,
     /// The resize, for `ResizeType`.
     pub resize: Resize,
+    /// The capabilities, for `CapabilitiesType` (mosh-rs).
+    pub capabilities: ClientCapabilities,
 }
 
 impl UserEvent {
@@ -69,6 +85,7 @@ impl UserEvent {
             r#type: UserEventType::UserByteType,
             userbyte: s_userbyte,
             resize: Resize::new(usize::MAX, usize::MAX),
+            capabilities: ClientCapabilities::default(),
         }
     }
 
@@ -78,18 +95,31 @@ impl UserEvent {
             r#type: UserEventType::ResizeType,
             userbyte: UserByte::new(0),
             resize: s_resize,
+            capabilities: ClientCapabilities::default(),
+        }
+    }
+
+    /// A capabilities event (mosh-rs).
+    pub fn from_capabilities(s_capabilities: ClientCapabilities) -> UserEvent {
+        UserEvent {
+            r#type: UserEventType::CapabilitiesType,
+            userbyte: UserByte::new(0),
+            resize: Resize::new(usize::MAX, usize::MAX),
+            capabilities: s_capabilities,
         }
     }
 }
 
 /// Upstream's `const Parser::Action&` as returned by `get_action`: one of the
-/// two user-side actions.
+/// user-side actions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UserAction<'a> {
     /// A keystroke.
     UserByte(&'a UserByte),
     /// A resize.
     Resize(&'a Resize),
+    /// The client's capabilities (mosh-rs, PLAN.md 6.1).
+    Capabilities(&'a ClientCapabilities),
 }
 
 /// Upstream `Network::UserStream`.
@@ -116,6 +146,13 @@ impl UserStream {
         self.actions.push_back(UserEvent::from_resize(s_resize));
     }
 
+    /// Appends the client's capabilities (mosh-rs, PLAN.md 6.1; the client
+    /// sends this as its first event).
+    pub fn push_back_capabilities(&mut self, s_capabilities: ClientCapabilities) {
+        self.actions
+            .push_back(UserEvent::from_capabilities(s_capabilities));
+    }
+
     /// Whether the stream has no events.
     pub fn empty(&self) -> bool {
         self.actions.is_empty()
@@ -137,6 +174,7 @@ impl UserStream {
         match e.r#type {
             UserEventType::UserByteType => UserAction::UserByte(&e.userbyte),
             UserEventType::ResizeType => UserAction::Resize(&e.resize),
+            UserEventType::CapabilitiesType => UserAction::Capabilities(&e.capabilities),
         }
     }
 }
@@ -197,6 +235,14 @@ impl State for UserStream {
                         ..Default::default()
                     });
                 }
+                UserEventType::CapabilitiesType => {
+                    output.instruction.push(Instruction {
+                        capabilities: Some(client_buffers::ClientCapabilities {
+                            scrollback: Some(e.capabilities.scrollback),
+                        }),
+                        ..Default::default()
+                    });
+                }
             }
         }
 
@@ -235,6 +281,14 @@ impl State for UserStream {
                 }
                 self.actions
                     .push_back(UserEvent::from_resize(Resize::new(w as usize, h as usize)));
+            } else if let Some(c) = &inst.capabilities {
+                // mosh-rs (PLAN.md 6.1): added after upstream's arms, so an
+                // instruction carrying an upstream extension is read exactly
+                // as upstream reads it.
+                self.actions
+                    .push_back(UserEvent::from_capabilities(ClientCapabilities {
+                        scrollback: c.scrollback.unwrap_or(false),
+                    }));
             }
             /* any other instruction type (unknown extension) is ignored */
         }

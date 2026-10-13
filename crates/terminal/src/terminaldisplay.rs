@@ -648,6 +648,35 @@ impl Display {
         false
     }
 
+    /// mosh-rs scrollback (PLAN.md 6.2, 9.4), not in upstream: `row`, a row
+    /// that left the top of the screen, as one line for the host terminal's
+    /// history, drawn by `put_row` exactly as `new_frame` draws a row onto an
+    /// uninitialized screen. The result assumes the cursor is at column 1 of
+    /// the first screen row with default renditions and no hyperlink, and
+    /// leaves default renditions and no hyperlink. It holds no line feed and
+    /// no cursor visibility change; the only cursor movement it may contain is
+    /// `CSI 1 ; <col> H` before the last cell of a row that wrapped (put_row's
+    /// forced positioning), which is why it is written on the first row.
+    /// Erases assume neither ECH nor back-color erase, so the line draws the
+    /// same on any terminal: blank runs are spaces unless default-colored and
+    /// at the end of the row, which use `CSI K`.
+    pub fn render_scrolled_row(row: &Rc<Row>) -> String {
+        let display = Display {
+            has_ech: false,
+            has_bce: false,
+            has_title: false,
+            smcup: None,
+            rmcup: None,
+        };
+        let f = Framebuffer::from_row(row.clone());
+        let mut frame = FrameState::new(&f);
+        frame.cursor_visible = false;
+        display.put_row(false, &mut frame, &f, 0, f.get_row(0), false);
+        frame.update_rendition(&initial_rendition(), false);
+        frame.update_hyperlink(&Hyperlink::default(), false);
+        frame.str
+    }
+
     fn can_use_erase(&self, frame: &FrameState) -> bool {
         self.has_bce
             || (frame.current_rendition == initial_rendition() && frame.current_hyperlink.empty())
