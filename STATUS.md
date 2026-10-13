@@ -372,3 +372,19 @@ The unix-only test programs `udp-impair`, `pty-record` (tools) and `toy-sync` (t
 - `cargo build --workspace --target x86_64-pc-windows-gnu`: builds (before: 19 errors in `udp-impair` and `pty-record`, then 11 in `toy-sync`, 3 in `tests/tests/udp_impair.rs`).
 - `cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warnings`: clean.
 - Native: `udp_impair` 6 passed, `transport_sync` 1 passed.
+
+## 2026-10-13 Phase 2: all oracles the orchestrator can run pass, gate pending
+
+Rerun by the orchestrator:
+- `INTEROP_FULL=1 tests/interop.sh --client all --server all` at 31837bc: 120 cells (C++ and Rust clients x C++ and Rust servers x clean, 5% loss, 30% loss with 200 ms delay and reordering, 2-minute blackout, client address change x six screen scenarios), 120 passed, 0 failed, 402 s. Every blackout cell resumed after 120 s of total silence.
+- Upstream's own `make check` (32 tests) with our server and the C++ client: 30 PASS, 2 XFAIL, 0 FAIL. With our client and the C++ server: 30 PASS, 2 XFAIL, 0 FAIL.
+- Setup under 30% loss from the first packet, 40 tries per pair: Rust client 40/40, Rust server 40/40, C++ pair 39/40.
+- Prediction at 300 ms round trip: typed characters appear in 2 ms, as with the C++ client; wrong predictions are removed after 373 ms (C++ 368 ms).
+- Idle CPU of our client and server over 60 s: 0.00%, as the C++ ones.
+
+Still needed before "gate: PASSED":
+- Upstream's `make check` with both of our binaries together, after agent F restores the round-trip comparison check (without it one of the suite's log checks cannot fire for our binaries).
+- The line-by-line review of the prediction overlay, from the laptop (INTERVENTIONS.md, NEEDS THE USER).
+- Green CI, which needs the laptop to push branch `ci/terminfo`.
+
+Phase 3: Windows binaries are staged on devbox with a laptop checklist (INTERVENTIONS.md). Phase 4 (scrollback) starts once agent F's change to the state interface has landed.
