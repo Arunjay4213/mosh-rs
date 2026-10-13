@@ -86,7 +86,7 @@ jobs:
           ssh -o BatchMode=yes 127.0.0.1 true
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: (cargo build --release --workspace && cargo test --release --workspace) 2>&1 | tee test.log; exit ${PIPESTATUS[0]}
+      - run: tests/run-all.sh 2>&1 | tee test.log; exit ${PIPESTATUS[0]}
         shell: bash
       - uses: actions/upload-artifact@v4
         if: always()
