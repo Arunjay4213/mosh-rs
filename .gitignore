@@ -1,2 +1,8 @@
 upstream
 target/
+
+# compiled oracle harnesses (built from ref/*/Makefile)
+ref/ref-term/ref-term
+ref/ref-term/gen-wcwidth
+ref/ref-crypto/ref-crypto
+*.o
