@@ -43,8 +43,8 @@ self=$(basename "$0")
 cargo build --release --workspace
 
 failed=()
-if ! cargo test --release --workspace; then
-    failed+=("cargo test --release --workspace")
+if ! cargo test --release --workspace --no-fail-fast; then
+    failed+=("cargo test --release --workspace --no-fail-fast")
 fi
 
 drivers=0
