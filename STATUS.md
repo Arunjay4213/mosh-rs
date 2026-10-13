@@ -332,3 +332,8 @@ First contact without loss (`udp-impair --delay-ms 200`, tcpdump on the server p
 The contact times are bimodal in every pair: about 440-830 ms when the first exchange survives the 30% loss, about 3.4 s or later when it does not and the client's 3 s ACK_INTERVAL retransmit is needed (contact under 1 s: cxx-cxx 27/40, cxx-rust 25/40, rust-cxx 26/40). With about half the trials in each mode, the median moves between the modes from run to run, which explains 780 versus 2074 ms in the orchestrator's run.
 
 Agent M's rust x rust loss30 vim failure: repeating `--profile loss30` 5 times per pair (30 cells each): rust x rust 30/30, cxx client x rust server 30/30, cxx x cxx 30/30, rust client x cxx server 29/30. The one failure (seq, "client exited while waiting for READY-seq", status 0 after 15.5 s) has the C++ server, so it is on the client side (agent E), or chance that the C++ client would also hit; the server is not involved.
+
+## 2026-10-13 server_e2e: network timeout check does not depend on runner speed (agent D)
+
+The `network_timeout` case asserted the server lived at least 4 s after the client was killed. The server times out 5 s after it last heard from the client, which can be up to 3 s (the client's ACK_INTERVAL) before the kill on a slow runner, so that bound could fail without a bug. It now checks the server is alive 1 s after the kill and gone within 10 s.
+Measured: `network_timeout` and `signal_timeout` passed; exit 4.755 s after the kill for both servers.
