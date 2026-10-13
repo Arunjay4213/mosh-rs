@@ -77,7 +77,7 @@
 #             for the same keys (the last rows of `seq 1 3000` and the
 #             prompts, PLAN 6.6); history is exactly 1-6000 plus the command
 #             lines, nothing from vim or less.
-#   oldserver `mosh --scrollback --server=/usr/bin/mosh-server`: the client
+#   oldserver `mosh --scrollback --server=<real mosh-server>`: the client
 #             stays in the alternate screen, shows the notice, and nothing
 #             reaches the host's history.
 #   dropped   a server with a 16 KiB backlog (`--scrollback 16K`), the
@@ -555,8 +555,23 @@ v_altscreen() {
     wait_history 60 6000 exact
 }
 
+# upstream_bin NAME: the real mosh 1.4.0 program NAME from PATH (apt puts it
+# in /usr/bin, Homebrew in /opt/homebrew/bin), never a mosh-rs build; falls
+# back to /usr/bin/NAME so a missing install fails visibly.
+upstream_bin() {
+    local dir
+    local IFS=:
+    for dir in $PATH; do
+        if [ -x "$dir/$1" ] && ! "$dir/$1" --version 2>/dev/null | grep -q mosh-rs; then
+            echo "$dir/$1"
+            return 0
+        fi
+    done
+    echo "/usr/bin/$1"
+}
+
 v_oldserver() {
-    start_launcher --server=/usr/bin/mosh-server || return 1
+    start_launcher --server="$(upstream_bin mosh-server)" || return 1
     wait_text 120 'does not support scrollback' || return 1
     local alt
     alt=$(tmux -S "$sock" display -p -t sb '#{alternate_on}')

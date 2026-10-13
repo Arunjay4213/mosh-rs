@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.1] - unreleased
+
+### Fixed
+
+- macOS: `mosh` could not connect to any host ("Could not connect to HOST, last tried :", then "Did not find remote IP address"), because it read the address family at the Linux position of a socket address. It now connects; verified with a real session from an Apple silicon Mac to a Linux server.
+- Windows: if the console input could not be set up, `mosh-client` crashed with a Rust panic; it now prints the error and exits 1 (P1).
+- Windows: Ctrl+Break no longer leaves the console without echo and line editing; it shuts the session down cleanly and restores the console, and `mosh.exe` waits for the client to finish (P2).
+- Internal: a lint exception without a stated reason was removed (P3).
+- Linux `mosh-server`: reading the login records for the "detached session" warning now ignores a file that is not in the expected format instead of misreading it; the direct read is documented as a deliberate difference from upstream (P4).
+- Windows: a failure to read the console's code page is reported at startup instead of leaving the wrong code page after exit (P5).
+- Windows: escape sequences render even if a parent program turned off processed output (P6).
+- Windows: an internal wait with nothing to watch no longer spins the CPU (P7).
+- Windows: a console read error is reported as `read: <message>` instead of ending the session silently (P8).
+- Error messages now read like upstream's (`setlocale: No such file or directory`, without Rust's "(os error 2)") on every platform (P9).
+- Internal: the two address decoders agree on IPv6 flow labels and scope ids; now one shared decoder (P10).
+- Cygwin: the terminal is put in UTF-8 input mode as on Linux and macOS (P11).
+- Internal: undocumented public items in the platform crate are now a build error (P12).
+- Windows: IPv6 link-local addresses with a zone (`fe80::1%3`) are accepted, as on unix (P13).
+
 ## [0.1.0] - 2026-10-13
 
 ### Added
@@ -20,4 +39,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Test suite: reference oracles in `ref/`, differential fuzzing (`vt-fuzz`), the interop matrix, upstream's `make check` with mosh-rs binaries, the scrollback oracle, and `tools/bench`.
 
 [Unreleased]: https://github.com/Arunjay4213/mosh-rs/compare/v0.1.0...HEAD
+[0.1.1]: https://github.com/Arunjay4213/mosh-rs/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.0

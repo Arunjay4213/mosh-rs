@@ -11,7 +11,7 @@ tests/interop.sh [--client cxx|rust|all|PATH] [--server cxx|rust|all|PATH]
                  [--scenario seq|colors|vim|wide|resize|typing|all]
 ```
 
-`cxx` is mosh 1.4.0 from apt (`/usr/bin/mosh-client`, `/usr/bin/mosh-server`).
+`cxx` is mosh 1.4.0 from PATH (apt installs `/usr/bin/mosh-client` and `/usr/bin/mosh-server`, Homebrew `/opt/homebrew/bin/...`); a mosh-rs build on PATH is never taken.
 `rust` is `target/release/mosh-client` and `mosh-server`; the script builds them with `cargo build --release -p mosh`.
 `all` is both.
 Options can be repeated, and missing ones default to `cxx`, `cxx`, every profile, every scenario.

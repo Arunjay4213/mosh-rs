@@ -109,8 +109,23 @@ SLOT_PORTS=4
 LOSS_FLAGS=(--loss 0.30 --delay-ms 200 --jitter-ms 50 --reorder 0.10)
 impair=$root/target/release/udp-impair
 work=$root/target/interop-setup-loss
-cxx_client=/usr/bin/mosh-client
-cxx_server=/usr/bin/mosh-server
+# upstream_bin NAME: the real mosh 1.4.0 program NAME from PATH (apt puts it
+# in /usr/bin, Homebrew in /opt/homebrew/bin), never a mosh-rs build; falls
+# back to /usr/bin/NAME so a missing install fails visibly.
+upstream_bin() {
+    local dir
+    local IFS=:
+    for dir in $PATH; do
+        if [ -x "$dir/$1" ] && ! "$dir/$1" --version 2>/dev/null | grep -q mosh-rs; then
+            echo "$dir/$1"
+            return 0
+        fi
+    done
+    echo "/usr/bin/$1"
+}
+
+cxx_client=$(upstream_bin mosh-client)
+cxx_server=$(upstream_bin mosh-server)
 rust_client=$root/target/release/mosh-client
 rust_server=$root/target/release/mosh-server
 

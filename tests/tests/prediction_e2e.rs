@@ -36,7 +36,7 @@
 // `udp-impair` with 150 ms delay each way (300 ms round trip), inside a tmux
 // pane. Keys go in with `tmux send-keys` and the pane is read every 5 ms,
 // so the times below are what a user would see. Every case runs with
-// `/usr/bin/mosh-client` first, so the numbers can be compared and a
+// the real (C++) `mosh-client` from PATH first, so the numbers can be compared and a
 // failure of ours is not a harness problem.
 //
 // UDP ports 61350-61397.
@@ -76,7 +76,7 @@ fn release_dir() -> PathBuf {
 /// The clients under test: upstream's first.
 fn clients() -> Vec<(&'static str, String)> {
     vec![
-        ("cxx", "/usr/bin/mosh-client".to_string()),
+        ("cxx", mosh_tests::upstream::get().client.clone()),
         (
             "rust",
             release_dir().join("mosh-client").display().to_string(),
@@ -182,7 +182,7 @@ impl Drop for Tmux {
 
 /// `mosh-server new` on `port` (it detaches), and the session key from `MOSH CONNECT`.
 fn start_server(port: u16, command: &[&str]) -> String {
-    let mut child = Command::new("/usr/bin/mosh-server")
+    let mut child = Command::new(&mosh_tests::upstream::get().server)
         .args(["new", "-c", "256", "-p", &port.to_string(), "--"])
         .args(command)
         .env("LANG", "C.UTF-8")
@@ -321,6 +321,9 @@ fn editing_latencies(name: &str, client: &str, base: u16, env: &str) -> [Duratio
 
 #[test]
 fn keystroke_shows_at_once_with_prediction() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     let modes = [
         "MOSH_PREDICTION_DISPLAY=always",
         "MOSH_PREDICTION_DISPLAY=adaptive",
@@ -373,6 +376,9 @@ fn keystroke_shows_at_once_with_prediction() {
 /// from the server, so any `q` on screen is the prediction.
 #[test]
 fn wrong_prediction_is_removed() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     const KEYS: &str = "abcdefghijklmnoprstuvwxyz";
     for (i, (name, client)) in clients().into_iter().enumerate() {
         let s = Session::start(
@@ -451,6 +457,9 @@ fn wrong_prediction_is_removed() {
 /// screen is what was typed.
 #[test]
 fn unicode_input_with_prediction() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     for (i, (name, client)) in clients().into_iter().enumerate() {
         let s = Session::start(
             &format!("unicode-{name}"),

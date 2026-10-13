@@ -34,3 +34,4 @@
 
 pub mod dump;
 pub mod oracle;
+pub mod upstream;
