@@ -33,7 +33,8 @@
 // loop, `close $pipe; waitpid`, and `exec` of the client).
 
 //! Child processes for the launcher, ported from upstream `scripts/mosh.pl`:
-//! ssh with stdout and stderr merged into one pipe read by lines, and exec.
+//! ssh with stdout and stderr merged into one pipe read by lines, exec, and
+//! ignoring SIGHUP in the `--fake-proxy` relay.
 
 use std::io::{self, BufRead, BufReader, PipeReader};
 use std::process::{Child, Command, ExitStatus, Stdio};
@@ -82,6 +83,19 @@ impl LineProcess {
         let LineProcess { mut child, reader } = self;
         drop(reader);
         child.wait()
+    }
+}
+
+/// `$SIG{ 'HUP' } = 'IGNORE'` (mosh.pl line 305): ssh sends SIGHUP to its
+/// ProxyCommand when it exits, and the `--fake-proxy` relay ignores it so
+/// the copy from stdin to the socket can finish.
+/// Windows has no SIGHUP (ssh.exe ends the proxy differently), so this does
+/// nothing there.
+pub fn ignore_sighup() {
+    #[cfg(unix)]
+    // SAFETY: SIG_IGN is a valid disposition for SIGHUP; no handler code runs.
+    unsafe {
+        libc::signal(libc::SIGHUP, libc::SIG_IGN);
     }
 }
 

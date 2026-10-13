@@ -338,6 +338,7 @@ fn fake_proxy(argv0: &str, family: &str, host: &str, port: &str) -> ! {
         }),
         Err(e) => die(&format!("{argv0}: {e}\n"), DIE),
     };
+    process::ignore_sighup();
     let mut to = &sock;
     cat(&mut std::io::stdin().lock(), &mut to);
     let _ = sock.shutdown(Shutdown::Write);
