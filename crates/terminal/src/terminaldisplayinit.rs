@@ -31,44 +31,105 @@
 //
 // PLAN.md section 9.6: there is no terminfo lookup. Upstream asks terminfo
 // (via setupterm/tigetstr/tigetflag) for "ech", "bce", "smcup" and
-// "rmcup". Here the same control flow reads those four answers from a fixed
-// table keyed on TERM: xterm-class defaults, with overrides for the terminals
-// known to lack ECH and BCE. The values are what ncurses 6.4 terminfo on the
-// devbox returns (`infocmp -1 xterm`, `infocmp -1 screen`, `infocmp -1 tmux`).
+// "rmcup". Here the same control flow reads those four answers from the fixed
+// table `TERMINFO` below, keyed on TERM, whose rows are copied from
+// `infocmp -1 <name>` on devbox (ncurses 6.4). Unknown TERMs get xterm's.
 
 //! Choosing the local terminal's capabilities. Port of upstream `src/terminal/terminaldisplayinit.cc`, without terminfo (PLAN.md 9.6).
 
 use crate::terminaldisplay::Display;
 
 /// The terminfo answers upstream would get for one terminal type.
+/// `None` for smcup/rmcup means the capability is absent (tigetstr NULL).
 struct TermCaps {
     ech: bool,
     bce: bool,
-    smcup: &'static str,
-    rmcup: &'static str,
+    smcup: Option<&'static str>,
+    rmcup: Option<&'static str>,
 }
 
-/// xterm, xterm-256color, alacritty and most modern emulators.
-const XTERM_CLASS: TermCaps = TermCaps {
-    ech: true,
-    bce: true,
-    smcup: "\x1b[?1049h\x1b[22;0;0t",
-    rmcup: "\x1b[?1049l\x1b[23;0;0t",
-};
-
-/// "screen", "screen-256color", "tmux", "tmux-256color": no ech, no bce.
-const SCREEN_CLASS: TermCaps = TermCaps {
-    ech: false,
-    bce: false,
-    smcup: "\x1b[?1049h",
-    rmcup: "\x1b[?1049l",
-};
-
-fn term_caps(term_type: Option<&str>) -> &'static TermCaps {
-    match term_type {
-        Some(t) if t.starts_with("screen") || t.starts_with("tmux") => &SCREEN_CLASS,
-        _ => &XTERM_CLASS,
+const fn caps(
+    ech: bool,
+    bce: bool,
+    smcup: Option<&'static str>,
+    rmcup: Option<&'static str>,
+) -> TermCaps {
+    TermCaps {
+        ech,
+        bce,
+        smcup,
+        rmcup,
     }
+}
+
+const XTERM_ALT: (Option<&str>, Option<&str>) = (
+    Some("\x1b[?1049h\x1b[22;0;0t"),
+    Some("\x1b[?1049l\x1b[23;0;0t"),
+);
+const PLAIN_ALT: (Option<&str>, Option<&str>) = (Some("\x1b[?1049h"), Some("\x1b[?1049l"));
+const RXVT_ALT: (Option<&str>, Option<&str>) =
+    (Some("\x1b7\x1b[?47h"), Some("\x1b[2J\x1b[?47l\x1b8"));
+const URXVT_ALT: (Option<&str>, Option<&str>) = (Some("\x1b[?1049h"), Some("\x1b[r\x1b[?1049l"));
+const NO_ALT: (Option<&str>, Option<&str>) = (None, None);
+
+/// ech, bce, smcup and rmcup per TERM, copied from `infocmp -1 <name>`
+/// (ncurses 6.4.20240113 terminfo on devbox, Ubuntu 24.04).
+const TERMINFO: &[(&str, TermCaps)] = &[
+    ("xterm", caps(true, true, XTERM_ALT.0, XTERM_ALT.1)),
+    ("xterm-256color", caps(true, true, XTERM_ALT.0, XTERM_ALT.1)),
+    ("screen", caps(false, false, PLAIN_ALT.0, PLAIN_ALT.1)),
+    (
+        "screen-256color",
+        caps(false, false, PLAIN_ALT.0, PLAIN_ALT.1),
+    ),
+    ("tmux", caps(false, false, PLAIN_ALT.0, PLAIN_ALT.1)),
+    (
+        "tmux-256color",
+        caps(false, false, PLAIN_ALT.0, PLAIN_ALT.1),
+    ),
+    ("rxvt", caps(false, true, RXVT_ALT.0, RXVT_ALT.1)),
+    ("rxvt-256color", caps(false, true, RXVT_ALT.0, RXVT_ALT.1)),
+    ("rxvt-unicode", caps(true, true, URXVT_ALT.0, URXVT_ALT.1)),
+    (
+        "rxvt-unicode-256color",
+        caps(true, true, URXVT_ALT.0, URXVT_ALT.1),
+    ),
+    ("linux", caps(true, true, NO_ALT.0, NO_ALT.1)),
+    ("vt100", caps(false, false, NO_ALT.0, NO_ALT.1)),
+    ("vt102", caps(false, false, NO_ALT.0, NO_ALT.1)),
+    ("vt220", caps(true, false, NO_ALT.0, NO_ALT.1)),
+    ("alacritty", caps(true, true, XTERM_ALT.0, XTERM_ALT.1)),
+    ("kitty", caps(true, false, PLAIN_ALT.0, PLAIN_ALT.1)),
+    ("foot", caps(true, true, XTERM_ALT.0, XTERM_ALT.1)),
+    ("st-256color", caps(true, true, PLAIN_ALT.0, PLAIN_ALT.1)),
+    ("putty", caps(true, true, PLAIN_ALT.0, PLAIN_ALT.1)),
+    ("dumb", caps(false, false, NO_ALT.0, NO_ALT.1)),
+];
+
+/// The capabilities for `term_type`: an exact entry from `TERMINFO`, else the
+/// entry of its family (a TERM that starts with "screen", "tmux",
+/// "rxvt-unicode" or "rxvt" behaves like the base entry in terminfo), else
+/// xterm's.
+fn term_caps(term_type: Option<&str>) -> &'static TermCaps {
+    let lookup = |name: &str| {
+        TERMINFO
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, c)| c)
+            .expect("name is in TERMINFO")
+    };
+    let Some(t) = term_type else {
+        return lookup("xterm");
+    };
+    if let Some((_, c)) = TERMINFO.iter().find(|(n, _)| *n == t) {
+        return c;
+    }
+    for family in ["screen", "tmux", "rxvt-unicode", "rxvt"] {
+        if t.starts_with(family) {
+            return lookup(family);
+        }
+    }
+    lookup("xterm")
 }
 
 impl Display {
@@ -116,8 +177,8 @@ impl Display {
             }
 
             if std::env::var_os("MOSH_NO_TERM_INIT").is_none() {
-                d.smcup = Some(caps.smcup);
-                d.rmcup = Some(caps.rmcup);
+                d.smcup = caps.smcup;
+                d.rmcup = caps.rmcup;
             }
         }
         d

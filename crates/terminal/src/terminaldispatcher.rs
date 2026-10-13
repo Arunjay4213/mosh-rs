@@ -276,14 +276,17 @@ impl Dispatcher {
             Function_Type::CONTROL => &registry.control,
         };
 
-        let key: Vec<u8> = if ty == Function_Type::CONTROL {
+        // The key lives on the stack, as upstream's short std::string does.
+        let ctrlstr: [u8; 1];
+        let key: &[u8] = if ty == Function_Type::CONTROL {
             assert!(act.ch <= 255);
-            vec![act.ch as u8]
+            ctrlstr = [act.ch as u8];
+            &ctrlstr
         } else {
-            self.dispatch_chars.clone()
+            &self.dispatch_chars
         };
 
-        let i = match map.get(&key) {
+        let i = match map.get(key) {
             None => {
                 /* unknown function */
                 fb.ds.next_print_will_wrap = false;
