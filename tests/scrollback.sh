@@ -505,6 +505,9 @@ wait_first() {
 alt_steps() {
     wait_line 120 '$' || return 1
     keys 'seq 1 3000' Enter
+    # The prompt after seq, not the first one: a command typed while seq
+    # still runs is echoed into seq's output and the shell reads it ahead.
+    wait_line 120 3000 || return 1
     wait_last 120 '$' || return 1
     keys 'vim -u NONE -N' Enter
     wait_alt 120 1 "vim started" || return 1

@@ -3,6 +3,13 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 CI: scrollback.sh altscreen failed on the runners (agent S2)
+
+- CI (PR #6, run 38432847587, shard scrollback-sh): `FAIL altscreen (122 s): screen differs from direct-vim.txt`. After vim exited, mosh's screen started at 2978 and ended with `$ $`, instead of `$ vim -u NONE -N` and `$`.
+- Reproduced on devbox by sending the variant's session through udp-impair with 100 ms delay each way: 4 of 4 runs failed the same way. Without delay, under load, it passed 31 of 31.
+- Cause, in the test: after typing `seq 1 3000` it waited for the screen's last line to be `$`. The first prompt already is `$`, so on a slow link the wait passed before seq's output arrived, and `vim -u NONE -N` was typed while seq was still running. The tty echoed the command into seq's output, and the shell read it ahead after printing its next prompt. So the screen vim saved, and restored on exit, really was 2978-3000 and `$ `, and mosh showed exactly what the server had. The direct tmux run never hit this because seq finishes locally before the keys arrive.
+- Fix: wait for the line `3000` and then for the prompt, before typing the vim command. Through the 100 ms delay: 5 of 5 pass. No product change.
+
 ## 2026-10-13 CI: options_and_messages_match_mosh_pl red on the runners (agent C)
 
 - Failure: `launcher differs from mosh.pl left: 33 right: 0` on every run since cb9bfd2, both architectures; green on devbox.

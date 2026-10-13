@@ -628,3 +628,7 @@ Portable code instead of a pinned toolchain: the two field-level `non_snake_case
 - `tests/scrollback.sh` takes variant names as arguments or in `SCROLLBACK_VARIANTS` (comma-separated), and `--list` prints them. All 10 variants pass alone. Measured alone: loss30 173 s; every other variant 23 s or less.
 - `scrollback_server`: the 30%-loss live case now runs `seq 1 10000` instead of 50000: 24 s instead of 158 s. It proves the same thing: lossy link, every instruction within the fragment bound (max 2 of 7), exact history (9977 lines, 0 lost). The full 50,000 lines through the same loss are still `tests/scrollback.sh loss30`. No `MOSH_CI_FULL` guard was needed. All 13 tests pass with `--test-threads=13` in 55 s and alone with `--exact`.
 - Commands for each shard: new `tests/README.md`.
+
+## 2026-10-13 CI altscreen failure fixed in the test (agent S2)
+
+- `tests/scrollback.sh altscreen` typed the vim command before `seq 1 3000` had finished on slow links, because the first prompt already satisfied its wait. It now waits for the line 3000 and then the prompt. Reproduced through udp-impair with 100 ms delay (4 of 4 failed before the fix, 5 of 5 passed after it). Details in INTERVENTIONS.md. All 10 variants pass on devbox.
