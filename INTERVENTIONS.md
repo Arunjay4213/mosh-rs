@@ -50,3 +50,7 @@ Newest entry first.
 - CLAUDE.md said the mingw linker and Windows target were installed. They were not. The Phase 0 agent installed both (`apt-get install gcc-mingw-w64-x86-64`, `rustup target add x86_64-pc-windows-gnu`).
 - PLAN section 2 lists `unicode-width` as a dependency. Replaced by a width table generated from glibc `wcwidth` so the emulator matches upstream on every character. Not a semantic deviation from upstream; it is the opposite.
 - PLAN section 2 says `tests/` holds cargo integration tests. A bare directory cannot hold them, so `tests/` and `tools/` are workspace packages (`mosh-tests`, `mosh-tools`).
+
+## 2026-10-13 Laptop: pushed ci/run-all
+
+- The laptop oversight tick fetched branch `ci/run-all` (a36d03d) from devbox, reviewed the one-line workflow change (test job runs `tests/run-all.sh`), merged it into main and pushed. CI now runs the shell drivers as well as cargo tests.
