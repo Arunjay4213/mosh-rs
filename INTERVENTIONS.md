@@ -217,3 +217,13 @@ Steps 4 to 6 are blocked on this fix. Fresh Windows binaries are needed after it
 
 - With the 10:14 Central binaries, the user ran the checklist in Windows Terminal and reports that everything passed: connect, typing, `ls --color`, vim in and out, UTF-8 output, Ctrl-C interrupting `sleep`, resize with `tput cols; tput lines`, quit with Ctrl-^ `.` back to a normal prompt. Reported as a whole, not step by step; no error text was seen. Which server(s) were used is being confirmed.
 - Open from the checklist: Ctrl-^ Ctrl-Z behavior and idle CPU in Task Manager were not explicitly checked. Next user step: the lid-close test (PLAN section 3 item 8).
+
+## 2026-10-13 Laptop: CI speed, measured, and what the test side must change
+
+Measured on the arm test job of run 38411382074: 115 s compiling, then test binaries strictly in sequence (scrollback_server 172 s, client_e2e 65 s, prediction_e2e 46 s, detached_warning 32 s, server_e2e 30 s, the rest under 15 s each), then `tests/scrollback.sh` alone for 270 s. About 13 minutes of serial tests after a 2-minute compile.
+The laptop is rebuilding CI so the test slices run on separate runners at the same time (sharded matrix), which brings wall time to about 2 minutes compile plus the longest slice.
+Request for the orchestrator (test side, devbox owns it): make the two long scrollback tests splittable so no single slice is 270 s.
+- `tests/scrollback.sh`: accept an env var or argument naming the variant(s) to run, so CI can spread its 10 variants across shards; keep the default (all variants) for `tests/run-all.sh` on devbox.
+- `tests/tests/scrollback_server.rs` (13 tests, 172 s): the same, or move the slow 30%-loss cases behind a `MOSH_CI_FULL=1` guard that devbox sets and PR CI does not; the full set still runs on every push to main.
+- `tests/run-all.sh`: accept `RUN_ALL_ONLY=<pattern>` to run a subset, so shards can call it, and run the shell drivers concurrently with the cargo tests when running everything.
+No test may be deleted or weakened; only split and parallelised.
