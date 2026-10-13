@@ -139,3 +139,8 @@ Measured on devbox:
 - `cargo test --release -p mosh-tests --test launcher`, 5 runs in a row: 4 passed, 0 failed each time (4.1-8.4 s).
 - The dual-stack test fails against the previous launcher (timed out waiting for LAUNCH_OK).
 - `--local`, `--ssh='ssh -p 2222'` and an unreachable ssh port behave as `/usr/bin/mosh` (same messages, exit 10 on the last).
+
+Terminfo (review T-1, T-2, PLAN 9.6), commit 13f6466: the TERM capability table is generated from the devbox terminfo database (ncurses 6.4+20240113-1ubuntu2.2 with ncurses-term, kitty-terminfo 0.32.2): 2793 names (1830 `toe -a` entries plus aliases), 115 distinct tuples.
+`cargo test --release -p mosh-tests --test terminfo_table -- --nocapture`: `terms=2830 (toe -a 1830 plus aliases) compared=5660 upstream_errors_fell_back_to_xterm=74 mismatches=0`.
+The comparison runs every name with `MOSH_NO_TERM_INIT` unset and set. The 74 fallbacks are 36 hardcopy entries plus one unknown name, times two runs: upstream throws on them, and the port uses xterm's answers.
+Planted-bug check: flipping `bce` in kitty's tuple gave 12 mismatches.
