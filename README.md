@@ -10,12 +10,12 @@
 [![GitHub release](https://img.shields.io/github/v/release/Arunjay4213/mosh-rs?include_prereleases)](https://github.com/Arunjay4213/mosh-rs/releases)
 
 <!--
-  Demo GIF slot. The recording is made at v0.1.0, once the client and server work end to end.
-  Until then this stays commented out so the README never shows a mock-up.
+  Demo GIF slot. No recording has been made yet.
+  Until one is, this stays commented out so the README never shows a mock-up.
   <img src="docs/assets/demo.gif" alt="mosh-rs keeping a session alive across a network change, with scrollback" width="720">
 -->
 
-[Status](#status) · [Install](#install) · [Usage](#usage) · [Compatibility](#compatibility) · [How it works](#how-it-works) · [Contributing](CONTRIBUTING.md)
+[Install](#install) · [Status](#status) · [Usage](#usage) · [Compatibility](#compatibility) · [How it works](#how-it-works) · [How this was built](#how-this-was-built) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -29,49 +29,53 @@
 It runs over UDP, keeps the screen in sync instead of streaming bytes, and echoes your keystrokes locally before the server answers.
 
 mosh-rs is a Rust port of mosh master (decd9b7, March 2026), wire-compatible with mosh 1.4.0, so that it works with the `mosh-server` already installed on your hosts.
-It is being built to add two things upstream mosh never had: a native Windows client, and scrollback that lands in your local terminal's history.
-Linux releases will be single static binaries.
+It adds two things upstream mosh never had: a native Windows client, and scrollback that lands in your local terminal's history.
+The Linux release binaries are single static binaries.
 
-**Status: pre-alpha, under active development.**
-Nothing below works yet unless the [Status](#status) list says so.
-Every number and every compatibility result in this README will be measured, and until it is, the README says so.
+**Status: pre-alpha.**
+v0.1.0 is the first pre-release: download it from the [Releases page](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.0) and see [Install](#install).
+The [Status](#status) list says what has been tested and what has not.
+Every number and every compatibility result in this README was measured, and anything not yet tested is marked as such.
+
+Found a bug or something that behaves differently from mosh?
+Please [open an issue](https://github.com/Arunjay4213/mosh-rs/issues).
+For security problems, follow [SECURITY.md](SECURITY.md) instead.
 
 ## Status
 
-Progress follows the phases in [PLAN.md](PLAN.md) section 10.
-A box is checked only when its gate has passed and the result is recorded in [STATUS.md](STATUS.md).
+An item is checked only after its tests passed; the commands and results are recorded in [STATUS.md](STATUS.md).
+The work follows the order in [PLAN.md](PLAN.md) section 10.
 
-### Phase 0: setup
+### Foundations
 
 - [x] Cargo workspace with four crates, release profile, and Windows cross target
-
-### Phase 1: foundations
-
 - [x] `crates/network`: AES-128-OCB3 crypto, protobuf messages, and SSP transport, differential-tested against upstream
 - [x] `crates/terminal`: emulator and `Display::new_frame`, cell-exact against upstream on fuzz and corpus inputs
 - [x] `crates/platform` and the `mosh` launcher: raw mode, resize, pty, `--fake-proxy` address discovery as in mosh.pl
 - [x] `tools/`: `udp-impair` network impairment proxy, session corpus recorder
 
-### Phase 2: state sync, server, client
+### State sync, server, and client
 
 - [x] State objects (`UserStream`, `Complete`) round-trip against upstream
 - [x] `mosh-server`: upstream `mosh-client` connects and survives loss and roaming
 - [x] `mosh-client`: connects to upstream `mosh-server`, with the prediction overlay
 - [x] Full interop matrix and upstream `make check` pass with mosh-rs binaries
 
-### Phase 3: Windows
+### Windows client
 
-- [x] `mosh.exe` runs in Windows Terminal against a Linux server and survives losing the network (Wi-Fi off and on, accepted by the user in place of sleep and wake)
+- [x] `mosh.exe` runs in Windows Terminal against a Linux server and survives losing the network (tested by turning Wi-Fi off and on)
+- [ ] Sleep and wake, Ctrl-^ Ctrl-Z, and idle CPU tested on Windows
 
-### Phase 4: scrollback
+### Scrollback feature
 
 - [x] Server-side capture and the `ScrolledLines` wire extension
 - [x] Client-side injection into the local terminal's history, with old peers unaffected
 
-### Phase 5: performance and release
+### Performance and release
 
-- [ ] Benchmarks against C++ mosh 1.4.0 published below
-- [ ] v0.1.0 release with static Linux (x86_64, arm64), macOS arm64, and Windows x86_64 binaries
+- [x] Benchmarks against C++ mosh 1.4.0, published under [Performance](#performance)
+- [x] v0.1.0 pre-release with static Linux (x86_64, arm64), macOS arm64, and Windows x86_64 binaries
+- [ ] macOS binary used for a real session on a Mac
 
 ## Why a rewrite
 
@@ -86,9 +90,46 @@ New features are additive protobuf fields that existing peers ignore, so mixed o
 
 ## Install
 
-Pre-built binaries for Linux, macOS, and Windows will be attached to the v0.1.0 release.
-Until then, build from source on Linux with Rust 1.89 or later (the minimum, `rust-version` in `Cargo.toml`).
-The macOS target (aarch64-apple-darwin) passes `cargo check` but has not been built or run on a Mac yet.
+Pre-built binaries are attached to the [v0.1.0 release](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.0).
+Each archive has a `.sha256` file next to it for checking the download.
+v0.1.0 is a pre-release; the [Status](#status) list says what has been tested.
+
+mosh-rs works with the `mosh-server` already on your hosts (mosh 1.4), so you can install only the client side.
+The `--scrollback` feature needs the mosh-rs `mosh-server` on the remote host.
+
+### Linux (x86_64 and arm64)
+
+The archives hold static binaries for `mosh`, `mosh-client`, and `mosh-server`.
+Replace `x86_64` with `aarch64` for arm64.
+
+```sh
+v=v0.1.0; t=x86_64-unknown-linux-musl
+curl -LO https://github.com/Arunjay4213/mosh-rs/releases/download/$v/mosh-rs-$v-$t.tar.gz
+curl -LO https://github.com/Arunjay4213/mosh-rs/releases/download/$v/mosh-rs-$v-$t.tar.gz.sha256
+sha256sum -c mosh-rs-$v-$t.tar.gz.sha256
+tar xzf mosh-rs-$v-$t.tar.gz
+sudo install mosh-rs-$v-$t/mosh mosh-rs-$v-$t/mosh-client mosh-rs-$v-$t/mosh-server /usr/local/bin/
+```
+
+### macOS (Apple silicon)
+
+Download `mosh-rs-v0.1.0-aarch64-apple-darwin.tar.gz` and install it the same way, with `shasum -a 256 -c` in place of `sha256sum -c`.
+The macOS binaries are built and pass a `--version` smoke test in the release workflow, but have not been used for a real session on a Mac yet.
+
+### Windows (x86_64)
+
+1. Download `mosh-rs-v0.1.0-x86_64-pc-windows-msvc.zip` and unzip it.
+2. Keep `mosh.exe` and `mosh-client.exe` together in one folder: `mosh.exe` starts the `mosh-client.exe` next to it.
+3. In Windows Terminal, run `.\mosh.exe user@host` from that folder, or add the folder to your `PATH`.
+
+The launcher uses the OpenSSH client that ships with Windows 10 and later.
+There is no Windows server; the remote host needs `mosh-server` from mosh-rs or mosh 1.4.
+The escape key is Ctrl-^, which you type as Ctrl+6 in Windows Terminal, so Ctrl+6 then `.` quits a session.
+See [Windows](#windows) for what has been tested.
+
+### From source
+
+Build on Linux with Rust 1.89 or later (the minimum, `rust-version` in `Cargo.toml`):
 
 ```sh
 git clone https://github.com/Arunjay4213/mosh-rs
@@ -150,13 +191,13 @@ The mosh 1.4 binaries are the Ubuntu 24.04 apt package.
 | mosh-rs client with `--scrollback` / mosh-rs server | ✅ | ✅ | ✅ | ✅ | ✅ |
 | mosh-rs client with `--scrollback` / mosh 1.4 server | ✅ | ✅ | ✅ | ✅ | ✅ |
 
-✅ verified by the interop test (`INTEROP_FULL=1 tests/interop.sh`), six screen scenarios per cell (seq, colors, vim, wide characters, resize, typing), 180 runs in all (120 for the first four rows, 60 for the two `--scrollback` rows), on devbox (arm64 Linux) at commit 728e468 ([STATUS.md](STATUS.md), "Phase 4: every devbox check passes").
+✅ verified by the interop test (`INTEROP_FULL=1 tests/interop.sh`), six screen scenarios per cell (seq, colors, vim, wide characters, resize, typing), 180 runs in all (120 for the first four rows, 60 for the two `--scrollback` rows), on an 8-core arm64 Linux VM at commit 728e468 (results in [STATUS.md](STATUS.md)).
 In the loss columns, loss starts once the session is up; session setup with 30% loss from the first packet is checked separately by `tests/interop-setup-loss.sh` (40 of 40 setups for the mosh-rs client with the 1.4 server and for the 1.4 client with the mosh-rs server).
 Upstream's own test suite (`make check`, 32 tests, from the decd9b7 tree) also passes with mosh-rs binaries in every client/server combination (mosh-rs server, mosh-rs client, both): 30 pass and the same 2 expected failures as upstream.
 
 ## Performance
 
-Targets from [PLAN.md](PLAN.md) section 5, measured by `tools/bench` against C++ mosh 1.4.0 (Ubuntu 24.04 package) on the same machine: devbox, an 8-core arm64 Linux VM (Neoverse-V1), mosh-rs commit 7cab26f, with `target/release/bench --hour`.
+Targets from [PLAN.md](PLAN.md) section 5, measured by `tools/bench` against C++ mosh 1.4.0 (Ubuntu 24.04 package) on the same machine, an 8-core arm64 Linux VM (Neoverse-V1), mosh-rs commit 7cab26f, with `target/release/bench --hour`.
 Both implementations run the same scripted workload, alternating run by run; [tools/bench/README.md](tools/bench/README.md) describes it.
 
 | Metric | Target | mosh-rs | mosh 1.4.0 |
@@ -221,8 +262,9 @@ It starts the server with the `ssh.exe` that ships with Windows 10 and later, an
 The escape key is Ctrl-^, as in upstream; in Windows Terminal you type it as Ctrl+6.
 So Ctrl+6 then `.` quits the session.
 
-Tested by hand on a Windows laptop in Windows Terminal against a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)): connecting, typing, `ls --color`, vim, UTF-8 output, Ctrl-C, resizing and quitting all worked, and a session survived turning Wi-Fi off and on.
-The user accepted the Wi-Fi off-and-on test as the Phase 3 pass in place of a sleep-and-wake test, because both cut the network under a live session and mosh recovers from either the same way; sleeping and waking the laptop itself has not been run.
+Tested by hand on a Windows machine in Windows Terminal against a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)): connecting, typing, `ls --color`, vim, UTF-8 output, Ctrl-C, resizing and quitting all worked, and a session survived turning Wi-Fi off and on.
+The Wi-Fi off-and-on test was accepted as the network-loss check for the Windows client in place of a sleep-and-wake test, because both cut the network under a live session and mosh recovers from either the same way.
+Sleeping and waking the Windows machine has not been tested.
 Not tested yet: Ctrl-^ Ctrl-Z and idle CPU on Windows.
 
 ## How correctness is checked
@@ -238,6 +280,17 @@ Each check is a program that can be run, and the results go into [STATUS.md](STA
 - **End-to-end and comparison tests.** The real binaries, mostly driven in tmux, with most cases also run with the C++ program for comparison: client, server, prediction timing at 300 ms round trip, the launcher's options and messages compared with `/usr/bin/mosh` (73 cases), terminfo answers for every terminal type, and a hostile scrollback server.
 - **Scrollback oracle.** `seq 1 50000` through mosh-rs inside tmux must appear in history exactly, with no gaps, duplicates, or blank lines, including under 30% loss, a vim excursion, `clear`, and a width resize (height resizes have the known limit above).
 - **Benchmarks.** Side by side with C++ mosh 1.4.0 in the same harness.
+
+## How this was built
+
+The port was produced by AI coding agents working from the upstream mosh source under a written plan, [PLAN.md](PLAN.md).
+Every module was checked against upstream's own code by differential testing, as described in [How correctness is checked](#how-correctness-is-checked), and reviewed line by line against the upstream code it was ported from.
+The complete record of the work is in this repository:
+
+- [PLAN.md](PLAN.md): the plan the port follows, including the allowed differences from upstream.
+- [STATUS.md](STATUS.md): the status log, with the commands run and their measured results.
+- [INTERVENTIONS.md](INTERVENTIONS.md): every time the work needed outside help or departed from the plan.
+- [reviews/](reviews/): the code reviews and how each finding was resolved.
 
 ## Project layout
 

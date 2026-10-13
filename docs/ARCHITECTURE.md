@@ -5,8 +5,8 @@ It explains what a mosh session is made of, how mosh-rs splits that into crates,
 The code is ported from mosh master (decd9b7, March 2026).
 The authoritative plan is [PLAN.md](../PLAN.md); section numbers below refer to it.
 
-mosh-rs is pre-alpha.
-Everything described here is built and checked on devbox (STATUS.md); no release has been made yet, and the phase gates are recorded in STATUS.md as they pass.
+mosh-rs is pre-alpha, and v0.1.0 is its first pre-release.
+Everything described here is built and checked by the test suite, and the results are recorded in [STATUS.md](../STATUS.md).
 
 ## The big picture
 
@@ -124,7 +124,7 @@ That is why a client patched to skip smcup gets partial scrollback, with gaps an
 
 ### Design
 
-Everything is gated on negotiation, so old peers see byte-identical behavior.
+Everything depends on negotiation, so old peers see byte-identical behavior.
 PLAN.md section 6 has every detail; this is the summary of what is implemented.
 
 1. **Negotiation.**
@@ -141,7 +141,7 @@ PLAN.md section 6 has every detail; this is the summary of what is implemented.
    The backlog holds only lines the client has not acknowledged, capped in bytes (`mosh-server --scrollback MIB`, default 32 MiB, `K` suffix for KiB, 0 turns capture off).
    The server publishes at most 4,856 bytes of history (four fragments) beyond what the client has acknowledged, so history follows the screen a few round trips behind and survives loss (the history of `seq 1 50000` takes about 9 s on loopback; the screen itself is not delayed).
    The remote program is never paused: on overflow the oldest unpublished lines become a dropped count.
-   This was a decision, recorded in INTERVENTIONS.md ("history is windowed and never blocks the remote program"): pausing the program would make history exact in every case, but would freeze the screen under loss and stall a long build while the laptop sleeps.
+   This was a decision, recorded in INTERVENTIONS.md ("history is windowed and never blocks the remote program"): pausing the program would make history exact in every case, but would freeze the screen under loss and stall a long build while the client's machine sleeps.
 4. **Wire.**
    New `HostBuffers::Instruction` field 9, `ScrolledLines { optional uint64 first_index = 1; repeated bytes line = 2; optional uint64 dropped = 3; }`, and field 10, `ScreenMode { optional bool alternate_screen = 1; }`, sent only in scrollback mode.
    `Complete` equality includes `scrolled_total` and the announcement, so publishing lines without a screen change is still sent.

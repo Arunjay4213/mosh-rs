@@ -1,6 +1,6 @@
 # Session corpus
 
-Raw output of real programs running under a pseudoterminal, recorded on devbox (arm64 Ubuntu 24.04) by `tools/pty-record`.
+Raw output of real programs running under a pseudoterminal, recorded on an arm64 Ubuntu 24.04 machine by `tools/pty-record`.
 Each `.bin` holds every byte the program wrote to the pty, with no framing.
 Each `.bin.meta` holds the command, starting size, byte count, duration and exit status.
 Recordings start at 80x24 with `TERM=xterm-256color` and `LANG=C.UTF-8`.
@@ -11,7 +11,7 @@ Content depends on the machine (file listings, process lists, dates), so re-reco
 These files are conformance inputs for the terminal emulator oracle (PLAN.md section 3, oracle 3).
 
 | file | command | size (bytes) | duration (ms) |
-|------|---------|-------------:|--------------:|
+| --- | --- | ---: | ---: |
 | `bash-colors.bin` | `bash --norc --noprofile -i` | 5538 | 367 |
 | `claude-tui.bin` | `bash --norc --noprofile -i` | 2053 | 10471 |
 | `colors256-truecolor.bin` | `bash --norc --noprofile -i` | 14896 | 369 |

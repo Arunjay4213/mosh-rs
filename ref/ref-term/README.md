@@ -52,7 +52,7 @@ Integers are decimal unless noted.
 `<wlist>` is a comma-separated list of lowercase hex code points (upstream stores titles as `std::vector<wchar_t>`).
 Booleans are `0` or `1`.
 
-```
+```text
 size W H
 cursor ROW COL visible B next_print_will_wrap B
 combining ROW COL
@@ -94,7 +94,7 @@ Upstream has no keypad application mode in `DrawState`, so the dump has no such 
 
 `make -C ref/ref-term wcwidth` regenerates `crates/terminal/src/wcwidth.rs`: glibc `wcwidth()` for every code point 0..=0x10FFFF under `C.UTF-8`, as a sorted range table.
 The file header records the glibc version that produced it.
-On devbox (glibc 2.39) `C.UTF-8` and `en_US.UTF-8` give identical widths for every code point.
+On the arm64 Ubuntu 24.04 development machine (glibc 2.39) `C.UTF-8` and `en_US.UTF-8` give identical widths for every code point.
 
 ## gen-terminfo
 
