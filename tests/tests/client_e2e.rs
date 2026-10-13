@@ -168,6 +168,20 @@ impl Tmux {
     fn wait_for(&self, needle: &str, timeout: Duration) -> String {
         self.wait_until(&format!("{needle:?}"), timeout, |s| s.contains(needle))
     }
+
+    /// Wait for the shell's `MOSH_EXIT=<status>` line. The typed command
+    /// line (`...; echo MOSH_EXIT=$?`) holds `MOSH_EXIT=` too, and is back
+    /// on screen as soon as the client leaves the alternate screen, before
+    /// the client has exited and the shell has printed the status; waiting
+    /// for the text alone could capture that moment (CI, 565684a).
+    fn wait_exit(&self, timeout: Duration) -> String {
+        self.wait_until("a MOSH_EXIT=<status> line", timeout, |s| {
+            s.lines().any(|l| {
+                l.strip_prefix("MOSH_EXIT=")
+                    .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+            })
+        })
+    }
 }
 
 impl Drop for Tmux {
@@ -221,7 +235,7 @@ fn command_output_and_exit() {
             "sh -c 'printf \"CLIENT_OK\\n\"; seq 1 300; echo DONE; sleep 2'",
         ));
         let live = tmux.wait_line("DONE", Duration::from_secs(30));
-        let done = tmux.wait_for("MOSH_EXIT=", Duration::from_secs(30));
+        let done = tmux.wait_exit(Duration::from_secs(30));
         println!(
             "[{name}] live screen:\n{}\n[{name}] final screen:\n{}",
             live.trim_end(),
@@ -235,7 +249,10 @@ fn command_output_and_exit() {
             done.contains("[mosh is exiting.]"),
             "[{name}] no exit message"
         );
-        assert!(done.contains("MOSH_EXIT=0"), "[{name}] non-zero exit");
+        assert!(
+            done.contains("MOSH_EXIT=0"),
+            "[{name}] non-zero exit; screen:\n{done}"
+        );
         kill_server(port);
     }
 }
@@ -259,9 +276,12 @@ fn interactive_shell_and_resize() {
         println!("[{name}] after resize:\n{}", screen.trim_end());
 
         tmux.type_line("exit");
-        let done = tmux.wait_for("MOSH_EXIT=", Duration::from_secs(30));
+        let done = tmux.wait_exit(Duration::from_secs(30));
         println!("[{name}] final screen:\n{}", done.trim_end());
-        assert!(done.contains("MOSH_EXIT=0"), "[{name}] non-zero exit");
+        assert!(
+            done.contains("MOSH_EXIT=0"),
+            "[{name}] non-zero exit; screen:\n{done}"
+        );
         kill_server(port);
     }
 }
@@ -286,13 +306,16 @@ fn escape_quit_restores_terminal() {
             help.lines().next().unwrap_or("")
         );
         tmux.tmux(&["send-keys", "."]);
-        let done = tmux.wait_for("MOSH_EXIT=", Duration::from_secs(30));
+        let done = tmux.wait_exit(Duration::from_secs(30));
         println!("[{name}] after quit:\n{}", done.trim_end());
         assert!(
             done.contains("[mosh is exiting.]"),
             "[{name}] no exit message"
         );
-        assert!(done.contains("MOSH_EXIT=0"), "[{name}] non-zero exit");
+        assert!(
+            done.contains("MOSH_EXIT=0"),
+            "[{name}] non-zero exit; screen:\n{done}"
+        );
         assert!(
             done.contains("PRE_MOSH_MARKER"),
             "[{name}] the pre-mosh screen did not come back"
@@ -344,7 +367,7 @@ fn killed_server_shows_last_contact() {
 
         tmux.tmux(&["send-keys", "C-^"]);
         tmux.tmux(&["send-keys", "."]);
-        let done = tmux.wait_for("MOSH_EXIT=", Duration::from_secs(30));
+        let done = tmux.wait_exit(Duration::from_secs(30));
         println!("[{name}] after quit:\n{}", done.trim_end());
         assert!(
             done.contains("[mosh is exiting.]"),
@@ -397,7 +420,7 @@ fn idle_cpu() {
         let cpu: f64 = line.split_whitespace().nth(7).unwrap().parse().unwrap();
         assert!(cpu <= 0.05, "[{name}] idle client used {cpu}% CPU");
         tmux.type_line("exit");
-        tmux.wait_for("MOSH_EXIT=", Duration::from_secs(30));
+        tmux.wait_exit(Duration::from_secs(30));
         kill_server(*port);
     }
 }
@@ -473,7 +496,7 @@ fn no_server_times_out() {
             "[{name}] timeout bar after {:.1} s",
             started.elapsed().as_secs_f64()
         );
-        let done = tmux.wait_for("MOSH_EXIT=", Duration::from_secs(60));
+        let done = tmux.wait_exit(Duration::from_secs(60));
         println!(
             "[{name}] exit after {:.1} s:\n{}",
             started.elapsed().as_secs_f64(),

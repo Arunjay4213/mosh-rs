@@ -683,3 +683,7 @@ Green CI at 157a55a (PR #12; fmt, clippy and every test shard on x86_64 and arm6
 - Not tested on Windows: Ctrl-^ Ctrl-Z, idle CPU in Task Manager, sleep and wake. The Fable review of `crates/platform` (the Windows console path) is running from the laptop; its findings will be handled as they land, and a blocking one reopens this gate.
 
 Also in this commit: the unused `unicode-width` and `lexopt` declarations are removed (PLAN section 2 updated), the workspace `repository` URL is the GitHub repository, and the two old entries that said CI builds mosh 1.4.0 carry a correction (it builds decd9b7). Checked: release build, `cargo clippy --workspace --all-targets -- -D warnings` on stable and on 1.89.0, Windows build of `mosh`, `cargo fmt --all --check`.
+
+## 2026-10-13 CI client_e2e "non-zero exit" fixed in the tests (agent S2)
+
+- The exit-status waits in client_e2e, server_e2e and launcher matched the typed command line's `MOSH_EXIT=` and could capture before the shell printed the status. They now wait for a whole `MOSH_EXIT=<n>` line. Both clients exited 0 in all 100 devbox runs (50 each, with and without load). `command_output_and_exit` under load: 15 of 15. Details in INTERVENTIONS.md.

@@ -145,6 +145,20 @@ impl Tmux {
         self.wait_until(needle, timeout, |s| s.contains(needle))
     }
 
+    /// Wait for the shell's `MOSH_EXIT=<status>` line. The typed command
+    /// line (`...; echo MOSH_EXIT=$?`) holds `MOSH_EXIT=` too, and is back
+    /// on screen as soon as the client leaves the alternate screen, before
+    /// the client has exited and the shell has printed the status; waiting
+    /// for the text alone could capture that moment (CI, 565684a).
+    fn wait_exit(&self, timeout: Duration) -> String {
+        self.wait_until("a MOSH_EXIT=<status> line", timeout, |s| {
+            s.lines().any(|l| {
+                l.strip_prefix("MOSH_EXIT=")
+                    .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+            })
+        })
+    }
+
     /// Wait for a line that is exactly `line` (trailing blanks ignored), so
     /// typed or predicted command lines do not count as output.
     fn wait_for_line(&self, line: &str, timeout: Duration) -> String {
@@ -215,7 +229,7 @@ fn command_output_and_exit() {
             live.lines().any(|l| l.trim_end() == "300"),
             "[{name}] no 300 line:\n{live}"
         );
-        let done = tmux.wait_for("MOSH_EXIT=", Duration::from_secs(30));
+        let done = tmux.wait_exit(Duration::from_secs(30));
         println!("[{name}] final screen:\n{}", done.trim_end());
         assert!(
             done.contains("[mosh is exiting.]"),
@@ -255,7 +269,7 @@ fn typing_and_resize() {
         );
 
         tmux.send_keys(&["exit", "Enter"]);
-        let done = tmux.wait_for("MOSH_EXIT=", Duration::from_secs(30));
+        let done = tmux.wait_exit(Duration::from_secs(30));
         assert!(
             done.contains("MOSH_EXIT=0"),
             "[{name}] mosh exited non-zero:\n{done}"
