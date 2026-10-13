@@ -145,3 +145,15 @@ Terminfo (review T-1, T-2, PLAN 9.6), commit 13f6466: the TERM capability table 
 `cargo test --release -p mosh-tests --test terminfo_table -- --nocapture`: `terms=2830 (toe -a 1830 plus aliases) compared=5660 upstream_errors_fell_back_to_xterm=74 mismatches=0`.
 The comparison runs every name with `MOSH_NO_TERM_INIT` unset and set. The 74 fallbacks are 36 hardcopy entries plus one unknown name, times two runs: upstream throws on them, and the port uses xterm's answers.
 Planted-bug check: flipping `bce` in kitty's tuple gave 12 mismatches.
+
+## 2026-10-13 Phase 2 started: server, client, interop harness
+
+Before starting, the orchestrator reran: statesync round trip (27 files, 2214 steps, 0 mismatches; one screen difference that upstream's own client/server pair reproduces byte for byte), terminal conformance (3024 redraws including 756 across a resize, 0 mismatches), terminfo table (2830 terminal names, 0 mismatches against upstream), launcher (4 of 4), and the Windows cross-builds of mosh-network, mosh-platform and mosh.
+
+CI is red only on the terminfo test because the runner lacks two packages; the fix is on branch ci/terminfo for the laptop to push (INTERVENTIONS.md). Phase 1 is not declared passed until CI is green.
+
+Agent spawns and why (all Opus, medium effort, each in its own git worktree):
+- M, interop harness. Owns `tests/interop.sh` and `tests/upstream-check.sh`. Needed because the gates for D and E are defined as "the interop matrix column passes" and no matrix driver exists. M proves the harness on C++ client x C++ server first, so a later failure points at our code, not the harness.
+- D, server. Ports `mosh-server.cc`. Independent of E: it is tested first against the real C++ client.
+- E, client. Ports `mosh-client.cc` and `stmclient.cc`, then the prediction overlay `terminaloverlay.cc`. Independent of D: it is tested first against the real C++ server.
+- B and C get small follow-ups (state subtraction without a full-screen copy, malformed diffs return errors; the proxy ignores SIGHUP like mosh.pl).
