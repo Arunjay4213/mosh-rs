@@ -2,7 +2,8 @@
 
 Version 2 of the plan, 2026-10-13.
 Working name `mosh-rs` (rename before publishing).
-License GPLv3, because the code is ported from upstream mosh 1.4.0 (GPLv3, Keith Winstein et al.).
+License GPLv3, because the code is ported from upstream mosh (GPLv3, Keith Winstein et al.).
+Port source: upstream git master at commit decd9b7 (2026-03-22, 39 commits after the `mosh-1.4.0` tag), which is what `~/src/mosh` on devbox contains. Interop and `make check` compatibility are proven against the mosh 1.4.0 release binaries from apt.
 Goal: one static Rust binary per platform that talks to every existing mosh-server, runs natively on Windows, and adds scrollback.
 
 All work happens on devbox (`~/mosh-rs`), inside a Claude Code session running in tmux.

@@ -1,6 +1,6 @@
 # mosh-rs
 
-Rust reimplementation of mosh 1.4.0. Read `PLAN.md` first. Section numbers below refer to it.
+Rust reimplementation of mosh (upstream master commit decd9b7; compatible with mosh 1.4.0). Read `PLAN.md` first. Section numbers below refer to it.
 
 ## Rules
 
