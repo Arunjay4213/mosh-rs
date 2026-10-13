@@ -211,3 +211,10 @@ Measured (`cargo test --release -p mosh-tests --test client_e2e`, every test run
 - `cargo build -p mosh --bin mosh-client --target x86_64-pc-windows-gnu`: builds.
 - Not yet run: `tests/interop.sh` and `tests/upstream-check.sh` (agent M's harness is not on main yet).
 
+## 2026-10-13 mosh-server: stdio write errors ignored as in C (agent D)
+
+Found by running upstream `make check` with our server in a private copy of the upstream tree (`e2e-success` server stderr): when stdout was a pipe whose reader had gone, the final `[mosh-server is exiting.]` made the server panic with "failed printing to stdout: Broken pipe", because Rust's `print!` panics on a failed write and C's `fputs` does not.
+Every message in `crates/mosh/src/server` now goes through `write!` with the error ignored.
+The network crate's verbose diagnostics (`-v`) still use `eprintln!` and would panic the same way if stderr broke; reported to the orchestrator, not changed here.
+
+Measured: private `make check` copy with our `mosh-server`: TOTAL 32, PASS 30, XFAIL 2, FAIL 0, XPASS 0, ERROR 0, and no `panicked` in any test output.

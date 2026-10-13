@@ -70,6 +70,30 @@ use crate::statesync::{Complete, UserAction, UserStream};
 
 type ServerConnection = Transport<Complete, UserStream>;
 
+// stdio that ignores write errors, as C's printf and fprintf do. Rust's
+// print! and eprint! panic when the descriptor fails (EPIPE once ssh has
+// gone, for example), which upstream never does.
+macro_rules! outp {
+    ($($arg:tt)*) => {{
+        let _ = write!(io::stdout(), $($arg)*);
+    }};
+}
+macro_rules! outln {
+    ($($arg:tt)*) => {{
+        let _ = writeln!(io::stdout(), $($arg)*);
+    }};
+}
+macro_rules! errp {
+    ($($arg:tt)*) => {{
+        let _ = write!(io::stderr(), $($arg)*);
+    }};
+}
+macro_rules! errln {
+    ($($arg:tt)*) => {{
+        let _ = writeln!(io::stderr(), $($arg)*);
+    }};
+}
+
 /// Upstream `PACKAGE_STRING`, following the launcher's naming.
 const PACKAGE_STRING: &str = concat!("mosh-rs ", env!("CARGO_PKG_VERSION"));
 /// Upstream `BUILD_VERSION`.
@@ -84,7 +108,7 @@ const STDERR_FILENO: RawFd = 2;
 
 /// C `perror( s )`.
 fn perror(s: &str, e: &io::Error) {
-    eprintln!("{s}: {}", strerror(e.raw_os_error().unwrap_or(0)));
+    errln!("{s}: {}", strerror(e.raw_os_error().unwrap_or(0)));
 }
 
 /// glibc's `program_invocation_short_name`, which `err` and `warn` print.
@@ -100,7 +124,7 @@ fn progname() -> String {
 
 /// C `warn( msg )`: `progname: msg: strerror(errno)`.
 fn warn(msg: &str, e: &io::Error) {
-    eprintln!(
+    errln!(
         "{}: {msg}: {}",
         progname(),
         strerror(e.raw_os_error().unwrap_or(0))
@@ -151,12 +175,12 @@ fn spin() {
 fn get_ssh_ip() -> String {
     let Some(ssh_connection) = std::env::var_os("SSH_CONNECTION") else {
         /* Older sshds don't set this */
-        eprintln!("Warning: SSH_CONNECTION not found; binding to any interface.");
+        errln!("Warning: SSH_CONNECTION not found; binding to any interface.");
         return String::new();
     };
     let ssh_connection = ssh_connection.to_string_lossy().into_owned();
     let Some(local_interface_ip) = ssh_connection.split_ascii_whitespace().nth(2) else {
-        eprintln!("Warning: Could not parse SSH_CONNECTION; binding to any interface.");
+        errln!("Warning: Could not parse SSH_CONNECTION; binding to any interface.");
         return String::new();
     };
 
@@ -208,7 +232,7 @@ fn getopt(args: &[OsString], optstring: &str, mut handle: impl FnMut(char, Optio
             j += 1;
             match takes_arg(c) {
                 None => {
-                    eprintln!("{name}: invalid option -- '{}'", c as char);
+                    errln!("{name}: invalid option -- '{}'", c as char);
                     handle('?', None);
                 }
                 Some(false) => handle(c as char, None),
@@ -219,7 +243,7 @@ fn getopt(args: &[OsString], optstring: &str, mut handle: impl FnMut(char, Optio
                         handle(c as char, Some(args[i].clone()));
                         i += 1;
                     } else {
-                        eprintln!("{name}: option requires an argument -- '{}'", c as char);
+                        errln!("{name}: option requires an argument -- '{}'", c as char);
                         handle('?', None);
                     }
                     break;
@@ -329,7 +353,7 @@ pub fn main() -> i32 {
                         // long to int, as upstream's `colors = myatoi( optarg )`.
                         Ok(n) => colors = n as i32,
                         Err(_) => {
-                            eprintln!("{argv0}: Bad number of colors ({optarg})");
+                            errln!("{argv0}: Bad number of colors ({optarg})");
                             print_usage(&mut io::stderr(), &argv0);
                             exit(1);
                         }
@@ -360,7 +384,7 @@ pub fn main() -> i32 {
     let (mut dpl, mut dph) = (0, 0);
     if let Some(port) = &desired_port {
         if !Connection::parse_portrange(port, &mut dpl, &mut dph) {
-            eprintln!("{argv0}: Bad UDP port range ({port})");
+            errln!("{argv0}: Bad UDP port range ({port})");
             print_usage(&mut io::stderr(), &argv0);
             exit(1);
         }
@@ -439,7 +463,7 @@ pub fn main() -> i32 {
             let client_ctype = get_ctype();
             let client_charset = locale_charset();
 
-            eprint!(
+            errp!(
                 "mosh-server needs a UTF-8 native locale to run.\n\n\
                  Unfortunately, the local environment ({}) specifies\n\
                  the character set \"{}\",\n\n\
@@ -469,11 +493,11 @@ pub fn main() -> i32 {
     ) {
         Ok(code) => code,
         Err(Error::Network(e)) => {
-            eprintln!("Network exception: {e}");
+            errln!("Network exception: {e}");
             1
         }
         Err(Error::Crypto(e)) => {
-            eprintln!("Crypto exception: {e}");
+            errln!("Crypto exception: {e}");
             1
         }
     }
@@ -489,9 +513,9 @@ fn get_timeout_env(name: &str) -> i64 {
             let (value, whole) = strtol_whole(envar.as_bytes());
             timeout = value;
             if !whole {
-                eprintln!("{name} not a valid integer, ignoring");
+                errln!("{name} not a valid integer, ignoring");
             } else if timeout < 0 {
-                eprintln!("{name} is negative, ignoring");
+                errln!("{name} is negative, ignoring");
                 timeout = 0;
             }
         }
@@ -543,9 +567,9 @@ fn run_server(
      * around that.
      */
     if sys::isatty(STDIN_FILENO) {
-        print!("\r\n\n"); /* puts( "\r\n" ) */
+        outp!("\r\n\n"); /* puts( "\r\n" ) */
     }
-    println!("MOSH CONNECT {} {}", network.port()?, network.get_key());
+    outln!("MOSH CONNECT {} {}", network.port()?, network.get_key());
 
     /* don't let signals kill us */
     sys::set_signal_disposition(SIGHUP, true).expect("fatal_assert: sigaction( SIGHUP )");
@@ -558,7 +582,7 @@ fn run_server(
         Err(e) => perror("fork", &e),
         Ok(0) => {}
         Ok(the_pid) => {
-            eprint!(
+            errp!(
                 "\nmosh-server ({PACKAGE_STRING}) [build {BUILD_VERSION}]\n\
                  Copyright 2012 Keith Winstein <mosh-devel@mit.edu>\n\
                  License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.\n\
@@ -566,7 +590,7 @@ fn run_server(
                  There is NO WARRANTY, to the extent permitted by law.\n\n"
             );
 
-            eprintln!("[mosh-server detached, pid = {the_pid}]");
+            errln!("[mosh-server detached, pid = {the_pid}]");
 
             let _ = io::stdout().flush();
             if sys::isatty(STDOUT_FILENO) {
@@ -704,8 +728,8 @@ fn run_server(
         network_signaled_timeout,
     ) {
         Ok(()) => {}
-        Err(Error::Network(e)) => eprintln!("Network exception: {e}"),
-        Err(Error::Crypto(e)) => eprintln!("Crypto exception: {e}"),
+        Err(Error::Network(e)) => errln!("Network exception: {e}"),
+        Err(Error::Crypto(e)) => errln!("Crypto exception: {e}"),
     }
 
     if let Err(e) = sys::close(master) {
@@ -713,7 +737,7 @@ fn run_server(
         exit(1);
     }
 
-    print!("\n[mosh-server is exiting.]\n");
+    outp!("\n[mosh-server is exiting.]\n");
     let _ = io::stdout().flush();
 
     Ok(0)
@@ -794,14 +818,14 @@ fn serve(
             Ok(Next::Continue) => {}
             Ok(Next::Break) => break,
             Err(Error::Network(e)) => {
-                eprintln!("{e}");
+                errln!("{e}");
                 spin();
             }
             Err(Error::Crypto(e)) => {
                 if e.fatal {
                     return Err(Error::Crypto(e));
                 } else {
-                    eprintln!("Crypto exception: {e}");
+                    errln!("Crypto exception: {e}");
                 }
             }
         }
@@ -961,7 +985,7 @@ impl Serve<'_> {
         let mut idle_shutdown = false;
         if self.network_timeout_ms != 0 && self.network_timeout_ms <= time_since_remote_state {
             idle_shutdown = true;
-            eprintln!(
+            errln!(
                 "Network idle for {} seconds.",
                 time_since_remote_state / 1000
             );
@@ -971,7 +995,7 @@ impl Serve<'_> {
                 || self.network_signaled_timeout_ms <= time_since_remote_state)
         {
             idle_shutdown = true;
-            eprintln!(
+            errln!(
                 "Network idle for {} seconds when SIGUSR1 received",
                 time_since_remote_state / 1000
             );
@@ -1007,7 +1031,7 @@ impl Serve<'_> {
         }
 
         if network.get_remote_state_num() == 0 && time_since_remote_state >= TIMEOUT_IF_NO_CLIENT {
-            eprintln!(
+            errln!(
                 "No connection within {} seconds.",
                 TIMEOUT_IF_NO_CLIENT / 1000
             );
@@ -1105,7 +1129,7 @@ fn warn_unattached(ignore_entry: &str) {
     /* print out warning if necessary */
     if unattached_mosh_servers.is_empty() {
     } else if unattached_mosh_servers.len() == 1 {
-        print!(
+        outp!(
             "\x1b[37;44mMosh: You have a detached Mosh session on this server ({}).\x1b[m\n\n",
             unattached_mosh_servers[0]
         );
@@ -1116,7 +1140,7 @@ fn warn_unattached(ignore_entry: &str) {
             pid_string += &format!("        - {it}\n");
         }
 
-        print!(
+        outp!(
             "\x1b[37;44mMosh: You have {} detached Mosh sessions on this server, with PIDs:\n{}\x1b[m\n",
             unattached_mosh_servers.len(),
             pid_string
