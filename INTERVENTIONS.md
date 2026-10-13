@@ -3,6 +3,13 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 CI: options_and_messages_match_mosh_pl red on the runners (agent C)
+
+- Failure: `launcher differs from mosh.pl left: 33 right: 0` on every run since cb9bfd2, both architectures; green on devbox.
+- Cause, a test bug: the test found our launcher at `<repo>/tests/../target/release/mosh` when `CARGO_TARGET_DIR` is unset (the runners), while the launcher writes its canonical `current_exe()` path into the ssh ProxyCommand. So the `$0` normalization missed that path, and every case whose ssh argv was compared (33) differed in that one line. Devbox runs had used an absolute `CARGO_TARGET_DIR`. Reproduced on devbox with `CARGO_TARGET_DIR` unset: `73 cases, 33 different`; after the fix `73 cases, 0 different`.
+- Fix: `mosh_binary()` returns the canonical path. The assertion message now lists every differing case with its arguments, both exit codes and the differing lines, because the CI excerpt keeps only the end of the log.
+- Recorded expected outputs were considered and not used: some of mosh.pl's results depend on the machine, not on Perl. For `--experimental-remote-ip=local nosuch.invalid` the exit code is the resolver's errno, 22 on devbox and 255 on the runner, for real mosh and ours alike. A recording made on devbox would fail the correct launcher on CI. The live oracle is the same apt mosh 1.4.0 script on both machines (Ubuntu 24.04, Perl 5.38).
+
 ## 2026-10-13 Review G6-G8, G10-G12: launcher (agent C)
 
 - Devbox change for the G11 test: `/etc/hosts` gained `127.0.0.1 mosh-canon mosh-alias` and `::1 mosh-canon` (added with `sudo sh -c 'grep -q mosh-canon /etc/hosts || printf ... >> /etc/hosts'`). /etc/hosts cannot hold a CNAME; glibc reports the first name of a line as the canonical name, so `mosh-alias` alone resolves to 127.0.0.1 while its canonical name has both families, which is the case where mosh.pl's canonical-name step changes the result. The test skips where these lines are absent (CI).
