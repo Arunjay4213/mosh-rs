@@ -3,6 +3,9 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # Manual run: builds, smoke-tests and packages every target, uploads them as
+  # workflow artifacts, and publishes nothing.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -64,6 +67,30 @@ jobs:
         shell: bash
         run: ${{ matrix.tool }} build --release --locked --target ${{ matrix.target }} -p mosh ${{ matrix.bins }}
 
+      - name: Smoke test
+        # Runs the binaries on runners that can execute them (not the cross-built aarch64 musl one).
+        if: matrix.tool == 'cargo'
+        shell: bash
+        env:
+          TERM: xterm-256color
+        run: |
+          set -euo pipefail
+          out="target/${{ matrix.target }}/release"
+          ext=""
+          if [ "${{ matrix.archive }}" = "zip" ]; then ext=".exe"; fi
+          "$out/mosh$ext" --version | head -1
+          "$out/mosh-client$ext" --version | head -1
+          colors=$("$out/mosh-client$ext" -c)
+          echo "mosh-client -c: $colors"
+          [ "$colors" = "256" ]
+          if [ -z "$ext" ]; then
+            "$out/mosh-server" --version | head -1
+          fi
+          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-musl" ]; then
+            file "$out/mosh" "$out/mosh-client" "$out/mosh-server"
+            ! file "$out/mosh" "$out/mosh-client" "$out/mosh-server" | grep -q 'dynamically linked'
+          fi
+
       - name: Package
         id: package
         shell: bash
@@ -92,7 +119,16 @@ jobs:
           fi
           echo "asset=$asset" >> "$GITHUB_OUTPUT"
 
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.asset }}
+          path: |
+            ${{ steps.package.outputs.asset }}
+            ${{ steps.package.outputs.asset }}.sha256
+
       - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
