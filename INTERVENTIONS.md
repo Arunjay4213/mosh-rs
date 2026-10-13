@@ -227,3 +227,16 @@ Request for the orchestrator (test side, devbox owns it): make the two long scro
 - `tests/tests/scrollback_server.rs` (13 tests, 172 s): the same, or move the slow 30%-loss cases behind a `MOSH_CI_FULL=1` guard that devbox sets and PR CI does not; the full set still runs on every push to main.
 - `tests/run-all.sh`: accept `RUN_ALL_ONLY=<pattern>` to run a subset, so shards can call it, and run the shell drivers concurrently with the cargo tests when running everything.
 No test may be deleted or weakened; only split and parallelised.
+
+## 2026-10-13 Laptop: why every main run since 10:55 Central is red (two tests)
+
+Every CI run on main since cb37d80/cb9bfd2 fails on exactly one test, and the main report job cannot show it (its grep step still fails on logs with no matches; fixed on the pending CI branch). Read from the raw job logs:
+
+1. `options_and_messages_match_mosh_pl` (`tests/tests/launcher.rs:532`), both architectures, every run since agent C's Getopt::Long port (cb9bfd2, 10:55 Central):
+   `assertion left == right failed: launcher differs from mosh.pl  left: 33  right: 0`.
+   Passes on devbox. On the runner, `upstream/scripts/mosh.pl` runs under the runner's Perl and environment, so the comparison corpus differs in 33 cases. Agent C must see which 33 (print the differing option and both outputs on failure), and either make the test independent of the runner's Perl (compare against recorded expected outputs committed to the repo) or install what mosh.pl needs on the runner (`libio-socket-ip-perl` is already a mosh dependency; check what else differs).
+2. `blackout_silences_then_resumes` (`tests/tests/udp_impair.rs:414`), x86 PR run only, intermittent:
+   `assertion left == right failed: replies arrived during blackout  left: 1  right: 0`.
+   A reply sent just before the blackout started arrived after it. Timing race on a shared runner; the test should drain in-flight replies before starting the blackout window or allow replies sent before the window.
+
+Note: with the no-cancel rule, every queued commit now runs to completion, so one broken test shows up as many red runs at once. That is the pipeline working, not more bugs.
