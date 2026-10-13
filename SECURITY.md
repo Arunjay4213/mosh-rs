@@ -13,7 +13,9 @@ This table will list supported versions from v0.1.0 on.
 
 Please do not open a public issue, discussion, or pull request for a security problem.
 
-Report it privately through GitHub private vulnerability reporting:
+Report it privately through GitHub private vulnerability reporting.
+The repository is still private, and GitHub offers this form only on public repositories, so it is not available yet; it is to be turned on when the repository goes public.
+The steps will then be:
 
 1. Go to the repository's [Security tab](https://github.com/Arunjay4213/mosh-rs/security).
 2. Click **Report a vulnerability**.

@@ -236,7 +236,7 @@ What is missing or broken:
 | F5 | fixed | d9c8289 | terminal: `cargo clippy --workspace --all-targets -- -D warnings` clean |
 | F6 | fixed | d9c8289, cb37d80 | terminal: `#![deny(missing_docs)]`, `#![forbid(unsafe_code)]`, `//!` doc on every module; network done (`#![deny(missing_docs)]`, `//!` naming the upstream file on every module); terminal by agent B |
 | F7 | fixed | f01fc0d | private fields as upstream (Row::cells/gen, SavedCursor, Framebuffer::ds and DrawState mode flags stay public, as upstream); dump uses getters plus `debug_*` accessors |
-| F8 | fixed | d9c8289 | vt-fuzz builds; also `--frames` with resizes (c182b85) |
+| F8 | fixed | 077968f | d9c8289 built only on devbox's newer rustc (the mixed array types were unchanged); 077968f makes the arrays typed `[&[u8]; N]` consts, so vt-fuzz builds on every toolchain from 1.89 (review G3); also `--frames` with resizes (c182b85) |
 | F9 | fixed | 77311f8 | `Fragment::from_bytes` returns a dos_detected error under 10 bytes; tested directly and through a live server `Transport` (`transport_roundtrip` 5/5) |
 | F10 | fixed | 77311f8 | conflicting duplicate is an error and the partial instruction is discarded; tested both ways |
 | F11 | fixed | 77311f8 | final fragment below a stored index, and arrived above total, are errors; tested with fragment 5 then final 2 |
@@ -247,7 +247,7 @@ What is missing or broken:
 | F16 | answered | f3cec0d | PLAN.md section 9 item 9 lists the `add_sent_state` index repair |
 | F17 | fixed | d9c8289, f3cec0d | `reset_input` added to `State` and called in `set_current_state` as upstream (d9c8289); `compare` omission is PLAN.md section 9 item 10 |
 | F18 | fixed | eda88ae | map key borrowed from dispatch_chars or a 1-byte stack array; vt-fuzz 100,000 cases seed 21: 0 mismatches |
-| F19 | fixed (network part) | cc19759 | `split_first_mut` in `rationalize_states` and `get_remote_diff`; upstream's self-subtraction of the front state is `State::subtract_self`, whose default still copies; `Complete` (no-op) and `UserStream` (clear) must override it to remove the copy, agent B's files. transport_sync passes direct (10.0 s) and through udp-impair 30% loss + rebind (13.4 s) |
+| F19 | fixed | cc19759, e625741 | `split_first_mut` in `rationalize_states` and `get_remote_diff`; upstream's self-subtraction of the front state is `State::subtract_self`, whose default still copies; `Complete` (no-op) and `UserStream` (clear) override it to remove the copy, done in e625741. transport_sync passes direct (10.0 s) and through udp-impair 30% loss + rebind (13.4 s) |
 | F20 | fixed | 77311f8 | `Session::decrypt` returns "Ciphertext too long." above `RECEIVE_MTU`; tested with 2057 bytes |
 | F21 | fixed | f01fc0d | `unreachable!` with the reason |
 | F22 | answered | f01fc0d | Rc kept to match shared_ptr copy-on-write in a single-threaded program; doc note on Framebuffer |
