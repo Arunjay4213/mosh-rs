@@ -35,6 +35,22 @@
 //! parsing, `MOSH_KEY`, exit codes); `stmclient` and `terminaloverlay` are
 //! the files of the same names.
 
+// `printf` and `fprintf( stderr, ... )`. Like C stdio, a failed write is
+// ignored; Rust's `print!` family panics on it (e.g. a pipe whose reader
+// has gone).
+macro_rules! out {
+    ($($a:tt)*) => {{ use std::io::Write as _; let _ = write!(std::io::stdout(), $($a)*); }};
+}
+macro_rules! outln {
+    ($($a:tt)*) => {{ use std::io::Write as _; let _ = writeln!(std::io::stdout(), $($a)*); }};
+}
+macro_rules! err {
+    ($($a:tt)*) => {{ use std::io::Write as _; let _ = write!(std::io::stderr(), $($a)*); }};
+}
+macro_rules! errln {
+    ($($a:tt)*) => {{ use std::io::Write as _; let _ = writeln!(std::io::stderr(), $($a)*); }};
+}
+
 pub mod stmclient;
 pub mod terminaloverlay;
 
@@ -79,7 +95,7 @@ fn print_colorcount() -> ! {
     /* check colors */
     let term = std::env::var("TERM").unwrap_or_default();
     if term.is_empty() {
-        eprintln!("TERM environment variable not set.");
+        errln!("TERM environment variable not set.");
         std::process::exit(1);
     }
     let out = std::process::Command::new("tput")
@@ -89,11 +105,11 @@ fn print_colorcount() -> ! {
     match out {
         Ok(out) if out.status.success() => {
             let color_val = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            println!("{color_val}");
+            outln!("{color_val}");
             std::process::exit(0);
         }
         _ => {
-            eprintln!("'{term}': unknown terminal type.");
+            errln!("'{term}': unknown terminal type.");
             std::process::exit(1);
         }
     }
@@ -125,7 +141,7 @@ fn parse_options(argv0: &str, args: &[String]) -> (u32, Vec<String>) {
                     // Ignore the original arguments to mosh wrapper
                     if k + 1 == chars.len() {
                         if i == args.len() {
-                            eprintln!("{argv0}: option requires an argument -- '#'");
+                            errln!("{argv0}: option requires an argument -- '#'");
                             print_usage(&mut std::io::stderr(), argv0);
                             std::process::exit(1);
                         }
@@ -136,7 +152,7 @@ fn parse_options(argv0: &str, args: &[String]) -> (u32, Vec<String>) {
                 'c' => print_colorcount(),
                 'v' => verbose += 1,
                 c => {
-                    eprintln!("{argv0}: invalid option -- '{c}'");
+                    errln!("{argv0}: invalid option -- '{c}'");
                     print_usage(&mut std::io::stderr(), argv0);
                     std::process::exit(1);
                 }
@@ -193,14 +209,14 @@ pub fn main() -> i32 {
 
     /* Sanity-check arguments */
     if !desired_port.bytes().all(|b| b.is_ascii_digit()) {
-        eprint!("{argv0}: Bad UDP port ({desired_port})\n\n");
+        err!("{argv0}: Bad UDP port ({desired_port})\n\n");
         print_usage(&mut std::io::stderr(), &argv0);
         std::process::exit(1);
     }
 
     /* Read key from environment */
     let Some(env_key) = std::env::var_os("MOSH_KEY") else {
-        eprintln!("MOSH_KEY environment variable not found.");
+        errln!("MOSH_KEY environment variable not found.");
         std::process::exit(1);
     };
 
@@ -238,11 +254,11 @@ pub fn main() -> i32 {
             match result {
                 Ok(success) => success,
                 Err(Error::Network(e)) => {
-                    eprint!("Network exception: {e}\r\n");
+                    err!("Network exception: {e}\r\n");
                     false
                 }
                 Err(Error::Crypto(e)) => {
-                    eprint!("Crypto exception: {e}\r\n");
+                    err!("Crypto exception: {e}\r\n");
                     false
                 }
             }
@@ -252,7 +268,7 @@ pub fn main() -> i32 {
         Err(_) => false,
     };
 
-    println!("[mosh is exiting.]");
+    outln!("[mosh is exiting.]");
     let _ = std::io::stdout().flush();
 
     i32::from(!success)

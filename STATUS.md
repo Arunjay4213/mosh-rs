@@ -218,3 +218,17 @@ Every message in `crates/mosh/src/server` now goes through `write!` with the err
 The network crate's verbose diagnostics (`-v`) still use `eprintln!` and would panic the same way if stderr broke; reported to the orchestrator, not changed here.
 
 Measured: private `make check` copy with our `mosh-server`: TOTAL 32, PASS 30, XFAIL 2, FAIL 0, XPASS 0, ERROR 0, and no `panicked` in any test output.
+
+## 2026-10-13 mosh-client, landing 2: prediction overlay gate (agent E)
+
+What changed:
+- `tests/tests/prediction_e2e.rs`: the client and the C++ `mosh-server` talk through `udp-impair --delay-ms 150` (300 ms round trip); keys go in with `tmux send-keys`, the pane is read every 5 ms. Each case runs `/usr/bin/mosh-client` first.
+- The client's messages no longer use Rust's `print!` family, which panics on a failed write; like C stdio, a failed write is ignored (same issue agent D found in the server). `mosh-client --help >/dev/full` now exits 0, as upstream.
+- The overlay code itself is unchanged since landing 1 (0504a2d); it still needs the line-by-line review.
+
+Measured (`cargo test --release -p mosh-tests --test prediction_e2e`): 3 passed.
+- Key to screen at 300 ms RTT: C++ always 2 ms, adaptive 2 ms, never 312 ms; ours always 2 ms, adaptive 2 ms, never 316 ms.
+- Wrong prediction (the shell loop stops echoing at `q`): `q` shows after 2 ms and is gone after 369 ms (C++) and 364 ms (ours); the screen stays `ab`.
+- Upstream's prediction-unicode input (`gl`, `ü`, `ck fa`, `ĩ`, `l ` into `cat`): no garbled frame seen, final screen is three lines of `glück faĩl` x5, both clients.
+- Planted bugs: overlay cells never drawn: the latency and wrong-prediction cases fail (316 ms; `q` never shows). Wrong confirmed predictions never killed (cell and cursor checks both disabled; either one alone still removes `q`, as upstream has both): the wrong-prediction case fails.
+- `client_e2e` still 5 passed, idle CPU 0.00% for both clients.

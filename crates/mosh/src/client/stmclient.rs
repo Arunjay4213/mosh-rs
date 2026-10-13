@@ -85,8 +85,8 @@ fn with_guard(f: impl FnOnce(&RawModeGuard) -> std::io::Result<()>) -> std::io::
 /// `io::Error` adds.
 fn perror(s: &str, e: &std::io::Error) {
     match e.raw_os_error() {
-        Some(errno) => eprintln!("{s}: {}", mosh_platform::socket::strerror(errno)),
-        None => eprintln!("{s}: {e}"),
+        Some(errno) => errln!("{s}: {}", mosh_platform::socket::strerror(errno)),
+        None => errln!("{s}: {e}"),
     }
 }
 
@@ -193,7 +193,7 @@ impl STMClient {
                 "adaptive" => DisplayPreference::Adaptive,
                 "experimental" => DisplayPreference::Experimental,
                 _ => {
-                    eprintln!("Unknown prediction mode {predict_mode}.");
+                    errln!("Unknown prediction mode {predict_mode}.");
                     std::process::exit(1);
                 }
             };
@@ -229,7 +229,7 @@ impl STMClient {
             let native_ctype = get_ctype();
             let native_charset = locale_charset();
 
-            eprint!(
+            err!(
                 "mosh-client needs a UTF-8 native locale to run.\n\n\
                  Unfortunately, the client's environment ({}) specifies\n\
                  the character set \"{}\".\n\n",
@@ -353,15 +353,17 @@ impl STMClient {
         }
 
         if self.still_connecting() {
-            eprint!(
+            err!(
                 "\nmosh did not make a successful connection to {}:{}.\n\
                  Please verify that UDP port {} is not firewalled and can reach the server.\n\n\
                  (By default, mosh uses a UDP port between 60000 and 61000. The -p option\n\
                  selects a specific UDP port number.)\n",
-                self.ip, self.port, self.port
+                self.ip,
+                self.port,
+                self.port
             );
         } else if self.network.is_some() && !self.clean_shutdown {
-            eprint!(
+            err!(
                 "\n\nmosh did not shut down cleanly. Please note that the\n\
                  mosh-server process may still be running on the server.\n"
             );
@@ -524,7 +526,7 @@ impl STMClient {
                         std::process::exit(1);
                     }
 
-                    print!("\n\x1b[37;44m[mosh is suspended.]\x1b[m\n");
+                    out!("\n\x1b[37;44m[mosh is suspended.]\x1b[m\n");
 
                     let _ = std::io::stdout().flush();
                     let _ = std::io::stderr().flush();
