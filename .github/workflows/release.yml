@@ -88,7 +88,10 @@ jobs:
           fi
           if [ "${{ matrix.target }}" = "x86_64-unknown-linux-musl" ]; then
             file "$out/mosh" "$out/mosh-client" "$out/mosh-server"
-            ! file "$out/mosh" "$out/mosh-client" "$out/mosh-server" | grep -q 'dynamically linked'
+            if file "$out/mosh" "$out/mosh-client" "$out/mosh-server" | grep -q 'dynamically linked'; then
+              echo "a Linux musl binary is dynamically linked" >&2
+              exit 1
+            fi
           fi
 
       - name: Package
