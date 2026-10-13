@@ -46,12 +46,11 @@
 #             with `mosh-server new` started directly and the client given
 #             MOSH_KEY and MOSH_SCROLLBACK=1 (the launcher's ssh step has no
 #             loss to test).
-#   vim       `seq 1 3000; vim; seq 3001 6000` on one command line: nothing
-#             typed in vim reaches history. The rows on screen when vim
-#             starts are erased by vim, not scrolled, so they are not
-#             history (PLAN 6.2): the only gap allowed is those rows.
-#   clear     `seq 1 100; clear; seq 101 3000`: the same rule for the rows
-#             `clear` erases (the server keeps only rows that scroll off).
+#   vim       `seq 1 3000; vim; seq 3001 6000` on one command line: exact,
+#             and nothing typed in vim reaches history (the server keeps the
+#             rows on screen when vim enters the alternate screen, PLAN 6.2).
+#   clear     `seq 1 100; clear; seq 101 3000`: exact (the server keeps the
+#             rows `clear` erases, as tmux does).
 #   resize    `seq 1 3000`, the window made wider and narrower, `seq 3001
 #             6000`: exact.
 #   shrink    `seq 1 3000` (the screen holds 2978-3000 and the prompt), the
@@ -181,7 +180,7 @@ wait_text() {
     return 1
 }
 
-# The host's history check. check FILE LAST [exact|erased-N|shrink|grow|dropped]: the run
+# The host's history check. check FILE LAST [exact|shrink|grow|dropped]: the run
 # is the lines from the first line "1" to the line "DONE-SEQ"; it may hold
 # echoed command lines ("$ ...") and, for dropped, notice lines. Prints a
 # one-line summary; exits 1 if the variant's rule fails.
@@ -245,11 +244,6 @@ if mode == "shrink":
         and not notices and [l for _, l in other] == ["29seq 3001 6000; echo DONE-SEQ"]
 elif mode == "exact":
     ok = ok and not dups and not gaps and order_ok and not notices
-elif mode.startswith("erased-"):
-    # one gap: rows erased in place (at most a screen), ending at N
-    n = int(mode[len("erased-"):])
-    ok = ok and not dups and order_ok and not notices and len(gaps) == 1 \
-        and gaps[0][1] == n and gaps[0][1] - gaps[0][0] + 1 <= 24
 elif mode == "grow":
     ok = ok and not dups and order_ok and not notices and gaps == [(2972, 2977)]
 elif mode == "dropped":
@@ -327,7 +321,7 @@ v_vim() {
     wait_text 10 'VIMTEXT two' || return 1
     keys ':q!' Enter
     wait_line 30 DONE-SEQ || return 1
-    wait_history 60 6000 erased-3000
+    wait_history 60 6000 exact
 }
 
 v_clear() {
@@ -335,7 +329,7 @@ v_clear() {
     wait_line 30 '$' || return 1
     keys 'seq 1 100; clear; seq 101 3000; echo DONE-SEQ' Enter
     wait_line 30 DONE-SEQ || return 1
-    wait_history 60 3000 erased-100
+    wait_history 60 3000 exact
 }
 
 v_resize() {

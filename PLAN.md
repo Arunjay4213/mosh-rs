@@ -147,6 +147,9 @@ Design, all gated on negotiation so old peers see byte-identical behavior:
    The `Framebuffer::scroll` path records each row that leaves the top when the scroll region is the full screen and the remote program has not enabled the alternate screen (DEC mode 1049, 1047 or 47, tracked as a new flag in `DrawState`; upstream ignores those modes entirely).
    Rows created or last written while that flag is on carry a mark (`Row::alternate`, not part of row equality) and are never captured, also after the program left the alternate screen: upstream keeps that screen's rows on display, so vim's last screen would otherwise scroll into history when the shell continues.
    Rows removed from the bottom by a height shrink were never scrolled off and are not history; they are lost exactly as upstream's framebuffer loses them.
+   Two more cases make rows history although they do not scroll (`Framebuffer::capture_screen`), because a host terminal over ssh would keep them: entering the alternate screen (DEC 47, 1047 or 1049 set while the flag is off) captures the rows from the top through the last non-blank one before anything draws over them (and marks them, so they are not captured again if they later scroll off; over ssh they stay on the main screen and scroll into history later, so the order is the same); erasing the whole display with a full-screen scrolling region and the flag off (ED 2, or ED 0 from the home position) captures the same rows before the erase, as tmux 3.4 does (`scroll-on-clear`).
+   `clear` on devbox sends `CSI H CSI 2J CSI 3J` for TERM=xterm-256color (what mosh-server sets), `CSI H CSI J CSI 3J` for tmux-256color and `CSI H CSI J` for screen.
+   ED 3 (erase saved lines) stays ignored, as upstream: the host terminal's history belongs to the host, and mosh never erases it (tmux over ssh does: after `seq 1 30; clear` its history is empty, measured).
    Capture interface: the terminal crate knows nothing of mosh.
    `Framebuffer::set_scroll_capture(true)` makes `scroll` append the leaving rows (shared `Rc<Row>`, no copy) to a list that `Framebuffer::take_scrolled_rows` empties; `Complete::act` empties it after every call, so the list is always empty when a state is copied.
    Diffs applied with `apply_string` discard captured rows (a copy of a server state applying a diff, as the sender's round-trip check does, must not add history).
@@ -205,11 +208,9 @@ Design, all gated on negotiation so old peers see byte-identical behavior:
    - Height shrink by k with the cursor on the last row: tmux moves its top k rows into its own history, and they arrive again when they scroll off on the server, so they appear twice; the server's emulator cuts the bottom k rows as upstream's does, so they never reach history (2978-2983 twice and 2995-3000 missing, for k = 6 after `seq 1 3000`).
    - Height growth by k: tmux pulls its last k history lines back onto the screen and the repaint overwrites them, so they are gone from history (2972-2977 for k = 6 after `seq 1 3000`).
    Both come from the host terminal and the server's emulator resizing differently (the host keeps the bottom, upstream's framebuffer keeps the top); the client cannot know how a given host resizes.
-   - The rows on screen when a program enters the alternate screen (vim) are erased by it, not scrolled off, so they are not history (2978-3000 after `seq 1 3000; vim`); item 6 would keep them.
-   - The same for `clear` (78-100 after `seq 1 100; clear`): the server keeps only rows that scroll off, while tmux over ssh moves a cleared screen into its history.
    - A line wider than the host window wraps into several history rows, but a row that had wrapped on the server carries `CSI 1;<col>H` with the server's column, which clamps at the host's last column, so its last cell overwrites the one before it.
    - With `--no-init` there is no alternate screen to start in, so the "Connecting..." bar and the first frame land on the main screen, as upstream.
-   Width changes and everything else in the oracle are exact.
+   Width changes, vim, `clear` and everything else in the oracle are exact.
 5. Compatibility.
    Old client, new server: no capability arrives, scrollback mode stays off, behavior identical to upstream.
    New client, old server: the first frame carries no announcement, so the client stays in the alternate screen exactly as upstream (no history accumulates, nothing reaches the host's main screen) and shows the one-line notice in the notification bar for 5 s.

@@ -73,6 +73,19 @@ fn CSI_EL(fb: &mut Framebuffer, dispatch: &mut Dispatcher) {
 // Upstream name, kept so the port can be compared line by line.
 #[allow(non_snake_case)]
 fn CSI_ED(fb: &mut Framebuffer, dispatch: &mut Dispatcher) {
+    // mosh-rs scrollback (PLAN.md 6.2): erasing the whole display (ED 2, or
+    // ED 0 from the home position, which is what `clear` sends for
+    // TERM=tmux-256color and screen) with a full-screen scrolling region
+    // keeps the erased rows as history, as tmux does (`scroll-on-clear`).
+    // ED 3 (erase saved lines) stays ignored, as upstream: the host
+    // terminal's history is the host's.
+    let param = dispatch.getparam(0, 0);
+    if (param == 2 || (param == 0 && fb.ds.get_cursor_row() == 0 && fb.ds.get_cursor_col() == 0))
+        && fb.ds.get_scrolling_region_top_row() == 0
+        && fb.ds.get_scrolling_region_bottom_row() == fb.ds.get_height() - 1
+    {
+        fb.capture_screen(false);
+    }
     match dispatch.getparam(0, 0) {
         0 => {
             /* active position to end of screen, inclusive */
@@ -341,6 +354,12 @@ fn CSI_DECSM(fb: &mut Framebuffer, dispatch: &mut Dispatcher) {
         } else if param == 1005 || param == 1006 || param == 1015 {
             fb.ds.mouse_encoding_mode = mouse_encoding_mode(param);
         } else {
+            // mosh-rs scrollback (PLAN.md 6.2): entering the alternate screen
+            // keeps the main screen's rows as history before anything draws
+            // over them (a host terminal would restore and later scroll them).
+            if matches!(param, 47 | 1047 | 1049) {
+                fb.capture_screen(true);
+            }
             set_if_available(get_DEC_mode(param, fb), true);
         }
         i += 1;

@@ -532,3 +532,14 @@ Rerun by the orchestrator at 1ef23f3:
   - Backlog overflow: one dim line `[mosh: 197079 lines of history were dropped]` in the right place, everything else exact.
   - Not exact yet: vim and `clear` lose the rows that were on screen when they started (2978-3000 and 78-100); agent S2 is adding capture of those rows. Height shrink and grow lose or repeat about 6 rows, because host terminals keep the bottom of the screen on resize and upstream's emulator keeps the top; this stays a documented limit (changing the emulator would change what the program sees).
 - Quick interop matrix, default clients: 120 of 120. Upstream's `make check` with both of our binaries: 30 PASS, 2 XFAIL, 0 FAIL.
+
+## 2026-10-13 Scrollback: rows covered by the alternate screen or erased by clear are history (agent S2)
+
+Per the orchestrator's decision (1): the server now captures, through `Framebuffer::capture_screen`, the rows from the top through the last non-blank one (never rows marked alternate) in two places where they would otherwise vanish without scrolling.
+On entering the alternate screen (DEC 47, 1047 or 1049 set while the flag is off) they are captured before anything draws over them and marked, so they are not captured again if they later scroll off.
+On erasing the whole display with a full-screen scrolling region and the flag off (ED 2, or ED 0 from the home position, which tmux 3.4 treats the same way) they are captured before the erase.
+`clear` on devbox sends `CSI H CSI 2J CSI 3J` for TERM=xterm-256color (what mosh-server sets), `CSI H CSI J CSI 3J` for tmux-256color and `CSI H CSI J` for screen. ED 3 stays ignored, as upstream: tmux over ssh erases its whole history on it (after `seq 1 30; clear` it kept nothing; with `CSI H CSI 2J` alone it kept 1-30), but mosh leaves the host's history to the host.
+Decisions (2) and (3) taken: no change to the emulator's resize; PLAN 6.6 stays deferred. PLAN 6.2 and the 6.4 known limits updated.
+- Oracle 6, `tests/scrollback.sh`, all variants: clean, loss30 (147 s), vim, clear and resize exact (`gaps=none`, nothing from vim in history); shrink and grow exactly as documented (6 duplicates and 2995-3000 missing; 2972-2977 missing); oldserver and dropped as before.
+- `scrollback_server`: `digests_differing=0 capture_on_frame_mismatches=0`; the alternate-screen test now expects the screen captured on entry and 1-6000 exact; new test: `clear` in both forms keeps 1-3000 exact. `terminal_conformance`, `statesync_roundtrip`: pass. vt-fuzz 200,000 cases and 200,000 `--frames`: 0 mismatches.
+- `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client all --server all`: 120 of 120; scrollback client column: 60 of 60. `tests/upstream-check.sh --client rust --server rust`: 30 PASS, 2 XFAIL, 0 FAIL. `cargo test --release --workspace`: all pass. fmt and clippy (native and Windows) clean.

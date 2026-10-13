@@ -631,7 +631,8 @@ pub struct Row {
     pub gen: u64,
     /// mosh-rs scrollback (PLAN.md 6.2, 9.4), not in upstream and not part
     /// of row equality: the row was created or last written while
-    /// `DrawState::alternate_screen` was on. Such a row is not history, so
+    /// `DrawState::alternate_screen` was on, or it was already captured by
+    /// `Framebuffer::capture_screen`. Such a row is not (new) history, so
     /// `Framebuffer::scroll` does not capture it even after the program left
     /// the alternate screen (upstream keeps that screen's rows on display).
     pub alternate: bool,
@@ -1314,6 +1315,35 @@ impl Framebuffer {
         match &mut self.scrolled_rows {
             Some(v) => std::mem::take(v),
             None => Vec::new(),
+        }
+    }
+
+    /// mosh-rs scrollback (PLAN.md 6.2, not upstream): when capturing and
+    /// not on the alternate screen, the rows from the top through the last
+    /// non-blank one become history now, in order, because the program is
+    /// about to erase the screen or enter the alternate screen and they
+    /// would never scroll off. With `keep` (entering the alternate screen,
+    /// where the rows stay on display until drawn over) they are marked so
+    /// they are not captured a second time if they scroll off later.
+    pub fn capture_screen(&mut self, keep: bool) {
+        let Some(out) = &mut self.scrolled_rows else {
+            return;
+        };
+        if self.ds.alternate_screen {
+            return;
+        }
+        let Some(last) = self
+            .rows
+            .iter()
+            .rposition(|r| r.cells.iter().any(|c| !c.empty()))
+        else {
+            return;
+        };
+        out.extend(self.rows[..=last].iter().filter(|r| !r.alternate).cloned());
+        if keep {
+            for r in &mut self.rows[..=last] {
+                Rc::make_mut(r).alternate = true;
+            }
         }
     }
 

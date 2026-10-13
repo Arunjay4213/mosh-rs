@@ -41,8 +41,9 @@
 //   (as after loss and retransmission), acknowledging some of them, arrives
 //   as scrolled lines plus the final screen with no gap and no duplicate;
 //   no diff carries more than the window; also with a resize, an
-//   alternate-screen excursion, a partial scrolling region, and a small
-//   backlog that overflows while the client is away.
+//   alternate-screen excursion and `clear` (the screen they cover or erase
+//   is kept as history), a partial scrolling region, and a small backlog
+//   that overflows while the client is away.
 // - Live: scrollback-probe against a real mosh-server, clean, through 30%
 //   loss, through a 10 s blackout, and against the C++ server.
 // - Rendering: random colored, linked, wide and combining lines rendered by
@@ -525,9 +526,13 @@ fn seq_with_resizes() {
 fn alternate_screen_is_not_captured() {
     let mut link = Link::new(80, 24, 32 << 20, 3);
     link.feed(&seq(1, 3000));
-    // Upstream ignores the alternate screen, so the rows on screen when the
-    // program enters it are erased by its clear and never scroll off.
-    let erased = screen_text(link.server.get_fb());
+    // Upstream ignores the alternate screen, so the program's clear erases
+    // the rows on screen when it enters it; they are captured on entry, as
+    // a host terminal would keep them and scroll them off later.
+    let kept = screen_text(link.server.get_fb())
+        .iter()
+        .filter(|l| !l.is_empty())
+        .count() as u64;
     let mut vim = b"\x1b[?1049h\x1b[H\x1b[2J".to_vec();
     for i in 0..200 {
         vim.extend_from_slice(format!("VIM line {}\r\n", i).as_bytes());
@@ -537,8 +542,8 @@ fn alternate_screen_is_not_captured() {
     link.feed(&vim);
     assert_eq!(
         link.server.get_scrollback_captured(),
-        before,
-        "nothing scrolled on the alternate screen is captured"
+        before + kept,
+        "the main screen is captured on entry, nothing on the alternate screen"
     );
     link.feed(b"\x1b[?1049l\r\n");
     link.feed(&seq(3001, 6000));
@@ -547,17 +552,33 @@ fn alternate_screen_is_not_captured() {
     let vim_lines = lines.iter().filter(|(_, t)| t.contains("VIM")).count();
     println!("alternate screen: lines containing VIM = {}", vim_lines);
     assert_eq!(vim_lines, 0, "alternate-screen output reached scrollback");
-    let want: Vec<String> = seq_lines(1, 3000)
-        .into_iter()
-        .filter(|l| !erased.contains(l))
-        .chain(seq_lines(3001, 6000))
-        .collect();
+    let want: Vec<String> = seq_lines(1, 6000);
     let got: Vec<String> = lines.iter().map(|(_, t)| t.clone()).chain(screen).collect();
     let got: Vec<String> = got.into_iter().filter(|t| !t.is_empty()).collect();
     assert_eq!(got.len(), want.len());
     assert!(got == want, "scrollback around the alternate screen");
     for (k, (i, _)) in lines.iter().enumerate() {
         assert_eq!(*i, k as u64 + 1);
+    }
+}
+
+#[test]
+fn clear_keeps_the_screen_as_history() {
+    // `clear` for TERM=xterm (ED 2, then ED 3, which stays ignored) and for
+    // TERM=tmux-256color or screen (ED 0 from the home position).
+    for (k, clear) in [&b"\x1b[H\x1b[2J\x1b[3J"[..], &b"\x1b[H\x1b[J"[..]]
+        .into_iter()
+        .enumerate()
+    {
+        let mut link = Link::new(80, 24, 32 << 20, 7 + k as u64);
+        link.feed(&seq(1, 100));
+        link.feed(clear);
+        link.feed(&seq(101, 3000));
+        let (lines, screen) = link.finish();
+        link.report("seq, clear, seq", &lines);
+        let got: Vec<String> = lines.iter().map(|(_, t)| t.clone()).chain(screen).collect();
+        let got: Vec<String> = got.into_iter().filter(|t| !t.is_empty()).collect();
+        assert!(got == seq_lines(1, 3000), "scrollback around clear {k}");
     }
 }
 
