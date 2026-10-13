@@ -107,3 +107,23 @@ Measured:
 - Planted-bug check: breaking the size-change branch of `new_frame` gave 1,997 mismatches in 4,000 `--frames` cases, so the resize frames reach that code.
 
 Found while testing: when the size changes, upstream `new_frame` forces `initialized = false` and never compares old cells. The contents of its row-extension code therefore cannot affect output; a planted bug there was correctly not reported.
+
+## 2026-10-13 Phase 1 review fixes: network (agent A)
+
+Review findings for the network crate are fixed or answered in `reviews/2026-10-13-phase1-terminal-network.md` (F3, F6 network part, F9-F17, F19 network part, F20, F23, F24 and F26 network parts).
+
+What changed:
+- Malformed input from a peer holding the key (short fragment, conflicting duplicate, final fragment below a stored index, bad protobuf inside valid zlib, `throwaway_num` above every state, oversized ciphertext) now returns an error and drops the packet instead of aborting (PLAN section 9 item 8). Commit 77311f8.
+- Socket system calls and core-dump control moved to `crates/platform` (`socket.rs`, `coredump.rs`); `mosh-network` has no `unsafe` (`#![forbid(unsafe_code)]`) and no `libc`. Commit 14e65f2.
+- No whole-state copy when rationalizing sent and received states, except the front state's self-subtraction through the new `State::subtract_self` default, which `Complete` and `UserStream` still need to override (agent B). Commit cc19759.
+- AES round keys and the session key copy are wiped on drop; casts annotated; `myatoi` documented. Commit e29a4cc.
+- Every module names its upstream file in `//!`, every `pub` item has a doc comment, `#![deny(missing_docs)]`. Commit cb37d80.
+
+Measured (devbox, worktree at origin/main):
+- `cargo test --release -p mosh-tests --test crypto_conformance`: 2000 random cases identical between `ref-crypto` and `crypto-check`, 14 bad keys rejected by both, RFC 7253 vectors ok on both. 1 passed.
+- `cargo test --release -p mosh-tests --test transport_roundtrip`: 5 passed, including `malformed_fragments_are_errors` and `malformed_packets_through_transport` (each malformed case is an `Err` from a live server `Transport`, which then accepts a valid instruction).
+- `cargo test --release -p mosh-tests --test transport_sync`: 1 passed; 300 changes synced in 10.0 s on loopback; through `udp-impair` with 30% loss, 20 ms delay and jitter, 5% reordering and a rebind at 5 s, the server re-attached to the new port and the state converged in 13.4 s.
+- `cargo build -p mosh-network -p mosh-platform --target x86_64-pc-windows-gnu`: builds.
+- `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`: clean.
+
+Open: CI is red only in `tests/tests/launcher.rs` (agent C, real apt mosh on the runner: `TERM environment variable not set`); the network tests pass in CI.

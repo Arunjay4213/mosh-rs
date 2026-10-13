@@ -231,27 +231,27 @@ What is missing or broken:
 |---------|--------|--------|------|
 | F1 | fixed | d9c8289 | 0xF8 lead restored (the planted mutation was in the 451b2ce snapshot); model matches glibc on 12,779,136 reachable buffers; 1M-case fuzz seed 1: 0 mismatches |
 | F2 | fixed | d9c8289 | terminal: no crate-level allows; 64 item-level allows, each with a one-line reason above (`rg -n 'allow\(' crates/terminal/src | wc -l` = 64) |
-| F3 | | | |
+| F3 | fixed | 14e65f2 | socket calls in `crates/platform/src/socket.rs`, core-dump control in `crates/platform/src/coredump.rs`; `mosh-network` depends on `mosh-platform`, not `libc`, and has `#![forbid(unsafe_code)]` (terminal side: d9c8289); `bind` takes one socket and `recv_raw` a max length (INTERVENTIONS.md) |
 | F4 | fixed | d9c8289 | terminal: `cargo fmt --all --check` clean |
 | F5 | fixed | d9c8289 | terminal: `cargo clippy --workspace --all-targets -- -D warnings` clean |
-| F6 | fixed | d9c8289 | terminal: `#![deny(missing_docs)]`, `#![forbid(unsafe_code)]`, `//!` doc on every module |
+| F6 | fixed | d9c8289, cb37d80 | terminal: `#![deny(missing_docs)]`, `#![forbid(unsafe_code)]`, `//!` doc on every module; network done (`#![deny(missing_docs)]`, `//!` naming the upstream file on every module); terminal by agent B |
 | F7 | fixed | f01fc0d | private fields as upstream (Row::cells/gen, SavedCursor, Framebuffer::ds and DrawState mode flags stay public, as upstream); dump uses getters plus `debug_*` accessors |
 | F8 | fixed | d9c8289 | vt-fuzz builds; also `--frames` with resizes (c182b85) |
-| F9 | | | |
-| F10 | | | |
-| F11 | | | |
-| F12 | | | |
-| F13 | | | |
-| F14 | | | |
-| F15 | | | |
-| F16 | | | |
-| F17 | | | |
+| F9 | fixed | 77311f8 | `Fragment::from_bytes` returns a dos_detected error under 10 bytes; tested directly and through a live server `Transport` (`transport_roundtrip` 5/5) |
+| F10 | fixed | 77311f8 | conflicting duplicate is an error and the partial instruction is discarded; tested both ways |
+| F11 | fixed | 77311f8 | final fragment below a stored index, and arrived above total, are errors; tested with fragment 5 then final 2 |
+| F12 | fixed | 77311f8 | protobuf decode failure after valid zlib is a dos_detected error; tested with zlib around `0a 05 78` |
+| F13 | fixed | 77311f8 | `process_throwaway_until` checks first and erases nothing if no state would survive; tested through a live `Transport` (remote state stays 0, next valid instruction accepted) |
+| F14 | answered | f3cec0d | PLAN.md section 9 item 7 lists the 1e9 ms clock base |
+| F15 | answered | f3cec0d | PLAN.md section 9 item 9 lists the reference-state re-lookup |
+| F16 | answered | f3cec0d | PLAN.md section 9 item 9 lists the `add_sent_state` index repair |
+| F17 | fixed | d9c8289, f3cec0d | `reset_input` added to `State` and called in `set_current_state` as upstream (d9c8289); `compare` omission is PLAN.md section 9 item 10 |
 | F18 | fixed | eda88ae | map key borrowed from dispatch_chars or a 1-byte stack array; vt-fuzz 100,000 cases seed 21: 0 mismatches |
-| F19 | | | |
-| F20 | | | |
+| F19 | fixed (network part) | cc19759 | `split_first_mut` in `rationalize_states` and `get_remote_diff`; upstream's self-subtraction of the front state is `State::subtract_self`, whose default still copies; `Complete` (no-op) and `UserStream` (clear) must override it to remove the copy, agent B's files. transport_sync passes direct (10.0 s) and through udp-impair 30% loss + rebind (13.4 s) |
+| F20 | fixed | 77311f8 | `Session::decrypt` returns "Ciphertext too long." above `RECEIVE_MTU`; tested with 2057 bytes |
 | F21 | fixed | f01fc0d | `unreachable!` with the reason |
 | F22 | answered | f01fc0d | Rc kept to match shared_ptr copy-on-write in a single-threaded program; doc note on Framebuffer |
-| F23 | | | |
-| F24 | fixed | f01fc0d | terminal: `append_string` merged into `append`, uncalled `name()` removed |
+| F23 | fixed | e29a4cc | `ocb3` 0.2 has no zeroize feature; `aes` `zeroize` feature wipes the round keys inside the OCB context, `Session` zeroes its key copy in `Drop`; ocb3's private offset table is not wiped (no API) |
+| F24 | fixed | f01fc0d, e29a4cc | terminal: `append_string` merged into `append`, uncalled `name()` removed; network: `myatoi` doc says it is kept for crates/mosh |
 | F25 | fixed | eda88ae, f01fc0d | TERM table rows copied from `infocmp -1 <name>` (ncurses 6.4), 30 entries plus screen/tmux/rxvt family fallback |
-| F26 | fixed | f01fc0d | terminal: index casts go through a commented `idx()`; true-color and cmd_num casts commented |
+| F26 | fixed | f01fc0d, e29a4cc | terminal: index casts go through a commented `idx()`; true-color and cmd_num casts commented; network: a one-line comment at every cast that could be negative, truncate or overflow |
