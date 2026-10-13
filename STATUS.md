@@ -255,3 +255,13 @@ Measured on devbox:
 - After D and E landed: `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client all --server all`: 120 cells, 119 passed. The failure was rust x rust, loss30, vim: the client printed `[mosh is exiting.]` after 15.8 s without ever showing the session; the proxy saw 8 client packets (6 dropped) and 1 server packet in that time. Three reruns of rust x rust loss5 and loss30 passed (36 cells). Not yet explained; for D and E.
 
 Open: CI's test job installs no `vim`, which the vim scenario needs; `interop.sh` then fails naming it. The fix is adding `vim` to the apt line in `.github/workflows/ci.yml`, which devbox cannot push.
+
+## 2026-10-13 mosh-server: gates 2, 3, 4 pass (agent D)
+
+Measured on devbox at origin/main 9d41baf plus the server commits:
+- `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client cxx --server rust`: 30 cells, 30 passed, 0 failed, wall time 40s.
+- `INTEROP_FULL=1 tests/interop.sh --client cxx --server rust` (120 s blackouts): 30 cells, 30 passed, 0 failed, wall time 135s.
+- `tests/upstream-check.sh --client cxx --server rust`: total=32 pass=30 xfail=2 fail=0 error=0 xpass=0, 241 s; the test logs show our server's banner and no `panicked`.
+- Idle CPU, `pidstat -p <pid> 1 60` on a connected idle session with the C++ client: `/usr/bin/mosh-server` Average 0.00 %CPU, ours Average 0.00 %CPU.
+- Earlier manual check, before the harness landed: our server with `-v` behind `udp-impair` at 30% loss and 200 ms delay, a rebind and a 20 s blackout; typed lines echoed after each, and the server log shows a second `Server now attached to client at 127.0.0.1:<new port>` after the rebind.
+- `cargo test --release -p mosh-tests --test platform_tty --test launcher` after the `pty.rs` additions: 1 and 4 passed.
