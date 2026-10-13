@@ -50,7 +50,8 @@ The server is started first and its shell has printed a marker 300 ms before the
 The clock starts just before the client is forked, and stops at the first read from the pty that completes the marker, that is, the first frame showing the remote screen.
 20 runs per implementation, each with a new server.
 Rows: median and p90 to the first frame, and median and p90 to the client's first write of any kind (its terminal setup), which shows the client's own start-up cost.
-Verdict: median to the first frame under 20 ms.
+Verdict, PLAN section 5 as decided by the orchestrator: the median to the first frame is no slower than C++ (the same tolerance as `seq`: 5% or 20 ms, whichever is larger), and the median to the first write is under 20 ms.
+The first frame cannot be much faster than 250 ms with upstream's timing: the server sends after its send interval, `ceil(SRTT/2)` clamped to 20-250 ms, and SRTT starts at 1000 ms (upstream `transportsender-impl.h`, `network.cc`).
 
 ### keystroke
 

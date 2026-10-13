@@ -60,13 +60,20 @@ const ROWS: u16 = 24;
 // Verdict thresholds; tools/bench/README.md explains each one.
 const IDLE_CPU_MAX_PCT: f64 = 0.05;
 const BINARY_MAX_BYTES: u64 = 4_000_000;
+/// The client's own startup: exec to its first terminal write.
 const STARTUP_MAX_MS: f64 = 20.0;
 const KEYSTROKE_MAX_MS: f64 = 16.0;
-/// seq output arrives in frames at least SEND_INTERVAL_MIN (20 ms) apart,
-/// so medians differ by a frame from noise alone: mosh-rs passes if it is
-/// within 5% or one frame of C++, whichever is larger.
-const SEQ_TOLERANCE: f64 = 0.05;
-const SEQ_FRAME_MS: f64 = 20.0;
+/// The server sends frames at least SEND_INTERVAL_MIN (20 ms) apart, so
+/// medians differ by a frame from noise alone: for seq and the first frame
+/// mosh-rs passes if it is within 5% or one frame of C++, whichever is
+/// larger.
+const NOT_SLOWER_TOLERANCE: f64 = 0.05;
+const NOT_SLOWER_FRAME_MS: f64 = 20.0;
+
+/// `rust` (ms) is no slower than `cxx` within the tolerance above.
+fn not_slower(rust: f64, cxx: f64) -> bool {
+    rust <= cxx + (cxx * NOT_SLOWER_TOLERANCE).max(NOT_SLOWER_FRAME_MS)
+}
 
 const STARTUP_RUNS: usize = 20;
 const KEYSTROKE_RUNS: usize = 30;
@@ -975,10 +982,10 @@ fn startup(imps: &[&Imp], ports: &mut Ports) -> Result<Vec<Row>, String> {
     Ok(vec![
         row(
             "startup to first frame, median (20 runs)",
-            "< 20 ms",
+            "<= C++ + max(5%, 20 ms)",
             fmt_ms(med[0]),
             fmt_ms(med[1]),
-            pass(med[0] < STARTUP_MAX_MS),
+            pass(not_slower(med[0], med[1])),
         ),
         row(
             "startup to first frame, p90",
@@ -989,10 +996,10 @@ fn startup(imps: &[&Imp], ports: &mut Ports) -> Result<Vec<Row>, String> {
         ),
         row(
             "startup to first write, median",
-            "-",
+            "< 20 ms",
             fmt_ms(wmed[0]),
             fmt_ms(wmed[1]),
-            "INFO",
+            pass(wmed[0] < STARTUP_MAX_MS),
         ),
         row(
             "startup to first write, p90",
@@ -1145,7 +1152,7 @@ fn seq(imps: &[&Imp], ports: &mut Ports) -> Result<Vec<Row>, String> {
             "<= C++ + max(5%, 20 ms)",
             fmt_ms(med[0]),
             fmt_ms(med[1]),
-            pass(med[0] <= med[1] + (med[1] * SEQ_TOLERANCE).max(SEQ_FRAME_MS)),
+            pass(not_slower(med[0], med[1])),
         ),
         row("seq runs (ms)", "-", all(&times[0]), all(&times[1]), "INFO"),
     ])
