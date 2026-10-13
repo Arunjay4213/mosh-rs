@@ -3,6 +3,31 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 NEEDS THE USER: Phase 3 Windows test on the laptop (first pass, no lid-close yet)
+
+Windows release binaries built on devbox from commit 31837bc, cross-compiled for x86_64-pc-windows-gnu. They import only system DLLs (KERNEL32, ntdll, msvcrt, ws2_32, api-ms-win-core-synch), so no extra runtime is needed.
+
+```
+target/dist/windows-x86_64/mosh.exe         636419 bytes  sha256 0b5f67b25fc153e1fa7c7bde6fca669eb236d5b2e3a56de41919436aafbd557d
+target/dist/windows-x86_64/mosh-client.exe  1068077 bytes sha256 8a1dd4fa5aae3e6e30f2bebf9621f513556e0fa88238516437dd03cc997069b0
+```
+
+Known blocker, being fixed by agent F before this test is worth running: Windows normally has no TERM variable, and upstream's color check then refuses, so `mosh.exe` stops with "Can't count colors". After F lands the fix, the orchestrator rebuilds these binaries and updates the checksums here. Until then the test can only be run with `$env:TERM = "xterm-256color"` set in PowerShell first.
+
+Steps, in PowerShell inside Windows Terminal on the laptop:
+1. `mkdir $HOME\mosh-rs-test; cd $HOME\mosh-rs-test; scp devbox:mosh-rs/target/dist/windows-x86_64/* .` then `Get-FileHash *.exe` and compare with SHA256SUMS. Keep both exe files in the same folder (the launcher looks for `mosh-client.exe` next to itself).
+2. `.\mosh-client.exe -c` prints 256 (with the fix; without TERM set it prints the TERM error today).
+3. `.\mosh.exe devbox` connects with the C++ server installed on devbox. Then `.\mosh.exe --server=/home/ubuntu/mosh-rs/target/release/mosh-server devbox` connects with our server.
+4. In the session: type, run `ls --color`, open and quit `vim`, print UTF-8 (`echo 日本語 😀 é`), press Ctrl-C at a running `sleep 100` (must interrupt it), resize the window and run `tput cols; tput lines`.
+5. Questions the agents could not answer without Windows:
+   - Agent C: does ssh.exe accept the ProxyCommand (`mosh.exe --fake-proxy`) when the folder path contains a space? Repeat step 3 from a folder like `$HOME\mosh rs test`.
+   - Agent E: what does Ctrl-^ then Ctrl-Z do? (Windows has no job control; expected: the screen closes and reopens.)
+   - Agent C: idle CPU of mosh-client.exe in Task Manager after one idle minute (the Windows loop wakes every 50 ms to check for a resize).
+   - Quit with Ctrl-^ then `.`: the Windows Terminal tab must be back to a normal PowerShell prompt, with echo and line editing working.
+6. Write the results (pass/fail per step, any error text) into INTERVENTIONS.md or a `reviews/phase3-windows.md`, commit and push.
+
+The lid-close test (sleep the laptop, wake it, the session is still live) is the separate manual step PLAN section 3 item 8 names; the orchestrator will stop and ask for it after this first pass works.
+
 ## 2026-10-13 Client landed; NEEDS THE USER: overlay review, ci/terminfo updated
 
 - NEEDS THE USER: Fable line-by-line review of the prediction overlay port, from the laptop (CLAUDE.md: Fable reviews run there). Compare `crates/mosh/src/client/terminaloverlay.rs` with `upstream/src/frontend/terminaloverlay.cc` and `.h`, and `crates/mosh/src/client/stmclient.rs` with `stmclient.cc`. The overlay has not changed since commit 0504a2d. Findings go to `reviews/`; the Phase 2 gate waits on them.
