@@ -40,6 +40,7 @@
 //! so the panic hook (`restore_terminal_after_panic`) can reach it.
 //! PLAN 9.5: every non-empty frame is wrapped in synchronized output.
 
+use mosh_platform::{errln, errp, outp};
 use std::cell::RefCell;
 use std::io::Write;
 
@@ -229,7 +230,7 @@ impl STMClient {
             let native_ctype = get_ctype();
             let native_charset = locale_charset();
 
-            err!(
+            errp!(
                 "mosh-client needs a UTF-8 native locale to run.\n\n\
                  Unfortunately, the client's environment ({}) specifies\n\
                  the character set \"{}\".\n\n",
@@ -353,7 +354,7 @@ impl STMClient {
         }
 
         if self.still_connecting() {
-            err!(
+            errp!(
                 "\nmosh did not make a successful connection to {}:{}.\n\
                  Please verify that UDP port {} is not firewalled and can reach the server.\n\n\
                  (By default, mosh uses a UDP port between 60000 and 61000. The -p option\n\
@@ -363,7 +364,7 @@ impl STMClient {
                 self.port
             );
         } else if self.network.is_some() && !self.clean_shutdown {
-            err!(
+            errp!(
                 "\n\nmosh did not shut down cleanly. Please note that the\n\
                  mosh-server process may still be running on the server.\n"
             );
@@ -526,7 +527,7 @@ impl STMClient {
                         std::process::exit(1);
                     }
 
-                    out!("\n\x1b[37;44m[mosh is suspended.]\x1b[m\n");
+                    outp!("\n\x1b[37;44m[mosh is suspended.]\x1b[m\n");
 
                     let _ = std::io::stdout().flush();
                     let _ = std::io::stderr().flush();

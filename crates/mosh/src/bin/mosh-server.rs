@@ -39,6 +39,6 @@ fn main() {
 
 #[cfg(not(unix))]
 fn main() {
-    eprintln!("mosh-server is not supported on Windows");
+    mosh_platform::errln!("mosh-server is not supported on Windows");
     std::process::exit(1);
 }

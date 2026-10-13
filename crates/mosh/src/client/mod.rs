@@ -35,25 +35,10 @@
 //! parsing, `MOSH_KEY`, exit codes); `stmclient` and `terminaloverlay` are
 //! the files of the same names.
 
-// `printf` and `fprintf( stderr, ... )`. Like C stdio, a failed write is
-// ignored; Rust's `print!` family panics on it (e.g. a pipe whose reader
-// has gone).
-macro_rules! out {
-    ($($a:tt)*) => {{ use std::io::Write as _; let _ = write!(std::io::stdout(), $($a)*); }};
-}
-macro_rules! outln {
-    ($($a:tt)*) => {{ use std::io::Write as _; let _ = writeln!(std::io::stdout(), $($a)*); }};
-}
-macro_rules! err {
-    ($($a:tt)*) => {{ use std::io::Write as _; let _ = write!(std::io::stderr(), $($a)*); }};
-}
-macro_rules! errln {
-    ($($a:tt)*) => {{ use std::io::Write as _; let _ = writeln!(std::io::stderr(), $($a)*); }};
-}
-
 pub mod stmclient;
 pub mod terminaloverlay;
 
+use mosh_platform::{errln, errp, outln};
 use std::ffi::OsString;
 use std::io::Write;
 
@@ -204,7 +189,7 @@ pub fn main() -> i32 {
 
     /* Sanity-check arguments */
     if !desired_port.bytes().all(|b| b.is_ascii_digit()) {
-        err!("{argv0}: Bad UDP port ({desired_port})\n\n");
+        errp!("{argv0}: Bad UDP port ({desired_port})\n\n");
         print_usage(&mut std::io::stderr(), &argv0);
         std::process::exit(1);
     }
@@ -249,11 +234,11 @@ pub fn main() -> i32 {
             match result {
                 Ok(success) => success,
                 Err(Error::Network(e)) => {
-                    err!("Network exception: {e}\r\n");
+                    errp!("Network exception: {e}\r\n");
                     false
                 }
                 Err(Error::Crypto(e)) => {
-                    err!("Crypto exception: {e}\r\n");
+                    errp!("Crypto exception: {e}\r\n");
                     false
                 }
             }

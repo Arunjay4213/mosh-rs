@@ -41,6 +41,7 @@
 //! `freeze_timestamp()` because the timestamp lives with the network code;
 //! the caller does that right after `select()` returns.
 
+use crate::errln;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use crate::tty::Fd;
@@ -157,19 +158,19 @@ impl Select {
         let verbose = VERBOSE.load(Ordering::Relaxed);
         /* Rate-limit and warn about polls. */
         if verbose > 1 && timeout == 0 {
-            eprintln!("select: got poll (timeout 0)");
+            errln!("select: got poll (timeout 0)");
         }
         if timeout == 0 {
             self.consecutive_polls += 1;
         }
         if timeout == 0 && self.consecutive_polls >= MAX_POLLS {
             if verbose > 1 && self.consecutive_polls == MAX_POLLS {
-                eprintln!("select: got {MAX_POLLS} polls, rate limiting.");
+                errln!("select: got {MAX_POLLS} polls, rate limiting.");
             }
             timeout = 1;
         } else if timeout != 0 && self.consecutive_polls != 0 {
             if verbose > 1 && self.consecutive_polls >= MAX_POLLS {
-                eprintln!("select: got {} consecutive polls", self.consecutive_polls);
+                errln!("select: got {} consecutive polls", self.consecutive_polls);
             }
             self.consecutive_polls = 0;
         }
@@ -277,7 +278,7 @@ impl Select {
                 for fd in 0..=self.max_fd {
                     // SAFETY: fd is within the range add_fd checked.
                     if unsafe { libc::FD_ISSET(fd, &self.read_fds) } {
-                        eprintln!("select(): nfds = 0 but read fd {fd} is set");
+                        errln!("select(): nfds = 0 but read fd {fd} is set");
                     }
                 }
             }

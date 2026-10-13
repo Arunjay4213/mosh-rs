@@ -125,15 +125,15 @@ pub fn set_native_locale() {
         let err = std::io::Error::last_os_error();
         if err.raw_os_error() == Some(libc::ENOENT) {
             let ctype = get_ctype();
-            eprintln!(
+            crate::errln!(
                 "The locale requested by {} isn't available here.",
                 ctype.str()
             );
             if !ctype.name.is_empty() {
-                eprintln!("Running `locale-gen {}' may be necessary.\n", ctype.value);
+                crate::errln!("Running `locale-gen {}' may be necessary.\n", ctype.value);
             }
         } else {
-            eprintln!("setlocale: {err}");
+            crate::errln!("setlocale: {err}");
         }
     }
 }

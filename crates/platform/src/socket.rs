@@ -199,7 +199,7 @@ mod unix {
                 && family == libc::IPPROTO_IP
             {
                 /* FreeBSD disallows this option on IPv6 sockets. */
-                eprintln!(
+                crate::errln!(
                     "setsockopt( IP_RECVTOS ): {}",
                     std::io::Error::last_os_error()
                 );
@@ -360,7 +360,7 @@ mod unix {
             if a.ip().is_unspecified() {
                 let off = 0;
                 if setsockopt_int(fd, libc::IPPROTO_IPV6, libc::IPV6_V6ONLY, off) != 0 {
-                    eprintln!(
+                    crate::errln!(
                         "setsockopt( IPV6_V6ONLY, off ): {}",
                         std::io::Error::last_os_error()
                     );

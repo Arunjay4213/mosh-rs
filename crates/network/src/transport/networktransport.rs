@@ -34,6 +34,7 @@
 //! joining a `TransportSender` with the receiver that assembles
 //! fragments and keeps the received states.
 
+use mosh_platform::errln;
 use std::net::SocketAddr;
 
 use super::network::{timestamp, Connection, NetworkError, SocketHandle, MOSH_PROTOCOL_VERSION};
@@ -166,7 +167,7 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
                 if now < self.receiver_quench_timer {
                     /* deny letting state grow further */
                     if self.verbose != 0 {
-                        eprintln!(
+                        errln!(
                             /* the as i32 casts below mirror upstream's (int) casts in this message: u64::MAX prints as -1 */
                             "[{}] Receiver queue full, discarding {} (malicious sender or long-unidirectional connectivity?)",
                             (timestamp() % 100000) as u32,
@@ -210,7 +211,7 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
                 let num = new_state.num;
                 self.received_states.insert(pos, new_state);
                 if self.verbose != 0 {
-                    eprintln!(
+                    errln!(
                         /* the as i32 casts below mirror upstream's (int) casts in this message: u64::MAX prints as -1 */
                         "[{}] Received OUT-OF-ORDER state {} [ack {}]",
                         (timestamp() % 100000) as u32,
@@ -221,7 +222,7 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
                 return Ok(());
             }
             if self.verbose != 0 {
-                eprintln!(
+                errln!(
                     /* the as i32 casts below mirror upstream's (int) casts in this message: u64::MAX prints as -1 */
                     "[{}] Received state {} [coming from {}, ack {}]",
                     (timestamp() % 100000) as u32,

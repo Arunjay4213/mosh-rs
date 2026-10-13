@@ -34,6 +34,8 @@
 //! lands on disk. Unix only, as upstream.
 
 #[cfg(unix)]
+use crate::errln;
+#[cfg(unix)]
 use std::sync::Mutex;
 
 #[cfg(unix)]
@@ -51,7 +53,7 @@ pub fn disable_dumping_core() {
     if unsafe { libc::getrlimit(libc::RLIMIT_CORE, &mut limit) } != 0 {
         /* We don't throw CryptoException because this is called very early
         in main(), outside of 'try'. */
-        eprintln!(
+        errln!(
             "getrlimit(RLIMIT_CORE): {}",
             std::io::Error::last_os_error()
         );
@@ -61,7 +63,7 @@ pub fn disable_dumping_core() {
     limit.rlim_cur = 0;
     // SAFETY: setrlimit reads one rlimit through a pointer to a live local.
     if unsafe { libc::setrlimit(libc::RLIMIT_CORE, &limit) } != 0 {
-        eprintln!(
+        errln!(
             "setrlimit(RLIMIT_CORE): {}",
             std::io::Error::last_os_error()
         );

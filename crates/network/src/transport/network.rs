@@ -35,6 +35,7 @@
 //! and RTT estimation. The socket system calls are in
 //! `mosh_platform::socket`.
 
+use mosh_platform::errln;
 use std::collections::VecDeque;
 use std::fmt;
 use std::net::{SocketAddr, UdpSocket};
@@ -328,7 +329,7 @@ impl Connection {
             match c.try_bind(Some(desired_ip), desired_port_low, desired_port_high) {
                 Ok(true) => return Ok(c),
                 Ok(false) => {}
-                Err(e) => eprintln!("Error binding to IP {desired_ip}: {e}"),
+                Err(e) => errln!("Error binding to IP {desired_ip}: {e}"),
             }
         }
 
@@ -337,7 +338,7 @@ impl Connection {
             Ok(true) => return Ok(c),
             Ok(false) => {}
             Err(e) => {
-                eprintln!("Error binding to any interface: {e}");
+                errln!("Error binding to any interface: {e}");
                 return Err(e.into()); /* this time it's fatal */
             }
         }
@@ -384,7 +385,7 @@ impl Connection {
 
         self.socks.pop_back();
 
-        eprintln!(
+        errln!(
             "Failed binding to {}:{}",
             local_addr.ip(),
             local_addr.port()
@@ -514,7 +515,7 @@ impl Connection {
         if self.server {
             if now.wrapping_sub(self.last_heard) > Connection::SERVER_ASSOCIATION_TIMEOUT {
                 self.has_remote_addr = false;
-                eprintln!("Server now detached from client.");
+                errln!("Server now detached from client.");
             }
         } else {
             /* client */
@@ -584,7 +585,7 @@ impl Connection {
                     .saved_timestamp
                     .wrapping_sub(Connection::CONGESTION_TIMESTAMP_PENALTY);
                 if self.server {
-                    eprintln!("Received explicit congestion notification.");
+                    errln!("Received explicit congestion notification.");
                 }
             }
         }
@@ -616,7 +617,7 @@ impl Connection {
 
         if self.server /* only client can roam */ && self.remote_addr != Some(packet_remote_addr) {
             self.remote_addr = Some(packet_remote_addr);
-            eprintln!(
+            errln!(
                 "Server now attached to client at {}:{}",
                 packet_remote_addr.ip(),
                 packet_remote_addr.port()
@@ -698,11 +699,11 @@ impl Connection {
         /* parse first (only?) port */
         let (value, end, overflow) = crate::crypto::strtol(s);
         if overflow || (end != s.len() && s[end] != b':') {
-            eprintln!("Invalid (low) port number ({desired_port})");
+            errln!("Invalid (low) port number ({desired_port})");
             return false;
         }
         if !(0..=65535).contains(&value) {
-            eprintln!("(Low) port number {value} outside valid range [0..65535]");
+            errln!("(Low) port number {value} outside valid range [0..65535]");
             return false;
         }
 
@@ -717,26 +718,27 @@ impl Connection {
         let cp = &desired_port[end + 1..];
         let (value, end, overflow) = crate::crypto::strtol(cp.as_bytes());
         if overflow || end != cp.len() {
-            eprintln!("Invalid high port number ({cp})");
+            errln!("Invalid high port number ({cp})");
             return false;
         }
         if !(0..=65535).contains(&value) {
-            eprintln!("High port number {value} outside valid range [0..65535]");
+            errln!("High port number {value} outside valid range [0..65535]");
             return false;
         }
 
         /* range-checked to 0..=65535 above */
         *desired_port_high = value as i32;
         if *desired_port_low > *desired_port_high {
-            eprintln!(
+            errln!(
                 "Low port {} greater than high port {}",
-                *desired_port_low, *desired_port_high
+                *desired_port_low,
+                *desired_port_high
             );
             return false;
         }
 
         if *desired_port_low == 0 {
-            eprintln!("Low port 0 incompatible with port ranges");
+            errln!("Low port 0 incompatible with port ranges");
             return false;
         }
 

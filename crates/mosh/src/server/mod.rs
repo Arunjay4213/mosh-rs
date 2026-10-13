@@ -47,6 +47,7 @@
 
 #![cfg(unix)]
 
+use mosh_platform::{errln, errp, outln, outp};
 use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -69,30 +70,6 @@ use mosh_platform::socket::strerror;
 use crate::statesync::{Complete, UserAction, UserStream};
 
 type ServerConnection = Transport<Complete, UserStream>;
-
-// stdio that ignores write errors, as C's printf and fprintf do. Rust's
-// print! and eprint! panic when the descriptor fails (EPIPE once ssh has
-// gone, for example), which upstream never does.
-macro_rules! outp {
-    ($($arg:tt)*) => {{
-        let _ = write!(io::stdout(), $($arg)*);
-    }};
-}
-macro_rules! outln {
-    ($($arg:tt)*) => {{
-        let _ = writeln!(io::stdout(), $($arg)*);
-    }};
-}
-macro_rules! errp {
-    ($($arg:tt)*) => {{
-        let _ = write!(io::stderr(), $($arg)*);
-    }};
-}
-macro_rules! errln {
-    ($($arg:tt)*) => {{
-        let _ = writeln!(io::stderr(), $($arg)*);
-    }};
-}
 
 /// Upstream `PACKAGE_STRING`, following the launcher's naming.
 const PACKAGE_STRING: &str = concat!("mosh-rs ", env!("CARGO_PKG_VERSION"));

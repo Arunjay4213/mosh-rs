@@ -40,6 +40,7 @@
 //! the client is started with the same address: both always agree, also on
 //! hosts with IPv4 and IPv6 addresses.
 
+use mosh_platform::{errln, errp, outln, outp};
 use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpStream, ToSocketAddrs};
@@ -58,7 +59,7 @@ const DIE_AFTER_WAIT: i32 = 10;
 
 fn die(msg: &str, code: i32) -> ! {
     let _ = std::io::stdout().flush();
-    eprint!("{msg}");
+    errp!("{msg}");
     exit(code)
 }
 
@@ -127,7 +128,7 @@ fn predict_check(argv0: &str, predict: &str, env_set: bool) {
         } else {
             ""
         };
-        eprint!("{argv0}: Unknown mode \"{predict}\"{explanation}.\n\n");
+        errp!("{argv0}: Unknown mode \"{predict}\"{explanation}.\n\n");
         die(&usage(argv0), DIE);
     }
 }
@@ -304,7 +305,7 @@ fn fake_proxy(argv0: &str, family: &str, host: &str, port: &str) -> ! {
         addr_string = numeric_host(ai);
         match TcpStream::connect(ai) {
             Ok(s) => {
-                eprintln!("MOSH IP {addr_string}");
+                errln!("MOSH IP {addr_string}");
                 sock = Some(s);
                 break;
             }
@@ -448,22 +449,22 @@ pub fn main() -> ! {
     if let Err(err) = parsed {
         match err {
             lexopt::Error::UnexpectedOption(o) => {
-                eprintln!("Unknown option: {}", o.trim_start_matches('-'))
+                errln!("Unknown option: {}", o.trim_start_matches('-'))
             }
             lexopt::Error::MissingValue { option: Some(o) } => {
-                eprintln!("Option {} requires an argument", o.trim_start_matches('-'))
+                errln!("Option {} requires an argument", o.trim_start_matches('-'))
             }
-            other => eprintln!("{other}"),
+            other => errln!("{other}"),
         }
         die(&usage(&argv0), DIE);
     }
 
     if help {
-        print!("{}", usage(&argv0));
+        outp!("{}", usage(&argv0));
         exit(0);
     }
     if version {
-        print!("{}", version_message());
+        outp!("{}", version_message());
         exit(0);
     }
 
@@ -602,7 +603,7 @@ pub fn main() -> ! {
     match process::spawn_merged(&mut cmd) {
         Err(e) => {
             // The forked Perl child dies with this message into the pipe.
-            println!(
+            outln!(
                 "Cannot exec {}: {e}",
                 if localhost { server.as_str() } else { "ssh" }
             );

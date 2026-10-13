@@ -44,4 +44,5 @@ pub mod select;
 #[cfg(unix)]
 pub mod server;
 pub mod socket;
+pub mod stdio;
 pub mod tty;

@@ -33,6 +33,7 @@
 
 /* Terminal framebuffer */
 
+use std::io::{self, Write};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -481,7 +482,10 @@ impl Cell {
 
     /// Diagnostics: prints differences to stderr; returns true if the
     /// grapheme, width, renditions or wrap differ (contents and fallback
-    /// differences are printed but, as upstream, do not count).
+    /// differences are printed but, as upstream, do not count). Failed
+    /// writes are ignored, as C's `fprintf` ignores them (this crate has no
+    /// platform dependency, so it writes to stderr directly rather than
+    /// through `mosh_platform::errln!`).
     pub fn compare(&self, other: &Cell) -> bool {
         let mut ret = false;
 
@@ -493,12 +497,18 @@ impl Cell {
 
         if grapheme != other_grapheme {
             ret = true;
-            eprintln!("Graphemes: '{}' vs. '{}'", grapheme, other_grapheme);
+            let _ = writeln!(
+                io::stderr(),
+                "Graphemes: '{}' vs. '{}'",
+                grapheme,
+                other_grapheme
+            );
         }
 
         if !self.contents_match(other) {
             // ret = true;
-            eprintln!(
+            let _ = writeln!(
+                io::stderr(),
                 "Contents: {} ({}) vs. {} ({})",
                 self.debug_contents(),
                 self.contents.len(),
@@ -509,25 +519,37 @@ impl Cell {
 
         if self.fallback != other.fallback {
             // ret = true;
-            eprintln!(
+            let _ = writeln!(
+                io::stderr(),
                 "fallback: {} vs. {}",
-                self.fallback as i32, other.fallback as i32
+                self.fallback as i32,
+                other.fallback as i32
             );
         }
 
         if self.wide != other.wide {
             ret = true;
-            eprintln!("width: {} vs. {}", self.wide as i32, other.wide as i32);
+            let _ = writeln!(
+                io::stderr(),
+                "width: {} vs. {}",
+                self.wide as i32,
+                other.wide as i32
+            );
         }
 
         if !(self.renditions == other.renditions) {
             ret = true;
-            eprintln!("renditions differ");
+            let _ = writeln!(io::stderr(), "renditions differ");
         }
 
         if self.wrap != other.wrap {
             ret = true;
-            eprintln!("wrap: {} vs. {}", self.wrap as i32, other.wrap as i32);
+            let _ = writeln!(
+                io::stderr(),
+                "wrap: {} vs. {}",
+                self.wrap as i32,
+                other.wrap as i32
+            );
         }
 
         ret

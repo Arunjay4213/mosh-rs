@@ -388,3 +388,12 @@ Still needed before "gate: PASSED":
 - Green CI, which needs the laptop to push branch `ci/terminfo`.
 
 Phase 3: Windows binaries are staged on devbox with a laptop checklist (INTERVENTIONS.md). Phase 4 (scrollback) starts once agent F's change to the state interface has landed.
+
+## 2026-10-13 No panic on a failing stdout or stderr (agent F)
+
+Every `print!`, `println!`, `eprint!` and `eprintln!` in the shipped crates now goes through `mosh_platform::{outp, outln, errp, errln}` (new `crates/platform/src/stdio.rs`), which ignore a failed write as C's `printf`/`fprintf` do. The server's and client's own copies of these macros (agents D and E) are replaced by the shared ones. `crates/terminal` has no platform dependency, so `Cell::compare` writes with `let _ = writeln!(io::stderr(), ...)` directly.
+Proof (driver: `mosh-server new -v -i 127.0.0.1 -- sh -c 'sleep 1; echo hello-from-session; sleep 3'`, then `mosh-client -v` in tmux, both under strace, both with `2>/dev/full` so every stderr write fails with ENOSPC):
+- Before (binaries built at 0ccd5b6): the server child wrote "Server now attached to client at", got ENOSPC, panicked, `exit_group(101)`; the client failed on the "[" of its first verbose "Sent" line and exited 1 at once; nothing reached the screen.
+- After: every stderr write still fails (`write(2, "[", 1) = -1 ENOSPC`), the session output appears on screen, the client exits 0 after 4.1 s when the command ends, all server processes `exit_group(0)`.
+- `2>&-` (closed stderr) never panicked, before or after: Rust's runtime reopens a closed fd 0, 1 or 2 on `/dev/null` at startup (strace: `openat("/dev/null", O_RDWR) = 2`), so writes succeed. The failing case in practice is an stderr that errors (full device, a pipe or pty whose other end is gone).
+- `client_e2e` 7, `server_e2e` 4, `launcher` 4, `transport_roundtrip` 3, `statesync_roundtrip` 5: all passed.

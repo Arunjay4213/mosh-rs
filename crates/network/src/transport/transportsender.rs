@@ -41,6 +41,7 @@ use super::Error;
 use crate::crypto::prng::Prng;
 use crate::crypto::{CryptoError, Session};
 use crate::proto::transport_buffers::Instruction;
+use mosh_platform::errln;
 
 /* timing parameters */
 /// Minimum ms between frames.
@@ -222,17 +223,17 @@ impl<MyState: State> TransportSender<MyState> {
             /* verify diff has round-trip identity (modulo Unicode fallback rendering) */
             let mut newstate = self.sent_states[self.assumed_receiver_state].state.clone();
             if newstate.apply_string(&diff).is_err() {
-                eprintln!("Warning, generated diff does not apply to the assumed receiver state!");
+                errln!("Warning, generated diff does not apply to the assumed receiver state!");
             }
             if self.current_state.compare(&newstate) {
-                eprintln!("Warning, round-trip Instruction verification failed!");
+                errln!("Warning, round-trip Instruction verification failed!");
             }
 
             /* Also verify that both the original frame and generated frame have the same initial diff. */
             let current_diff = self.current_state.init_diff();
             let new_diff = newstate.init_diff();
             if current_diff != new_diff {
-                eprintln!("Warning, target state Instruction verification failed!");
+                errln!("Warning, target state Instruction verification failed!");
             }
         }
 
@@ -397,7 +398,7 @@ impl<MyState: State> TransportSender<MyState> {
             connection.send(&i.tostring())?;
 
             if self.verbose != 0 {
-                eprintln!(
+                errln!(
                     /* the as i32 casts below mirror upstream's (int) casts in this message: u64::MAX prints as -1 */
                     "[{}] Sent [{}=>{}] id {}, frag {} ack={}, throwaway={}, len={}, frame rate={:.2}, timeout={}, srtt={:.1}",
                     (timestamp() % 100000) as u32,

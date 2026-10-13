@@ -33,6 +33,7 @@
 //! (`HostBuffers::HostMessage`, whose host bytes come from
 //! `Display::new_frame`). Port of upstream `src/statesync/completeterminal.{h,cc}`.
 
+use mosh_platform::errln;
 use std::collections::VecDeque;
 
 use mosh_network::prost::Message;
@@ -291,9 +292,12 @@ impl State for Complete {
         let (width, other_width) = (fb.ds.get_width(), other_fb.ds.get_width());
 
         if height != other_height || width != other_width {
-            eprintln!(
+            errln!(
                 "Framebuffer size ({}x{}, {}x{}) differs.",
-                width, height, other_width, other_height
+                width,
+                height,
+                other_width,
+                other_height
             );
             return true;
         }
@@ -301,7 +305,7 @@ impl State for Complete {
         for y in 0..height {
             for x in 0..width {
                 if fb.get_cell(y, x).compare(other_fb.get_cell(y, x)) {
-                    eprintln!("Cell ({}, {}) differs.", y, x);
+                    errln!("Cell ({}, {}) differs.", y, x);
                     ret = true;
                 }
             }
@@ -310,7 +314,7 @@ impl State for Complete {
         if (fb.ds.get_cursor_row() != other_fb.ds.get_cursor_row())
             || (fb.ds.get_cursor_col() != other_fb.ds.get_cursor_col())
         {
-            eprintln!(
+            errln!(
                 "Cursor mismatch: ({}, {}) vs. ({}, {}).",
                 fb.ds.get_cursor_row(),
                 fb.ds.get_cursor_col(),
