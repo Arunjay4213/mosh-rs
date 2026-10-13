@@ -94,6 +94,10 @@ impl State for Log {
     }
 
     fn reset_input(&mut self) {}
+
+    fn compare(&self, _other: &Log) -> bool {
+        false
+    }
 }
 
 fn hex(b: &[u8]) -> String {

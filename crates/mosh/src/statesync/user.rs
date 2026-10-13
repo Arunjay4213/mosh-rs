@@ -139,11 +139,6 @@ impl UserStream {
             UserEventType::ResizeType => UserAction::Resize(&e.resize),
         }
     }
-
-    /// Upstream's `compare` (diagnostics only): always false.
-    pub fn compare(&self, _other: &UserStream) -> bool {
-        false
-    }
 }
 
 impl State for UserStream {
@@ -250,5 +245,9 @@ impl State for UserStream {
         // Upstream UserStream has no reset_input: the template member
         // TransportSender::set_current_state that calls it is only instantiated
         // for Complete (mosh-server.cc). Nothing to reset here.
+    }
+    /// Upstream's `compare` (diagnostics only): always false.
+    fn compare(&self, _other: &UserStream) -> bool {
+        false
     }
 }

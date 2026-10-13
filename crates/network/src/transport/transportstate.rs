@@ -60,6 +60,9 @@ pub trait State: PartialEq + Clone {
     }
     /// Called on the new current state by `set_current_state`.
     fn reset_input(&mut self);
+    /// Diagnostics only (the sender's verbose round-trip check): reports
+    /// differences from `other` on stderr and returns whether any were found.
+    fn compare(&self, other: &Self) -> bool;
 }
 
 /// A state with its number and the time it was sent or received.

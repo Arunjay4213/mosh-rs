@@ -224,7 +224,9 @@ impl<MyState: State> TransportSender<MyState> {
             if newstate.apply_string(&diff).is_err() {
                 eprintln!("Warning, generated diff does not apply to the assumed receiver state!");
             }
-            /* upstream also runs current_state.compare( newstate ) here; State has no compare() */
+            if self.current_state.compare(&newstate) {
+                eprintln!("Warning, round-trip Instruction verification failed!");
+            }
 
             /* Also verify that both the original frame and generated frame have the same initial diff. */
             let current_diff = self.current_state.init_diff();

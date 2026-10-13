@@ -161,49 +161,6 @@ impl Complete {
         // uint64_t to int, as upstream's return: truncates if over i32 range.
         (next_echo_ack_time - now) as i32
     }
-
-    /// Diagnostics only, as upstream: reports differences between the two
-    /// screens on stderr and returns whether any were found.
-    pub fn compare(&self, other: &Complete) -> bool {
-        let mut ret = false;
-        let fb = self.terminal.get_fb();
-        let other_fb = other.terminal.get_fb();
-        let (height, other_height) = (fb.ds.get_height(), other_fb.ds.get_height());
-        let (width, other_width) = (fb.ds.get_width(), other_fb.ds.get_width());
-
-        if height != other_height || width != other_width {
-            eprintln!(
-                "Framebuffer size ({}x{}, {}x{}) differs.",
-                width, height, other_width, other_height
-            );
-            return true;
-        }
-
-        for y in 0..height {
-            for x in 0..width {
-                if fb.get_cell(y, x).compare(other_fb.get_cell(y, x)) {
-                    eprintln!("Cell ({}, {}) differs.", y, x);
-                    ret = true;
-                }
-            }
-        }
-
-        if (fb.ds.get_cursor_row() != other_fb.ds.get_cursor_row())
-            || (fb.ds.get_cursor_col() != other_fb.ds.get_cursor_col())
-        {
-            eprintln!(
-                "Cursor mismatch: ({}, {}) vs. ({}, {}).",
-                fb.ds.get_cursor_row(),
-                fb.ds.get_cursor_col(),
-                other_fb.ds.get_cursor_row(),
-                other_fb.ds.get_cursor_col()
-            );
-            ret = true;
-        }
-        /* XXX should compare other terminal state too (mouse mode, bell. etc.) */
-
-        ret
-    }
 }
 
 impl PartialEq for Complete {
@@ -322,5 +279,48 @@ impl State for Complete {
 
     fn reset_input(&mut self) {
         self.parser.reset_input();
+    }
+
+    /// Diagnostics only, as upstream: reports differences between the two
+    /// screens on stderr and returns whether any were found.
+    fn compare(&self, other: &Complete) -> bool {
+        let mut ret = false;
+        let fb = self.terminal.get_fb();
+        let other_fb = other.terminal.get_fb();
+        let (height, other_height) = (fb.ds.get_height(), other_fb.ds.get_height());
+        let (width, other_width) = (fb.ds.get_width(), other_fb.ds.get_width());
+
+        if height != other_height || width != other_width {
+            eprintln!(
+                "Framebuffer size ({}x{}, {}x{}) differs.",
+                width, height, other_width, other_height
+            );
+            return true;
+        }
+
+        for y in 0..height {
+            for x in 0..width {
+                if fb.get_cell(y, x).compare(other_fb.get_cell(y, x)) {
+                    eprintln!("Cell ({}, {}) differs.", y, x);
+                    ret = true;
+                }
+            }
+        }
+
+        if (fb.ds.get_cursor_row() != other_fb.ds.get_cursor_row())
+            || (fb.ds.get_cursor_col() != other_fb.ds.get_cursor_col())
+        {
+            eprintln!(
+                "Cursor mismatch: ({}, {}) vs. ({}, {}).",
+                fb.ds.get_cursor_row(),
+                fb.ds.get_cursor_col(),
+                other_fb.ds.get_cursor_row(),
+                other_fb.ds.get_cursor_col()
+            );
+            ret = true;
+        }
+        /* XXX should compare other terminal state too (mouse mode, bell. etc.) */
+
+        ret
     }
 }

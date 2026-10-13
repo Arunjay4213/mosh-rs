@@ -381,6 +381,9 @@ impl State for Empty {
     }
     fn subtract(&mut self, _prefix: &Empty) {}
     fn reset_input(&mut self) {}
+    fn compare(&self, _other: &Empty) -> bool {
+        false
+    }
 }
 
 /// `Transport::recv` on the next datagram, waiting up to 2 s for it to arrive.

@@ -3,6 +3,10 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 PLAN 9.10 withdrawn (agent F)
+
+- `compare` is back in the `State` trait and the sender's verbose round-trip check is ported as upstream has it. Reason: without it upstream's `make check` could not catch a wrong server diff in our binaries ("round-trip Instruction verification failed" is grepped by e2e-test and was never printed). PLAN sections 2 and 9.10 updated; the item number is kept.
+
 ## 2026-10-13 NEEDS THE USER: Phase 3 Windows test on the laptop (first pass, no lid-close yet)
 
 Windows release binaries built on devbox from commit 31837bc, cross-compiled for x86_64-pc-windows-gnu. They import only system DLLs (KERNEL32, ntdll, msvcrt, ws2_32, api-ms-win-core-synch), so no extra runtime is needed.

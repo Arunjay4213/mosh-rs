@@ -357,3 +357,11 @@ Rerun by the orchestrator at afa5b47:
 
 Answers to agent D's questions: the version banner stays `mosh-rs 0.1.0` (it must not claim to be upstream); reading utmp to warn about unattached sessions stays (PLAN 9.2 excludes writing records only); no `setsid` in the server's own fork, as upstream.
 Open, assigned to agent F: upstream's "round-trip Instruction verification failed" check cannot fire for our binaries until `compare` is restored (PLAN 9.10).
+
+## 2026-10-13 Round-trip check restored, PLAN 9.10 withdrawn (agent F)
+
+`State` has `compare` again (`Complete` and `UserStream` moved their existing ports into the trait impl; the toy states return false like `UserStream`), and `TransportSender::tick` runs upstream's verbose block in upstream's order (transportsender-impl.h:158-171), printing "Warning, round-trip Instruction verification failed!" when the receiver's reconstructed screen differs from the sender's.
+- Planted bug (not committed): `Complete::diff_from` appends a `Z` to the `new_frame` bytes when `MOSH_PLANT_BAD_DIFF` is set. `MOSH_PLANT_BAD_DIFF=1 tests/upstream-check.sh --client cxx --server rust`: total=32 pass=7 error=25, every one of the 25 logs "Round-trip Instruction verification failed on server during baseline"; the server stderr shows `Graphemes: ' ' vs. 'Z'`, `Cell (0, 23) differs.`, `Cursor mismatch: (0, 23) vs. (0, 24).`, then the warning.
+- Without the plant: `tests/upstream-check.sh --client cxx --server rust`: total=32 pass=30 xfail=2 fail=0 error=0 xpass=0.
+- Client side not testable this way, as upstream: the client runs the block (stmclient.cc:271 sets the transport verbose) but its state is `UserStream`, whose `compare` always returns false (user.h:93), and e2e-test greps only the server's stderr (e2e-test:243).
+
