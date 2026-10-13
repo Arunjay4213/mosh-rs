@@ -519,3 +519,16 @@ In this mode `new_frame` has no scroll shortcut and repaints without `CSI H CSI 
 - `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client all --server all`: 120 of 120. The same with the Rust client in scrollback mode (a wrapper that sets `MOSH_SCROLLBACK=1`, passed as `--client PATH`) against both servers: 60 of 60; the same wrapper shows `alternate_on=0` with our server and the notice with the C++ server.
 - `tests/upstream-check.sh --client rust --server rust`: 30 PASS, 2 XFAIL, 0 FAIL, 0 ERROR.
 - `cargo test --release --workspace`: all pass; `scrollback_server` still `digests_differing=0 capture_on_frame_mismatches=0`. fmt and clippy (native and Windows) clean; Windows `mosh` and `mosh-client` build.
+
+## 2026-10-13 Scrollback client half (agent S2) verified by the orchestrator
+
+Rerun by the orchestrator at 1ef23f3:
+- Old peers untouched: corpus replay with scrollback off is byte-identical to before scrollback (`digests_differing=0`, `capture_on_frame_mismatches=0`); screen redraws match upstream's exactly (3024 frames including 756 across a resize, 0 mismatches).
+- Oracle 6 (`tests/scrollback.sh`, tmux 80x24 with a 200,000-line history, `mosh --scrollback`):
+  - `seq 1 50000`, clean: all 50,000 lines exactly once, in order, no gaps, nothing from mosh's overlay (9 s).
+  - Same through 30% loss and 100 ms delay: exact (140 s).
+  - Width resize in the middle: exact.
+  - Old C++ server: the client stays on the alternate screen as upstream, shows a notice, nothing reaches history.
+  - Backlog overflow: one dim line `[mosh: 197079 lines of history were dropped]` in the right place, everything else exact.
+  - Not exact yet: vim and `clear` lose the rows that were on screen when they started (2978-3000 and 78-100); agent S2 is adding capture of those rows. Height shrink and grow lose or repeat about 6 rows, because host terminals keep the bottom of the screen on resize and upstream's emulator keeps the top; this stays a documented limit (changing the emulator would change what the program sees).
+- Quick interop matrix, default clients: 120 of 120. Upstream's `make check` with both of our binaries: 30 PASS, 2 XFAIL, 0 FAIL.
