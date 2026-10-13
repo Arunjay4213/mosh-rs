@@ -33,7 +33,7 @@
 //! Everything that differs between operating systems lives here: the local
 //! terminal (raw mode, size, reads and writes), the event loop's `Select`,
 //! the pseudoterminal (unix only), process spawning for the launcher, and
-//! locale checks.
+//! locale checks, and the system calls only mosh-server makes (unix only).
 
 pub mod coredump;
 pub mod locale;
@@ -41,5 +41,7 @@ pub mod process;
 #[cfg(unix)]
 pub mod pty;
 pub mod select;
+#[cfg(unix)]
+pub mod server;
 pub mod socket;
 pub mod tty;

@@ -30,7 +30,15 @@
 //
 // Ported from: upstream/src/frontend/mosh-server.cc
 
+//! `mosh-server`: see `mosh::server`. Unix only, as upstream (PLAN section 7).
+
+#[cfg(unix)]
 fn main() {
-    eprintln!("mosh-server: not implemented yet (Phase 2, crates/mosh/src/server)");
+    std::process::exit(mosh::server::main());
+}
+
+#[cfg(not(unix))]
+fn main() {
+    eprintln!("mosh-server is not supported on Windows");
     std::process::exit(1);
 }

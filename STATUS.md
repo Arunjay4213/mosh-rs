@@ -177,3 +177,20 @@ Measured:
   A keyed peer sends 3 malformed `UserMessage` diffs and 4 malformed `HostMessage` diffs to live `Transport`s: each is an `Err` from `recv` with no state added, and the next valid diff is accepted.
 - `transport_roundtrip`: 5 passed. `transport_sync`: 1 passed.
 
+
+## 2026-10-13 mosh-server ported; gate 1 (server_e2e) passes (agent D)
+
+What changed:
+- `crates/mosh/src/server/mod.rs` ports `mosh-server.cc` top to bottom with the same function names: option parsing (a small glibc-compatible `getopt`, so error messages and their order match), the locale fallback through `-l`, `MOSH CONNECT` with the `\r\n` bodge, the detach fork, the /dev/null redirect, the pty child (pipe wait, IUTF8, TERM, motd, `warn_unattached`, `execvp`), and `serve` with the same constants, order and exception handling (an error from `recv`, `apply_string` or `tick` skips the rest of the loop iteration, as a throw does).
+- Not ported, as in the devbox upstream build: syslog (`HAVE_SYSLOG` off), utempter records (PLAN 9.2), `pledge`.
+- `crates/platform/src/server.rs` (new, unix only): the system calls mosh-server makes directly. `crates/platform/src/pty.rs` gained `forkpty_winsize`, `get_winsize`, `set_winsize` (whole struct, so a resize keeps the pixel fields as upstream) and `execvp` (path separate from argv[0], for login shells).
+- `mosh-server` on Windows prints "mosh-server is not supported on Windows" and exits 1.
+
+Measured on devbox (`cargo test --release -p mosh-tests --test server_e2e -- --nocapture`, each case run against /usr/bin/mosh-server first, then ours, with the apt C++ client):
+- Launcher session `sh -c 'printf "SERVER_OK\n"; sleep 1; seq 1 300; echo DONE; sleep 2'`: SERVER_OK, 300 and DONE on screen, `[mosh is exiting.]`, exit 0, for both servers.
+- `bash --norc`: typed `echo typed-through-mosh` shows its output; `tmux resize-window -x 100 -y 30` then `tput cols; tput lines` shows 100 and 30.
+- `MOSH_SERVER_NETWORK_TMOUT=5`, client killed with SIGKILL: upstream exits 4.759 s after the kill, ours 4.756 s.
+- `MOSH_SERVER_SIGNAL_TMOUT=5`: SIGUSR1 1 s after the kill is ignored by both; SIGUSR1 7 s after the kill: upstream exits 4.056 s later, ours 4.056 s.
+- Planted bug (resize width off by one): the resize case fails.
+- `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`: clean.
+- `cargo build -p mosh -p mosh-platform -p mosh-network -p mosh-terminal --target x86_64-pc-windows-gnu`: builds. `cargo build --workspace` for that target fails only in `tools` (`pty-record`, `udp-impair`) and `tests/src/bin/toy-sync.rs`, which are unix-only programs not gated by `cfg(unix)`, unchanged by this work.

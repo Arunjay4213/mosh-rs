@@ -36,9 +36,10 @@
 //! `src/frontend/mosh-server.cc` and `src/util/pty_compat.cc`: forkpty,
 //! window size, exec in the child, and waiting for the child. Unix only.
 
-use std::ffi::CString;
+use std::ffi::{CString, OsStr, OsString};
 use std::io;
-use std::os::fd::{AsRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::ExitStatusExt;
 use std::process::ExitStatus;
 
@@ -63,14 +64,19 @@ pub enum Fork {
 /// In the child only async-signal-safe work is guaranteed to be sound if the
 /// parent had other threads. Call `exec` promptly in the child.
 pub fn forkpty(cols: u16, rows: u16) -> io::Result<Fork> {
-    let window_size = nix::pty::Winsize {
+    forkpty_winsize(&libc::winsize {
         ws_row: rows,
         ws_col: cols,
         ws_xpixel: 0,
         ws_ypixel: 0,
-    };
-    // SAFETY: the child either execs or exits; see the doc comment.
-    match unsafe { nix::pty::forkpty(Some(&window_size), None) } {
+    })
+}
+
+/// `forkpty( &master, NULL, NULL, &window_size )` with the whole winsize
+/// (pixel fields included), as mosh-server.cc passes it.
+pub fn forkpty_winsize(window_size: &libc::winsize) -> io::Result<Fork> {
+    // SAFETY: the child either execs or exits; see `forkpty`.
+    match unsafe { nix::pty::forkpty(Some(window_size), None) } {
         Ok(nix::pty::ForkptyResult::Parent { child, master }) => Ok(Fork::Parent {
             master,
             child: child.as_raw(),
@@ -78,6 +84,30 @@ pub fn forkpty(cols: u16, rows: u16) -> io::Result<Fork> {
         Ok(nix::pty::ForkptyResult::Child) => Ok(Fork::Child),
         Err(e) => Err(io::Error::from(e)),
     }
+}
+
+/// `ioctl( fd, TIOCGWINSZ, &window_size )`, the whole struct.
+pub fn get_winsize(fd: RawFd) -> io::Result<libc::winsize> {
+    let mut window_size = libc::winsize {
+        ws_row: 0,
+        ws_col: 0,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+    // SAFETY: TIOCGWINSZ writes one winsize struct through the pointer.
+    if unsafe { libc::ioctl(fd, libc::TIOCGWINSZ, &mut window_size) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(window_size)
+}
+
+/// `ioctl( fd, TIOCSWINSZ, &window_size )`, the whole struct.
+pub fn set_winsize(fd: RawFd, window_size: &libc::winsize) -> io::Result<()> {
+    // SAFETY: TIOCSWINSZ reads one winsize struct from the pointer.
+    if unsafe { libc::ioctl(fd, libc::TIOCSWINSZ, window_size) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 /// `ioctl( host_fd, TIOCSWINSZ, &window_size )`. The kernel sends SIGWINCH to
@@ -110,20 +140,30 @@ pub fn exec(argv: &[String], env: &[(String, String)]) -> io::Error {
             return io::Error::last_os_error();
         }
     }
-    let Ok(args) = argv
-        .iter()
-        .map(|a| CString::new(a.as_str()))
-        .collect::<Result<Vec<_>, _>>()
-    else {
+    let argv: Vec<OsString> = argv.iter().map(OsString::from).collect();
+    let Some(file) = argv.first() else {
         return io::Error::from(io::ErrorKind::InvalidInput);
     };
-    if args.is_empty() {
+    execvp(file, &argv)
+}
+
+/// `execvp( file, argv )`: `file` is looked up in PATH, `argv[0]` may differ
+/// from it (mosh-server runs `/bin/bash` with argv[0] `-bash`). Only returns
+/// on failure.
+pub fn execvp(file: &OsStr, argv: &[OsString]) -> io::Error {
+    let (Ok(file), Ok(args)) = (
+        CString::new(file.as_bytes()),
+        argv.iter()
+            .map(|a| CString::new(a.as_bytes()))
+            .collect::<Result<Vec<_>, _>>(),
+    ) else {
         return io::Error::from(io::ErrorKind::InvalidInput);
-    }
+    };
     let mut ptrs: Vec<*const libc::c_char> = args.iter().map(|a| a.as_ptr()).collect();
     ptrs.push(std::ptr::null());
-    // SAFETY: ptrs is a NULL-terminated array of valid C strings.
-    unsafe { libc::execvp(ptrs[0], ptrs.as_ptr()) };
+    // SAFETY: file is a valid C string; ptrs is a NULL-terminated array of
+    // valid C strings that outlive the call.
+    unsafe { libc::execvp(file.as_ptr(), ptrs.as_ptr()) };
     io::Error::last_os_error()
 }
 
