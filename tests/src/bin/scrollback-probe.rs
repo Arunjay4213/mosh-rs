@@ -40,8 +40,10 @@
 //! its first events, then receives until the server shuts down (the session's
 //! command exited). OUTFILE gets the text of every scrolled line received,
 //! one per line, then the rows of the final screen (trailing empty rows
-//! left out). Counts go to stdout. Exit status 0 when the server shut down,
-//! 1 on timeout.
+//! left out). Counts go to stdout, with `screen_done_s` (when the screen
+//! last changed) and `history_done_s` (when the last scrolled line arrived),
+//! in seconds from the start. Exit status 0 when the server shut down, 1 on
+//! timeout.
 
 use std::time::{Duration, Instant};
 
@@ -64,6 +66,15 @@ fn row_text(fb: &Framebuffer, r: usize) -> String {
         skip = cell.get_wide();
     }
     s.trim_end_matches(' ').to_string()
+}
+
+/// Every row's text, trailing empty rows left out.
+fn screen_text(fb: &Framebuffer) -> Vec<String> {
+    let mut screen: Vec<String> = (0..fb.get_rows().len()).map(|r| row_text(fb, r)).collect();
+    while screen.last().is_some_and(|l| l.is_empty()) {
+        screen.pop();
+    }
+    screen
 }
 
 fn main() {
@@ -110,6 +121,9 @@ fn main() {
     let mut gaps = 0u64;
     let mut next_index = 1u64;
     let mut done = false;
+    // When the screen last changed and when the last scrolled line arrived.
+    let (mut last_num, mut last_screen) = (0u64, Vec::new());
+    let (mut screen_done, mut history_done) = (0.0f64, 0.0f64);
     while !done {
         if start.elapsed() > Duration::from_secs(timeout_s) {
             break;
@@ -124,7 +138,16 @@ fn main() {
                 Err(e) => eprintln!("{e}"),
             }
         }
+        if network.get_remote_state_num() != last_num {
+            last_num = network.get_remote_state_num();
+            let screen = screen_text(network.get_latest_remote_state().state.get_fb());
+            if screen != last_screen {
+                last_screen = screen;
+                screen_done = start.elapsed().as_secs_f64();
+            }
+        }
         for (index, line) in received.borrow_mut().take_pending() {
+            history_done = start.elapsed().as_secs_f64();
             if index != next_index {
                 gaps += 1;
             }
@@ -148,10 +171,7 @@ fn main() {
 
     let state = &network.get_latest_remote_state().state;
     let fb = state.get_fb();
-    let mut screen: Vec<String> = (0..fb.get_rows().len()).map(|r| row_text(fb, r)).collect();
-    while screen.last().is_some_and(|l| l.is_empty()) {
-        screen.pop();
-    }
+    let screen = screen_text(fb);
     let mut out = String::new();
     for l in lines.iter().chain(screen.iter()) {
         out.push_str(l);
@@ -159,7 +179,7 @@ fn main() {
     }
     std::fs::write(outfile, out).expect("write OUTFILE");
     println!(
-        "capability={} shutdown={} lines_received={} lost={} gaps={} scrolled_total={} screen_rows={} seconds={:.2}",
+        "capability={} shutdown={} lines_received={} lost={} gaps={} scrolled_total={} screen_rows={} screen_done_s={:.2} history_done_s={:.2} seconds={:.2}",
         capability,
         done,
         lines.len(),
@@ -167,6 +187,8 @@ fn main() {
         gaps,
         state.get_scrolled_total(),
         screen.len(),
+        screen_done,
+        history_done,
         start.elapsed().as_secs_f64()
     );
     std::process::exit(if done { 0 } else { 1 });

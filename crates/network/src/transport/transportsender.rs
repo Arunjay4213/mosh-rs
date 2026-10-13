@@ -543,6 +543,13 @@ impl<MyState: State> TransportSender<MyState> {
         self.sent_states[0].num
     }
 
+    /// mosh-rs (not upstream, read-only): the newest acknowledged state
+    /// itself, which the receiver provably has (PLAN.md 6.3: the server's
+    /// scrollback window is measured from it).
+    pub fn get_sent_state_acked_state(&self) -> &MyState {
+        &self.sent_states[0].state
+    }
+
     /// Number of the newest sent state.
     pub fn get_sent_state_last(&self) -> u64 {
         self.sent_states.last().expect("sent_states not empty").num

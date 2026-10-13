@@ -145,28 +145,38 @@ Design, all gated on negotiation so old peers see byte-identical behavior:
    Like any non-empty user diff, a diff holding only the capability registers an input frame on the server (one echo ack).
 2. Server capture.
    The `Framebuffer::scroll` path records each row that leaves the top when the scroll region is the full screen and the remote program has not enabled the alternate screen (DEC mode 1049, 1047 or 47, tracked as a new flag in `DrawState`; upstream ignores those modes entirely).
-   Rows are rendered to ANSI strings with the same row renderer `new_frame` uses, and appended to a ring buffer (default 10,000 lines, server flag `--scrollback N`).
-   The ring lives outside the state object, shared by `Rc`, so copying `Complete` for the sender's state history stays cheap.
-   `Complete` carries only `scrolled_total: u64`.
-   Capture interface (settled by the server agent): the terminal crate knows nothing of mosh.
-   `Framebuffer::set_scroll_capture(true)` makes `scroll` append the leaving rows (shared `Rc<Row>`, no copy) to a list that `Framebuffer::take_scrolled_rows` empties; `Complete::act` empties it after every call, renders each row and pushes it into the ring, so the list is always empty when a state is copied.
+   Rows created or last written while that flag is on carry a mark (`Row::alternate`, not part of row equality) and are never captured, also after the program left the alternate screen: upstream keeps that screen's rows on display, so vim's last screen would otherwise scroll into history when the shell continues.
+   Rows removed from the bottom by a height shrink were never scrolled off and are not history; they are lost exactly as upstream's framebuffer loses them.
+   Capture interface: the terminal crate knows nothing of mosh.
+   `Framebuffer::set_scroll_capture(true)` makes `scroll` append the leaving rows (shared `Rc<Row>`, no copy) to a list that `Framebuffer::take_scrolled_rows` empties; `Complete::act` empties it after every call, so the list is always empty when a state is copied.
    Diffs applied with `apply_string` discard captured rows (a copy of a server state applying a diff, as the sender's round-trip check does, must not add history).
-   Rows created or last written while the alternate-screen flag is on carry a mark (`Row::alternate`, not part of row equality) and are never captured, also after the program left the alternate screen: upstream keeps that screen's rows on display, so vim's last screen would otherwise scroll into history when the shell continues.
-   Line format (`Display::render_scrolled_row`): `put_row` on an uninitialized one-row frame, assuming neither ECH nor back-color erase.
+   Each captured row is rendered to an ANSI string with the same row renderer `new_frame` uses (`Display::render_scrolled_row`): `put_row` on an uninitialized one-row frame, assuming neither ECH nor back-color erase.
    The line is written at row 1 column 1 with default renditions and no hyperlink, ends with default renditions and no hyperlink, holds no line feed and no cursor visibility change, and its only cursor movement is `CSI 1 ; <col> H` before the last cell of a row that wrapped.
    Blank runs are spaces except default-colored blanks at the end of the row, which are `CSI K`.
    A wrapped row does not carry its soft-wrap flag.
+   Rendered lines go into the backlog (`ScrolledRing`), shared by `Rc` among all copies of the server's `Complete`, so copying `Complete` for the sender's state history stays cheap.
+   The backlog holds only undelivered lines: every line at or below the count the client has acknowledged is freed.
+   It is a backlog, not a history.
+   It is capped in bytes of rendered lines: `mosh-server --scrollback N` in MiB, default 32 (`seq 1 50000` renders to 388,710 bytes, about 380 KiB, so it fits about 85 times over); 0 turns capture off.
+   When the cap would overflow, the oldest lines not yet published are replaced by a count of dropped lines (a sixteenth of the cap more than needed, so a steady flood does not search on every line); published lines are kept, because they may have to be sent again.
+   The server never blocks the remote program and never stops reading the pty: the framebuffer stays current and history trickles behind it.
+   When the program's output ends while lines are still undelivered, the server keeps the session up until every line is acknowledged, or until no acknowledgement has advanced for 60 seconds (the client is gone), then shuts down as upstream does.
 3. Wire.
    New `HostBuffers::Instruction` field 9, `ScrolledLines { optional uint64 first_index = 1; repeated bytes line = 2; optional uint64 dropped = 3; }`.
-   `Complete::diff_from(existing)` includes the lines with index in `(existing.scrolled_total, self.scrolled_total]` that are still in the ring, and `dropped` for any that were evicted.
-   `Complete` equality includes `scrolled_total` when scrollback mode is on (otherwise `yes | head` would scroll without the framebuffer changing and nothing would be sent).
-   Settled by the server agent: lines are numbered from 1 in the order they left the screen.
-   `first_index` is the number of `line[0]` (one past the last number covered when no line is left), and `dropped` (absent when 0) counts the evicted lines just before it, so a diff from `existing` covers exactly `(existing.scrolled_total, first_index - 1 + line count]`.
+   Lines are numbered from 1 in the order they left the screen.
+   `Complete` carries only `scrolled_total: u64`, the number of lines PUBLISHED, not captured.
+   The server loop publishes (`Complete::publish_scrollback`) after host output and after every received packet: `scrolled_total` advances while the rendered bytes of lines published beyond `acked.scrolled_total` stay within the window W, where `acked` is the newest state the client acknowledged (front of the sender's sent states, read with the read-only accessor `Transport::get_sent_state_acked_state` that mosh-rs adds to the transport).
+   At least one line is published when none is outstanding, even if it alone exceeds W, so a huge line cannot stall the stream; a dropped run is published whole and costs no bytes.
+   Publishing changes the state, so the transport sends it; an arriving ack frees delivered lines and re-runs the publish check.
+   W is 4 × 1214 = 4856 bytes: the payload of four fragments at upstream's IPv4 MTU (1280 - 28 IP and UDP - 12 nonce and timestamps - 16 OCB tag - 10 fragment header = 1214).
+   With two bytes of protobuf framing per line, incompressible lines need at most six fragments plus one for the frame; `seq` lines compress about 4:1, and a live `seq 1 50000` never needed more than two fragments per instruction.
+   `Complete::diff_from(existing)` sends the published lines numbered `(existing.scrolled_total, self.scrolled_total]`, one `ScrolledLines` instruction per run of held lines: `first_index` is the number of `line[0]` (one past the last number covered when the range ends in a gap and the instruction has no line), and `dropped` (absent when 0) counts the lines missing just before it.
    Instruction order in a `HostMessage`: echo ack, scrolled lines, resize, host bytes.
    A client prints the lines first, then applies the frame.
+   `Complete` equality includes `scrolled_total` (0 on both sides unless the client asked for scrollback), otherwise publishing without a screen change would never be sent.
+   `init_diff` sends only the count (as dropped lines), because the backlog no longer holds delivered lines; the sender's verbose check compares the init diffs of two states.
    Client side: `Complete::enable_scrollback_receive` returns a queue shared by every copy of the client's state; `apply_string` adds each line with its number, skips numbers it already has (a diff from an older state, sent again after loss, repeats lines) and counts a jump forward as lost.
-   Open (server agent's report, 2026-10-13): nothing bounds the size of one diff, and `seq 1 50000` puts the whole burst in one diff.
-   Then the oldest lines are evicted before they are sent (default ring), or the diff is about 87 fragments, sent as one burst, of which the client's UDP receive buffer drops some, and every resend has a new instruction id, so it seldom completes; under 30% loss even 10,000 lines (about 17 fragments) never arrived in 120 s.
+   Each window needs about one round trip plus the client's 100 ms delayed ack: the history of `seq 1 50000` (about 380 KiB rendered) is complete after 9 s on loopback and 17 s at 100 ms round trip, while the final screen arrives as fast as without scrollback (0.25 s and 0.35 s).
 4. Client rendering.
    In scrollback mode the client does not send smcup, and runs `new_frame` with scroll detection off.
    Before each render, for each pending scrolled line L: cursor to row 1 column 1, write L, cursor to the last row, write `\n`.
@@ -207,6 +217,7 @@ Supported flags for v0.1: `--server`, `--ssh`, `--port`, `--predict`, `--no-init
 2. utmp/wtmp records are not written.
 3. `--bind-server` supports `ssh` and `any` only.
 4. Scrollback extension (section 6), alternate-screen flag in `DrawState`.
+   This includes `mosh-server --scrollback MIB` (listed in its usage line), and the read-only `Transport::get_sent_state_acked_state` the server uses to pace published lines.
 5. Synchronized output around client renders.
 6. Runtime terminfo lookup is replaced by a table generated at build-authoring time from every entry in the devbox terminfo database (ncurses 6.4, plus the kitty-terminfo package), holding exactly the capabilities upstream reads (ech, bce, smcup, rmcup, and what it uses for title support). An exact TERM match gives the same answer upstream would get; an unknown TERM falls back to xterm where upstream would fail to start. The table also carries `colors`, so `mosh-client -c` answers from it; for an unknown TERM it prints xterm's count where upstream prints "unknown terminal type" and exits 1. Needed because Windows has no terminfo.
 7. Timestamps start at 1,000,000,000 ms instead of milliseconds since boot, so upstream's `now - 0` comparisons behave as they do on a machine that has been up for a while.

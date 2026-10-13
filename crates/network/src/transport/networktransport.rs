@@ -383,6 +383,11 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
         self.sender.get_sent_state_acked()
     }
 
+    /// mosh-rs (not upstream, read-only): the newest acknowledged sent state.
+    pub fn get_sent_state_acked_state(&self) -> &MyState {
+        self.sender.get_sent_state_acked_state()
+    }
+
     /// Number of the newest sent state.
     pub fn get_sent_state_last(&self) -> u64 {
         self.sender.get_sent_state_last()

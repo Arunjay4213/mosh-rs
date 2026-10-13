@@ -460,3 +460,17 @@ Rerun by the orchestrator at ef1c4e7 (`scripts/build-release.sh`, then `target/r
 - Idle CPU over 60 s: 0.00% for client and server (C++ the same).
 - Memory after a 5-minute active session: client 3.7 MB (C++ 14.5 MB), server 2.6 MB (C++ 10.1 MB). Part of the gap is shared-library pages the C++ binaries load and the static ones do not.
 - Agent P's 1-hour run: client 3.9 MB (C++ 14.6 MB), server 2.5 MB (C++ 10.1 MB). Not rerun by the orchestrator; it will be rerun once for the README after scrollback lands.
+
+## 2026-10-13 Scrollback server side reworked to the paced contract (agent S1)
+
+Per the orchestrator's decision on the diff-size finding: the server never blocks the program; `scrolled_total` counts published lines; the server publishes at most W = 4856 bytes of rendered lines (four 1214-byte fragment payloads at upstream's IPv4 MTU) beyond the newest state the client acknowledged, read with a new read-only `Transport::get_sent_state_acked_state`; at least one line is published when none is outstanding.
+The backlog holds only undelivered lines, capped in bytes (`mosh-server --scrollback MIB`, default 32, now in the usage line); on overflow the oldest unpublished lines become a dropped count.
+One diff may carry several `ScrolledLines` instructions, one per run of held lines.
+When the program exits with lines undelivered, shutdown waits until they are acknowledged, or until acknowledgements have stopped for 60 s.
+`init_diff` sends only the scrolled count, because delivered lines are freed (the verbose round-trip check compares init diffs of the current state and of a copy of an older one).
+PLAN 6.2, 6.3 and 9.4 rewritten.
+- Live probe, `seq 1 50000`, our server with default settings: identical to seq in 10 of 10 clean runs (history complete in 9.06-9.10 s), 3 of 3 through 30% loss and 100 ms delay (123-134 s), and 3 of 3 with a 10 s blackout 2 s in (21.1 s). The server's `-v` log shows at most 2 fragments per instruction in every run (bound 7); no round-trip verification warning.
+- Timing: the final screen arrives in 0.25 s on loopback and 0.35 s at 100 ms round trip, the same with and without the capability. History completes in 9.1 s on loopback and 17.3 s at 100 ms round trip with no loss.
+- C++ server with the capability: 0 lines, correct final screen.
+- `scrollback_server`: old-peer diffs `digests_differing=0`, `capture_on_frame_mismatches=0`; simulated lossy link with partial acks: seq 1 50000 with no gap or duplicate, no diff over the window (largest 4856 bytes); also resizes, alternate screen (0 VIM lines), scroll region, a 16 KiB backlog overflowing while the client is away (27,800 lines dropped and counted, the newest 1,404 kept in order), 374 rendered lines cell-exact in ref-term.
+- `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client all --server all`: 120 of 120. `tests/upstream-check.sh --client cxx --server rust`: 30 PASS, 2 XFAIL, 0 FAIL, 0 ERROR. vt-fuzz 200,000 and 200,000 `--frames`: 0 mismatches. `cargo test --release --workspace`: all pass. fmt and clippy (native and Windows) clean.

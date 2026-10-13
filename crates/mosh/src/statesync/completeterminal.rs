@@ -36,11 +36,16 @@
 //! mosh-rs scrollback (PLAN.md section 6, 9.4), not in upstream. On the
 //! server, once the client's capabilities ask for it (`act_action`), the
 //! framebuffer collects the rows that scroll off the top (see
-//! `Framebuffer::scroll`); `act` renders them into a `ScrolledRing` shared by
-//! every copy of this state, and the state itself only counts them
-//! (`scrolled_total`). `diff_from` sends the lines numbered
-//! `(existing.scrolled_total, self.scrolled_total]` as a `ScrolledLines`
-//! instruction placed after the echo ack and before the resize and host
+//! `Framebuffer::scroll`) and `act` renders them into a `ScrolledRing`, a
+//! backlog of lines not yet delivered, shared by every copy of this state.
+//! The state itself only carries `scrolled_total`, the number of lines
+//! published so far. The server loop publishes (`publish_scrollback`) at
+//! most `ScrolledRing::WINDOW` bytes of lines beyond what the client has
+//! acknowledged, so every diff stays a few fragments long and history
+//! trickles behind the screen; the screen itself is never held back.
+//! `diff_from` sends the published lines numbered
+//! `(existing.scrolled_total, self.scrolled_total]` as `ScrolledLines`
+//! instructions placed after the echo ack and before the resize and host
 //! bytes, so a client can print the lines first and then the new frame. On
 //! the client, `apply_string` hands received lines to a `ReceivedScrollback`
 //! shared by every copy, which drops by number the lines it already has
@@ -66,46 +71,191 @@ use super::user::UserAction;
 /// Upstream `std::list<std::pair<uint64_t, uint64_t>>`: (frame number, time).
 type InputHistoryType = VecDeque<(u64, u64)>;
 
-/// mosh-rs scrollback, server side: the newest rendered lines that scrolled
-/// off the screen, numbered from 1. Holds lines `(total - len, total]`.
+/// One backlog entry: a rendered line, or a run of lines dropped unsent.
+#[derive(Debug)]
+enum Backlog {
+    Line(Vec<u8>),
+    Dropped(u64),
+}
+
+impl Backlog {
+    /// How many line numbers the entry covers.
+    fn count(&self) -> u64 {
+        match self {
+            Backlog::Line(_) => 1,
+            Backlog::Dropped(n) => *n,
+        }
+    }
+
+    fn bytes(&self) -> usize {
+        match self {
+            Backlog::Line(l) => l.len(),
+            Backlog::Dropped(_) => 0,
+        }
+    }
+}
+
+/// mosh-rs scrollback, server side: the rendered lines that scrolled off the
+/// screen and have not been delivered yet, numbered from 1 in the order they
+/// left. Lines up to the client's acknowledged count are freed, so this is a
+/// backlog, not a history. It is capped in bytes; on overflow the oldest
+/// lines not yet published are replaced by a count of dropped lines.
 #[derive(Debug)]
 pub struct ScrolledRing {
-    lines: VecDeque<Vec<u8>>,
+    entries: VecDeque<Backlog>,
+    /// Number of the first line `entries` covers.
+    first: u64,
+    /// Number of the newest captured line.
+    captured: u64,
+    /// Number of the newest published line (the live `scrolled_total`).
+    published: u64,
+    /// Bytes of the held lines.
+    bytes: usize,
+    /// Cap on `bytes`.
     limit: usize,
-    total: u64,
 }
 
 impl ScrolledRing {
+    /// Bytes of rendered lines published beyond the client's acknowledged
+    /// count: the payload of four fragments at upstream's IPv4 MTU
+    /// (1280 - 28 IP/UDP - 12 nonce and timestamps - 16 OCB tag - 10
+    /// fragment header = 1214 bytes each). Lines compress well (`seq` about
+    /// 4:1), so a typical diff carries them in one or two fragments; even
+    /// incompressible lines need at most five with the protobuf framing.
+    pub const WINDOW: usize = 4 * 1214;
+
     fn new(limit: usize) -> ScrolledRing {
         ScrolledRing {
-            lines: VecDeque::new(),
+            entries: VecDeque::new(),
+            first: 1,
+            captured: 0,
+            published: 0,
+            bytes: 0,
             limit,
-            total: 0,
         }
     }
 
     fn push(&mut self, line: Vec<u8>) {
-        if self.lines.len() == self.limit {
-            self.lines.pop_front();
+        self.captured += 1;
+        self.bytes += line.len();
+        self.entries.push_back(Backlog::Line(line));
+        if self.bytes > self.limit {
+            // Drop a sixteenth more than needed, so a steady flood does not
+            // search for the oldest unpublished line on every push.
+            self.drop_oldest_unpublished(self.limit - self.limit / 16);
         }
-        self.lines.push_back(line);
-        self.total += 1;
     }
 
-    /// The `ScrolledLines` for lines `(from, to]`: those still held, and how
-    /// many before them were evicted.
-    fn scrolled_lines(&self, from: u64, to: u64) -> ScrolledLines {
-        let oldest = self.total - self.lines.len() as u64 + 1;
-        let start = (from + 1).max(oldest).min(to + 1);
-        let line = (start..=to)
-            .map(|i| self.lines[(i - oldest) as usize].clone())
-            .collect();
-        let dropped = start - (from + 1);
-        ScrolledLines {
-            first_index: Some(start),
-            line,
-            dropped: (dropped > 0).then_some(dropped),
+    /// Replaces the oldest unpublished lines by one dropped run until the
+    /// held bytes are at most `target` (published lines are kept: the
+    /// client may still need them resent).
+    fn drop_oldest_unpublished(&mut self, target: usize) {
+        let mut index = self.first;
+        let mut p = 0;
+        while p < self.entries.len() && index <= self.published {
+            index += self.entries[p].count();
+            p += 1;
         }
+        if p == self.entries.len() {
+            return;
+        }
+        if let Backlog::Line(l) = &self.entries[p] {
+            self.bytes -= l.len();
+            self.entries[p] = Backlog::Dropped(1);
+        }
+        while self.bytes > target && p + 1 < self.entries.len() {
+            let next = self.entries.remove(p + 1).expect("entry");
+            self.bytes -= next.bytes();
+            if let Backlog::Dropped(n) = &mut self.entries[p] {
+                *n += next.count();
+            }
+        }
+    }
+
+    /// Frees the lines up to `acked` (the client has them) and publishes
+    /// lines until the bytes published beyond `acked` would exceed
+    /// `WINDOW`, always at least one line when none is outstanding, and
+    /// dropped runs whole. Returns the new published count.
+    fn publish(&mut self, acked: u64) -> u64 {
+        while let Some(e) = self.entries.front_mut() {
+            let c = e.count();
+            if self.first + c - 1 <= acked {
+                self.bytes -= e.bytes();
+                self.entries.pop_front();
+                self.first += c;
+            } else {
+                if let (Backlog::Dropped(n), true) = (&mut *e, self.first <= acked) {
+                    *n -= acked + 1 - self.first;
+                    self.first = acked + 1;
+                }
+                break;
+            }
+        }
+        self.first = self.first.max(acked + 1);
+
+        let (mut index, mut p, mut used) = (self.first, 0, 0);
+        while p < self.entries.len() && index <= self.published {
+            used += self.entries[p].bytes();
+            index += self.entries[p].count();
+            p += 1;
+        }
+        while p < self.entries.len() {
+            let e = &self.entries[p];
+            if let Backlog::Line(l) = e {
+                if used > 0 && used + l.len() > Self::WINDOW {
+                    break;
+                }
+                used += l.len();
+            }
+            index += e.count();
+            self.published = index - 1;
+            p += 1;
+        }
+        self.published
+    }
+
+    /// The `ScrolledLines` instructions for lines `(from, to]`: one per run
+    /// of held lines, each with the count of lines missing before it (freed
+    /// or dropped), and a last one with no lines if the range ends in a gap.
+    fn scrolled_lines(&self, from: u64, to: u64) -> Vec<ScrolledLines> {
+        let mut out = Vec::new();
+        let mut run: Option<ScrolledLines> = None;
+        let mut dropped = self.first.min(to + 1).saturating_sub(from + 1);
+        let mut index = self.first;
+        for e in &self.entries {
+            if index > to {
+                break;
+            }
+            match e {
+                Backlog::Line(l) if index > from => {
+                    let r = run.get_or_insert_with(|| ScrolledLines {
+                        first_index: Some(index),
+                        line: Vec::new(),
+                        dropped: (dropped > 0).then_some(dropped),
+                    });
+                    r.line.push(l.clone());
+                    dropped = 0;
+                }
+                Backlog::Line(_) => {}
+                Backlog::Dropped(n) => {
+                    let (lo, hi) = (index.max(from + 1), (index + n - 1).min(to));
+                    if hi >= lo {
+                        out.extend(run.take());
+                        dropped += hi - lo + 1;
+                    }
+                }
+            }
+            index += e.count();
+        }
+        out.extend(run);
+        if dropped > 0 {
+            out.push(ScrolledLines {
+                first_index: Some(to + 1),
+                line: Vec::new(),
+                dropped: Some(dropped),
+            });
+        }
+        out
     }
 }
 
@@ -175,13 +325,15 @@ pub struct Complete {
     input_history: InputHistoryType,
     echo_ack: u64,
 
-    /// mosh-rs scrollback: ring size the server allows (0 = never capture).
+    /// mosh-rs scrollback: cap in bytes on the server's backlog (0 = never
+    /// capture).
     scrollback_limit: usize,
     /// mosh-rs scrollback, server: the shared ring; `Some` once the client's
     /// capabilities asked for scrollback.
     ring: Option<Rc<RefCell<ScrolledRing>>>,
-    /// mosh-rs scrollback: number of lines that scrolled off up to this
-    /// state (server: captured; client: covered by applied diffs).
+    /// mosh-rs scrollback: number of lines that scrolled off and were
+    /// published up to this state (server: `publish_scrollback`; client:
+    /// covered by applied diffs).
     scrolled_total: u64,
     /// mosh-rs scrollback, client: where `apply_string` puts received lines.
     received: Option<Rc<RefCell<ReceivedScrollback>>>,
@@ -207,10 +359,33 @@ impl Complete {
         }
     }
 
-    /// mosh-rs scrollback, server: the most lines to keep for a client that
-    /// asks for scrollback (`mosh-server --scrollback N`); 0 never captures.
+    /// mosh-rs scrollback, server: the cap in bytes on undelivered lines kept
+    /// for a client that asks for scrollback (`mosh-server --scrollback N`,
+    /// in MiB); 0 never captures.
     pub fn set_scrollback_limit(&mut self, limit: usize) {
         self.scrollback_limit = limit;
+    }
+
+    /// mosh-rs scrollback, server: frees the lines up to `acked` (the
+    /// `scrolled_total` of the newest state the client acknowledged) and
+    /// publishes more within the window; returns whether `scrolled_total`
+    /// changed (then the state must be handed to the transport again).
+    pub fn publish_scrollback(&mut self, acked: u64) -> bool {
+        let Some(ring) = &self.ring else {
+            return false;
+        };
+        let published = ring.borrow_mut().publish(acked);
+        let changed = published != self.scrolled_total;
+        self.scrolled_total = published;
+        changed
+    }
+
+    /// mosh-rs scrollback, server: lines captured so far (published or not).
+    pub fn get_scrollback_captured(&self) -> u64 {
+        match &self.ring {
+            Some(ring) => ring.borrow().captured,
+            None => self.scrolled_total,
+        }
     }
 
     /// mosh-rs scrollback, client: from now on `apply_string` delivers
@@ -230,14 +405,14 @@ impl Complete {
     /// Feeds host output bytes; returns the replies for the host.
     pub fn act(&mut self, s: &[u8]) -> Vec<u8> {
         let terminal_to_host = self.act_octets(s);
-        // mosh-rs scrollback: render the rows that scrolled off into the ring.
+        // mosh-rs scrollback: render the rows that scrolled off into the
+        // backlog; publish_scrollback decides when they are sent.
         if let Some(ring) = &self.ring {
             let rows = self.terminal.get_fb_mut().take_scrolled_rows();
             let mut ring = ring.borrow_mut();
             for row in &rows {
                 ring.push(Display::render_scrolled_row(row).into_bytes());
             }
-            self.scrolled_total = ring.total;
         }
         terminal_to_host
     }
@@ -332,31 +507,13 @@ impl Complete {
         // uint64_t to int, as upstream's return: truncates if over i32 range.
         (next_echo_ack_time - now) as i32
     }
-}
 
-impl PartialEq for Complete {
-    fn eq(&self, x: &Complete) -> bool {
-        // assert( parser == x.parser ); /* parser state is irrelevant for us */
-        // Emulator equality is Framebuffer equality, which compares row
-        // pointers: two Completes are equal only when one is a copy of the
-        // other with no row written since.
-        // mosh-rs scrollback: scrolled_total too, or lines that scroll off
-        // without changing the final screen would never be sent. It is 0 on
-        // both sides unless the client asked for scrollback.
-        (self.terminal == x.terminal)
-            && (self.echo_ack == x.echo_ack)
-            && (self.scrolled_total == x.scrolled_total)
-    }
-}
-
-impl State for Complete {
-    fn subtract(&mut self, _prefix: &Complete) {}
-
-    /// Upstream `subtract( const Complete* ) const {}` does nothing, also
-    /// when handed itself, so there is nothing to copy or change.
-    fn subtract_self(&mut self) {}
-
-    fn diff_from(&self, existing: &Complete) -> Vec<u8> {
+    /// Upstream's `diff_from`. mosh-rs scrollback: with `with_lines` false
+    /// no line is sent, only the count (all reported dropped). `init_diff`
+    /// uses that: the backlog no longer holds delivered lines, and the
+    /// sender's verbose check compares the init diffs of the current state
+    /// and of a copy of an older one, which may predate the backlog.
+    fn diff_with_lines(&self, existing: &Complete, with_lines: bool) -> Vec<u8> {
         let mut output = HostMessage::default();
 
         if existing.get_echo_ack() != self.get_echo_ack() {
@@ -374,24 +531,26 @@ impl State for Complete {
         // them first. Never present unless the client asked for scrollback.
         if existing.scrolled_total != self.scrolled_total {
             assert!(self.scrolled_total > existing.scrolled_total);
-            let lines = match &self.ring {
-                Some(ring) => ring
+            let runs = match (&self.ring, with_lines) {
+                (Some(ring), true) => ring
                     .borrow()
                     .scrolled_lines(existing.scrolled_total, self.scrolled_total),
-                None => {
-                    // A client-side state, which keeps no lines (it is never
-                    // asked for a diff in practice): all are reported dropped.
-                    ScrolledLines {
+                _ => {
+                    // No lines (a client-side state keeps none; it is never
+                    // asked for a diff in practice): all reported dropped.
+                    vec![ScrolledLines {
                         first_index: Some(self.scrolled_total + 1),
                         line: Vec::new(),
                         dropped: Some(self.scrolled_total - existing.scrolled_total),
-                    }
+                    }]
                 }
             };
-            output.instruction.push(Instruction {
-                scrolledlines: Some(lines),
-                ..Default::default()
-            });
+            for lines in runs {
+                output.instruction.push(Instruction {
+                    scrolledlines: Some(lines),
+                    ..Default::default()
+                });
+            }
         }
 
         if !(existing.get_fb() == self.get_fb()) {
@@ -424,13 +583,43 @@ impl State for Complete {
 
         output.encode_to_vec()
     }
+}
+
+impl PartialEq for Complete {
+    fn eq(&self, x: &Complete) -> bool {
+        // assert( parser == x.parser ); /* parser state is irrelevant for us */
+        // Emulator equality is Framebuffer equality, which compares row
+        // pointers: two Completes are equal only when one is a copy of the
+        // other with no row written since.
+        // mosh-rs scrollback: scrolled_total too, or lines that scroll off
+        // without changing the final screen would never be sent. It is 0 on
+        // both sides unless the client asked for scrollback.
+        (self.terminal == x.terminal)
+            && (self.echo_ack == x.echo_ack)
+            && (self.scrolled_total == x.scrolled_total)
+    }
+}
+
+impl State for Complete {
+    fn subtract(&mut self, _prefix: &Complete) {}
+
+    /// Upstream `subtract( const Complete* ) const {}` does nothing, also
+    /// when handed itself, so there is nothing to copy or change.
+    fn subtract_self(&mut self) {}
+
+    fn diff_from(&self, existing: &Complete) -> Vec<u8> {
+        self.diff_with_lines(existing, true)
+    }
 
     fn init_diff(&self) -> Vec<u8> {
         // size_t from the int width/height, which are always >= 1.
-        self.diff_from(&Complete::new(
-            self.get_fb().ds.get_width() as usize,
-            self.get_fb().ds.get_height() as usize,
-        ))
+        self.diff_with_lines(
+            &Complete::new(
+                self.get_fb().ds.get_width() as usize,
+                self.get_fb().ds.get_height() as usize,
+            ),
+            false,
+        )
     }
 
     fn apply_string(&mut self, diff: &[u8]) -> Result<(), CryptoError> {

@@ -134,7 +134,7 @@ fn print_version(file: &mut dyn Write) {
 fn print_usage(stream: &mut dyn Write, argv0: &str) {
     let _ = writeln!(
         stream,
-        "Usage: {argv0} new [-s] [-v] [-i LOCALADDR] [-p PORT[:PORT2]] [-c COLORS] [-l NAME=VALUE] [-- COMMAND...]"
+        "Usage: {argv0} new [-s] [-v] [-i LOCALADDR] [-p PORT[:PORT2]] [-c COLORS] [-l NAME=VALUE] [--scrollback MIB] [-- COMMAND...]"
     );
 }
 
@@ -276,8 +276,9 @@ pub fn main() -> i32 {
     let mut desired_port: Option<String> = None;
     let mut command_argv: Option<Vec<OsString>> = None;
     let mut colors: i32 = 0;
-    /* mosh-rs scrollback (PLAN.md 6.2): lines kept for a client that asks */
-    let mut scrollback: usize = 10000;
+    /* mosh-rs scrollback (PLAN.md 6.2): MiB of undelivered scrolled lines
+    kept for a client that asks (0 = none) */
+    let mut scrollback: usize = 32;
     let mut verbose: u32 = 0; /* don't close stdin/stdout/stderr */
     /* Will cause mosh-server not to correctly detach on old versions of sshd. */
     let mut locale_vars: Vec<OsString> = Vec::new();
@@ -327,7 +328,9 @@ pub fn main() -> i32 {
                 Some(v) => {
                     let v = v.to_string_lossy().into_owned();
                     match myatoi(&v) {
-                        Ok(n) if n >= 0 && !v.is_empty() => scrollback = n as usize,
+                        Ok(n) if (0..=1 << 20).contains(&n) && !v.is_empty() => {
+                            scrollback = n as usize
+                        }
                         _ => {
                             errln!("{argv0}: Bad scrollback size ({v})");
                             print_usage(&mut io::stderr(), &argv0);
@@ -571,7 +574,7 @@ fn run_server(
     /* open parser and terminal */
     let mut terminal = Complete::new(window_size.ws_col as usize, window_size.ws_row as usize);
     /* mosh-rs scrollback: used only if the client's capabilities ask for it */
-    terminal.set_scrollback_limit(scrollback);
+    terminal.set_scrollback_limit(scrollback << 20);
 
     /* open network */
     let blank = UserStream::new();
@@ -793,6 +796,12 @@ struct Serve<'a> {
     sel: Select,
     last_remote_num: u64,
     child_released: bool,
+    /* mosh-rs scrollback (PLAN.md 6.2): the program's output ended while
+    scrolled lines were still undelivered; shutdown waits for them. */
+    host_eof: bool,
+    /* mosh-rs scrollback: acknowledged scrolled-line count, and when it last grew */
+    acked_scrolled: u64,
+    backlog_progress: u64,
 }
 
 /// What one loop iteration asks for.
@@ -830,6 +839,9 @@ fn serve(
         sel,
         last_remote_num,
         child_released: false,
+        host_eof: false,
+        acked_scrolled: 0,
+        backlog_progress: timestamp(),
     };
 
     loop {
@@ -893,7 +905,7 @@ impl Serve<'_> {
         assert!(fd_list.len() == 1); /* servers don't hop */
         let network_fd = *fd_list.last().expect("one fd");
         sel.add_fd(network_fd);
-        if !network.shutdown_in_progress() {
+        if !network.shutdown_in_progress() && !self.host_eof {
             sel.add_fd(host_fd.as_raw_fd());
         }
 
@@ -911,6 +923,17 @@ impl Serve<'_> {
         if sel.read(network_fd) {
             /* packet received from the network */
             network.recv()?;
+
+            /* mosh-rs scrollback (PLAN.md 6.3): an ack frees delivered lines
+            and opens the window for more */
+            let acked = network.get_sent_state_acked_state().get_scrolled_total();
+            if acked != self.acked_scrolled {
+                self.acked_scrolled = acked;
+                self.backlog_progress = now;
+            }
+            if terminal.publish_scrollback(acked) && !network.shutdown_in_progress() {
+                network.set_current_state(terminal);
+            }
 
             /* is new user input available for the terminal? */
             if network.get_remote_state_num() != self.last_remote_num {
@@ -975,7 +998,7 @@ impl Serve<'_> {
             }
         }
 
-        if !network.shutdown_in_progress() && sel.read(host_fd.as_raw_fd()) {
+        if !network.shutdown_in_progress() && !self.host_eof && sel.read(host_fd.as_raw_fd()) {
             /* input from the host needs to be fed to the terminal */
             const BUF_SIZE: usize = 16384;
             let mut buf = [0u8; BUF_SIZE];
@@ -986,9 +1009,16 @@ impl Serve<'_> {
             /* If the pty slave is closed, reading from the master can fail with
             EIO (see #264).  So we treat errors on read() like EOF. */
             match bytes_read {
+                /* mosh-rs scrollback: lines still undelivered keep the
+                session up until they are acknowledged (see below) */
+                Ok(0) | Err(_) if terminal.get_scrollback_captured() > self.acked_scrolled => {
+                    self.host_eof = true;
+                    self.backlog_progress = now;
+                }
                 Ok(0) | Err(_) => network.start_shutdown(),
                 Ok(n) => {
                     terminal_to_host.extend(terminal.act(&buf[..n]));
+                    terminal.publish_scrollback(self.acked_scrolled);
 
                     /* update client with new state of terminal */
                     network.set_current_state(terminal);
@@ -1027,6 +1057,17 @@ impl Serve<'_> {
             } else {
                 return Ok(Next::Break);
             }
+        }
+
+        /* mosh-rs scrollback: after the program's output ended, shut down once
+        every scrolled line is acknowledged, or once acknowledgements have
+        stopped for TIMEOUT_IF_NO_CLIENT (the client is gone) */
+        if self.host_eof
+            && !network.shutdown_in_progress()
+            && (terminal.get_scrollback_captured() <= self.acked_scrolled
+                || now.wrapping_sub(self.backlog_progress) >= TIMEOUT_IF_NO_CLIENT)
+        {
+            network.start_shutdown();
         }
 
         /* quit if our shutdown has been acknowledged */

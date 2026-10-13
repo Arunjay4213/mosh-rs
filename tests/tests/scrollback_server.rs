@@ -38,9 +38,13 @@
 //   diffs minus the ScrolledLines instruction are those same bytes.
 // - Capture: `seq` output through a server `Complete` and a client
 //   `Complete` that applies diffs at random points and from older states
-//   (as after loss and retransmission) arrives as scrolled lines plus the
-//   final screen with no gap and no duplicate; also with a resize, an
-//   alternate-screen excursion, a partial scrolling region, and a small ring.
+//   (as after loss and retransmission), acknowledging some of them, arrives
+//   as scrolled lines plus the final screen with no gap and no duplicate;
+//   no diff carries more than the window; also with a resize, an
+//   alternate-screen excursion, a partial scrolling region, and a small
+//   backlog that overflows while the client is away.
+// - Live: scrollback-probe against a real mosh-server, clean, through 30%
+//   loss, through a 10 s blackout, and against the C++ server.
 // - Rendering: random colored, linked, wide and combining lines rendered by
 //   the server read back cell for cell in upstream's emulator (ref-term).
 
@@ -50,7 +54,9 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-use mosh::statesync::{ClientCapabilities, Complete, ReceivedScrollback, UserAction, UserStream};
+use mosh::statesync::{
+    ClientCapabilities, Complete, ReceivedScrollback, ScrolledRing, UserAction, UserStream,
+};
 use mosh_network::prost::Message;
 use mosh_network::proto::host_buffers::{HostMessage, ScrolledLines};
 use mosh_network::State;
@@ -116,7 +122,7 @@ fn capability_wire_format() {
 fn corpus_diffs(data: &[u8], w: usize, h: usize, chunks: usize, capability: bool) -> Vec<Vec<u8>> {
     let offsets = prefix_offsets(data, chunks);
     let mut server = Complete::new(w, h);
-    server.set_scrollback_limit(10000);
+    server.set_scrollback_limit(32 << 20);
     if capability {
         send_capability(&mut server);
     }
@@ -129,33 +135,40 @@ fn corpus_diffs(data: &[u8], w: usize, h: usize, chunks: usize, capability: bool
         }
         server.act(&data[start..end]);
         start = end;
+        server.publish_scrollback(prev.get_scrolled_total());
         diffs.push(server.diff_from(&prev));
         prev = server.clone();
     }
     diffs
 }
 
-/// The ScrolledLines instruction of a diff, after checking it comes before
-/// any resize or host bytes (the order a client relies on).
-fn scrolled_lines_of(msg: &HostMessage) -> Option<&ScrolledLines> {
-    let pos = msg
+/// The ScrolledLines instructions of a diff, after checking they come
+/// before any resize or host bytes (the order a client relies on).
+fn scrolled_lines_of(msg: &HostMessage) -> Vec<&ScrolledLines> {
+    let first_frame = msg
         .instruction
         .iter()
-        .position(|i| i.scrolledlines.is_some())?;
-    assert_eq!(
-        msg.instruction
-            .iter()
-            .filter(|i| i.scrolledlines.is_some())
-            .count(),
-        1
-    );
+        .position(|i| i.resize.is_some() || i.hostbytes.is_some())
+        .unwrap_or(msg.instruction.len());
     assert!(
-        msg.instruction[..pos]
+        msg.instruction[first_frame..]
             .iter()
-            .all(|i| i.resize.is_none() && i.hostbytes.is_none()),
+            .all(|i| i.scrolledlines.is_none()),
         "ScrolledLines must come before resize and host bytes"
     );
-    msg.instruction[pos].scrolledlines.as_ref()
+    msg.instruction
+        .iter()
+        .filter_map(|i| i.scrolledlines.as_ref())
+        .collect()
+}
+
+/// Bytes of rendered lines in a diff.
+fn line_bytes(lines: &[&ScrolledLines]) -> usize {
+    lines
+        .iter()
+        .flat_map(|sl| sl.line.iter())
+        .map(Vec::len)
+        .sum()
 }
 
 #[test]
@@ -202,9 +215,10 @@ fn old_peer_diffs_unchanged() {
             let rx = client.enable_scrollback_receive();
             for (i, (a, b)) in on.iter().zip(off.iter()).enumerate() {
                 let mut msg = HostMessage::decode(a.as_slice()).expect("diff decodes");
-                if let Some(sl) = scrolled_lines_of(&msg) {
+                let sls = scrolled_lines_of(&msg);
+                if !sls.is_empty() {
                     diffs_with_lines += 1;
-                    lines_sent += sl.line.len() as u64;
+                    lines_sent += sls.iter().map(|sl| sl.line.len() as u64).sum::<u64>();
                 }
                 client.apply_string(a).expect("diff applies");
                 msg.instruction.retain(|i| i.scrolledlines.is_none());
@@ -297,11 +311,14 @@ fn line_text(line: &[u8]) -> String {
 }
 
 /// A server and a client `Complete` joined by a lossy link: the client gets
-/// a diff only now and then, and sometimes one computed from an older state
-/// it holds (as the transport does after loss), so diffs repeat lines.
+/// a diff only now and then, sometimes one computed from an older state it
+/// holds (as the transport does after loss), so diffs repeat lines, and it
+/// acknowledges only some states. The server publishes as its loop does,
+/// with the oldest state both sides still hold as the acknowledged one.
 struct Link {
     server: Complete,
-    /// (server snapshot, client state) pairs the two sides agree on.
+    /// (server snapshot, client state) pairs the two sides agree on; the
+    /// front is the acknowledged one.
     history: VecDeque<(Complete, Complete)>,
     rx: Rc<RefCell<ReceivedScrollback>>,
     rng: Rng,
@@ -309,7 +326,7 @@ struct Link {
     deliveries: usize,
     diffs_with_lines: usize,
     repeated_lines: u64,
-    max_lines: usize,
+    max_line_bytes: usize,
 }
 
 impl Link {
@@ -328,12 +345,25 @@ impl Link {
             deliveries: 0,
             diffs_with_lines: 0,
             repeated_lines: 0,
-            max_lines: 0,
+            max_line_bytes: 0,
         }
     }
 
-    /// Sends the client one diff of the current server state.
+    fn acked(&self) -> u64 {
+        self.history.front().expect("state").1.get_scrolled_total()
+    }
+
+    /// Publishes as the server loop does after output or an ack.
+    fn publish(&mut self) {
+        let acked = self.acked();
+        self.server.publish_scrollback(acked);
+    }
+
+    /// Sends the client one diff of the current server state; `latest`
+    /// diffs from the newest state and acknowledges the result, otherwise
+    /// the base and the acknowledgement are random.
     fn deliver(&mut self, latest: bool) -> HostMessage {
+        self.publish();
         let n = self.history.len();
         let back = if !latest && self.rng.next_u64().is_multiple_of(4) {
             (self.rng.next_u64() % n as u64) as usize
@@ -343,14 +373,25 @@ impl Link {
         let (base_server, base_client) = &self.history[n - 1 - back];
         let diff = self.server.diff_from(base_server);
         let msg = HostMessage::decode(diff.as_slice()).expect("diff decodes");
-        if let Some(sl) = scrolled_lines_of(&msg) {
+        let sls = scrolled_lines_of(&msg);
+        if !sls.is_empty() {
             self.diffs_with_lines += 1;
-            self.max_lines = self.max_lines.max(sl.line.len());
+            // The window bounds the bytes beyond the acknowledged state; one
+            // line is sent even if it alone is larger.
+            let count: usize = sls.iter().map(|sl| sl.line.len()).sum();
+            let bytes = line_bytes(&sls);
+            assert!(
+                bytes <= ScrolledRing::WINDOW || count == 1,
+                "a diff carried {bytes} bytes of lines"
+            );
+            self.max_line_bytes = self.max_line_bytes.max(bytes);
             if back > 0 {
                 let newest = self.history[n - 1].1.get_scrolled_total();
-                let first = sl.first_index.unwrap_or(0);
-                let last = first + sl.line.len() as u64;
-                self.repeated_lines += newest.min(last).saturating_sub(first);
+                for sl in &sls {
+                    let first = sl.first_index.unwrap_or(0);
+                    let last = first + sl.line.len() as u64;
+                    self.repeated_lines += newest.min(last).saturating_sub(first);
+                }
             }
         }
         let mut client = base_client.clone();
@@ -360,7 +401,12 @@ impl Link {
             self.server.get_scrolled_total()
         );
         self.history.push_back((self.server.clone(), client));
-        if self.history.len() > 8 {
+        if latest || self.rng.next_u64().is_multiple_of(2) {
+            while self.history.len() > 1 {
+                self.history.pop_front();
+            }
+        }
+        while self.history.len() > 8 {
             self.history.pop_front();
         }
         self.deliveries += 1;
@@ -375,6 +421,7 @@ impl Link {
             let n = 1 + (self.rng.next_u64() % 3000) as usize;
             let end = (start + n).min(data.len());
             assert!(self.server.act(&data[start..end]).is_empty());
+            self.publish();
             start = end;
             self.since_delivery += 1;
             if self.rng.next_u64().is_multiple_of(3) || self.since_delivery >= 8 {
@@ -383,33 +430,41 @@ impl Link {
         }
     }
 
-    /// Final delivery; returns (line number, text) of every received line
-    /// and the client's screen, after checking it matches the server's.
-    fn finish(&mut self) -> (Vec<(u64, String)>, Vec<String>) {
-        self.deliver(true);
+    /// Delivers and acknowledges until every captured line is acknowledged;
+    /// returns every received line (number, bytes) and the client's screen,
+    /// after checking it matches the server's.
+    fn finish_raw(&mut self) -> (Vec<(u64, Vec<u8>)>, Vec<String>) {
+        loop {
+            self.deliver(true);
+            if self.acked() == self.server.get_scrollback_captured() {
+                break;
+            }
+        }
         let client = &self.history.back().expect("state").1;
         let screen = screen_text(client.get_fb());
         assert_eq!(screen, screen_text(self.server.get_fb()), "client screen");
-        let lines = self
-            .rx
-            .borrow_mut()
-            .take_pending()
-            .into_iter()
-            .map(|(i, l)| (i, line_text(&l)))
-            .collect();
+        let lines = self.rx.borrow_mut().take_pending().into_iter().collect();
+        (lines, screen)
+    }
+
+    /// `finish_raw` with each line's text.
+    fn finish(&mut self) -> (Vec<(u64, String)>, Vec<String>) {
+        let (lines, screen) = self.finish_raw();
+        let lines = lines.into_iter().map(|(i, l)| (i, line_text(&l))).collect();
         (lines, screen)
     }
 
     fn report(&self, what: &str, lines: &[(u64, String)]) {
         println!(
-            "{}: server_scrolled={} received_lines={} lost={} deliveries={} diffs_with_lines={} max_lines_in_one_diff={} repeated_lines_skipped={}",
+            "{}: captured={} received_lines={} lost={} deliveries={} diffs_with_lines={} max_line_bytes_in_one_diff={} (window {}) repeated_lines_skipped={}",
             what,
-            self.server.get_scrolled_total(),
+            self.server.get_scrollback_captured(),
             lines.len(),
             self.rx.borrow().lost(),
             self.deliveries,
             self.diffs_with_lines,
-            self.max_lines,
+            self.max_line_bytes,
+            ScrolledRing::WINDOW,
             self.repeated_lines
         );
     }
@@ -443,7 +498,7 @@ fn assert_complete(link: &Link, lines: &[(u64, String)], screen: &[String], want
 
 #[test]
 fn seq_50000_random_snapshots() {
-    let mut link = Link::new(80, 24, 10000, 1);
+    let mut link = Link::new(80, 24, 32 << 20, 1);
     link.feed(&seq(1, 50000));
     let (lines, screen) = link.finish();
     link.report("seq 1 50000", &lines);
@@ -453,7 +508,7 @@ fn seq_50000_random_snapshots() {
 
 #[test]
 fn seq_with_resizes() {
-    let mut link = Link::new(80, 24, 10000, 2);
+    let mut link = Link::new(80, 24, 32 << 20, 2);
     link.feed(&seq(1, 20000));
     link.server
         .act_action(UserAction::Resize(&Resize::new(100, 30)));
@@ -468,7 +523,7 @@ fn seq_with_resizes() {
 
 #[test]
 fn alternate_screen_is_not_captured() {
-    let mut link = Link::new(80, 24, 10000, 3);
+    let mut link = Link::new(80, 24, 32 << 20, 3);
     link.feed(&seq(1, 3000));
     // Upstream ignores the alternate screen, so the rows on screen when the
     // program enters it are erased by its clear and never scroll off.
@@ -478,10 +533,10 @@ fn alternate_screen_is_not_captured() {
         vim.extend_from_slice(format!("VIM line {}\r\n", i).as_bytes());
     }
     vim.extend_from_slice(b"\x1b[5;10HVIM-status\x1b[24;1H~ VIM bottom");
-    let before = link.server.get_scrolled_total();
+    let before = link.server.get_scrollback_captured();
     link.feed(&vim);
     assert_eq!(
-        link.server.get_scrolled_total(),
+        link.server.get_scrollback_captured(),
         before,
         "nothing scrolled on the alternate screen is captured"
     );
@@ -508,11 +563,11 @@ fn alternate_screen_is_not_captured() {
 
 #[test]
 fn partial_scroll_region_is_not_captured() {
-    let mut link = Link::new(80, 24, 10000, 4);
+    let mut link = Link::new(80, 24, 32 << 20, 4);
     link.feed(b"\x1b[1;20r");
     link.feed(&seq(1, 3000));
     assert_eq!(
-        link.server.get_scrolled_total(),
+        link.server.get_scrollback_captured(),
         0,
         "region scroll captured"
     );
@@ -528,36 +583,69 @@ fn partial_scroll_region_is_not_captured() {
     assert_complete(&link, &lines, &screen, &on_screen);
 }
 
+/// The client is away while the backlog overflows: the oldest lines not
+/// yet published are dropped, and the client learns how many.
 #[test]
-fn small_ring_reports_dropped() {
-    let mut link = Link::new(80, 24, 100, 5);
-    link.server.act(&seq(1, 500));
-    let first = link.deliver(true);
-    let sl = scrolled_lines_of(&first).expect("lines");
-    // 500 lines on 24 rows: 477 scrolled off, the newest 100 are kept.
-    assert_eq!(
-        (sl.first_index, sl.line.len(), sl.dropped),
-        (Some(378), 100, Some(377))
-    );
-    for k in 501..5000 {
-        link.server.act(&seq(k, k));
+fn small_backlog_drops_oldest_unpublished() {
+    let limit = 16 << 10;
+    let mut link = Link::new(80, 24, limit, 5);
+    link.feed(&seq(1, 300));
+    while link.acked() < link.server.get_scrollback_captured() {
+        link.deliver(true);
     }
-    link.server.act(&seq(5000, 5000));
-    let last = link.deliver(true);
-    let sl = scrolled_lines_of(&last).expect("lines");
-    assert_eq!(
-        (sl.first_index, sl.line.len(), sl.dropped),
-        (Some(4878), 100, Some(4400))
-    );
+    // Away: 30,000 more lines (about 240 KiB rendered) and no delivery. The
+    // first window's worth is published before the backlog overflows; later
+    // publishing only steps over dropped runs (they cost no bytes).
+    let mut published = 0;
+    for k in 301..=30300 {
+        link.server.act(&seq(k, k));
+        link.publish();
+        if link.server.get_scrollback_captured() < 1000 {
+            published = link.server.get_scrolled_total();
+        }
+    }
     let (lines, screen) = link.finish();
-    link.report("ring of 100, client skips ahead twice", &lines);
-    assert_eq!(link.rx.borrow().lost(), 377 + 4400);
-    let want: Vec<(u64, String)> = (378..=477)
-        .chain(4878..=4977)
-        .map(|i| (i, i.to_string()))
+    link.report("16 KiB backlog, client away for 30,000 lines", &lines);
+    let captured = link.server.get_scrollback_captured();
+    let lost = link.rx.borrow().lost();
+    assert_eq!(lines.len() as u64 + lost, captured);
+    assert!(lost > 25000, "most lines were dropped");
+    let numbers: Vec<u64> = lines
+        .iter()
+        .map(|(i, t)| {
+            assert_eq!(
+                t.parse::<u64>().ok(),
+                Some(*i),
+                "line {i} is its own number"
+            );
+            *i
+        })
         .collect();
-    assert!(lines == want, "received lines after drops");
-    assert_eq!(screen, seq_lines(4978, 5000));
+    // Kept: everything delivered before, the window published while away,
+    // and the newest lines that fit the cap, in order.
+    assert!(numbers.windows(2).all(|w| w[0] < w[1]));
+    let missing = (1..=published).find(|i| numbers.binary_search(i).is_err());
+    assert_eq!(
+        missing, None,
+        "published lines kept (published {published})"
+    );
+    assert_eq!(numbers.last(), Some(&captured));
+    let tail = numbers
+        .iter()
+        .rev()
+        .zip((1..=captured).rev())
+        .take_while(|(a, b)| **a == *b)
+        .count();
+    let tail_bytes: usize = lines[lines.len() - tail..]
+        .iter()
+        .map(|(_, t)| t.len() + 3)
+        .sum();
+    println!(
+        "first_window_published={} newest_kept={} tail_bytes={} cap={}",
+        published, tail, tail_bytes, limit
+    );
+    assert!(tail_bytes <= limit && tail_bytes > limit / 2);
+    assert_eq!(screen, seq_lines(30278, 30300));
 }
 
 /// One random line of terminal output: SGR (attributes, 16, 256 and true
@@ -641,22 +729,15 @@ fn rendered_lines_match_upstream_cells() {
 
     // A capturing server fed one input line at a time: how many rows each
     // line pushed off the top.
-    let mut server = Complete::new(80, 24);
-    server.set_scrollback_limit(10000);
-    send_capability(&mut server);
+    let mut link = Link::new(80, 24, 32 << 20, 8);
     let mut counts = Vec::new();
     for l in &input {
-        let before = server.get_scrolled_total();
-        assert!(server.act(l.as_bytes()).is_empty());
-        counts.push(server.get_scrolled_total() - before);
+        let before = link.server.get_scrollback_captured();
+        link.feed(l.as_bytes());
+        counts.push(link.server.get_scrollback_captured() - before);
     }
-    let mut client = Complete::new(80, 24);
-    let rx = client.enable_scrollback_receive();
-    client
-        .apply_string(&server.init_diff())
-        .expect("init_diff applies");
-    let lines: Vec<(u64, Vec<u8>)> = rx.borrow_mut().take_pending().into_iter().collect();
-    assert_eq!(lines.len() as u64, server.get_scrolled_total());
+    let (lines, _) = link.finish_raw();
+    assert_eq!(lines.len() as u64, link.server.get_scrollback_captured());
     assert!(lines.len() > 250, "most input lines scrolled off");
 
     // Upstream's 80x24 screen before each input line. A line is written at
@@ -744,17 +825,29 @@ fn rendered_lines_match_upstream_cells() {
 
 /// Live sessions: `scrollback-probe` (a client that sends the capability and
 /// does not render) against a real `mosh-server new -- seq 1 50000`, on
-/// ports 61200-61299.
+/// ports 61200-61299. Our server runs with `-v`, so its log lists every
+/// fragment it sent; no instruction may need more fragments than the window
+/// allows.
 #[cfg(unix)]
 mod live {
+    use std::collections::HashMap;
     use std::io::{BufRead, BufReader};
-    use std::path::PathBuf;
+    use std::net::UdpSocket;
+    use std::path::{Path, PathBuf};
     use std::process::{Child, Command, Stdio};
     use std::sync::OnceLock;
+    use std::time::Duration;
 
+    use mosh::statesync::ScrolledRing;
     use mosh_tests::oracle::root;
 
     const CXX_SERVER: &str = "/usr/bin/mosh-server";
+
+    /// Fragments one instruction may need: the window's bytes of lines plus
+    /// two bytes of protobuf framing per line (lines of at least 4 bytes,
+    /// so at most half again), even if nothing compresses, in fragments of
+    /// 1214 bytes, plus one for the frame and the rest of the instruction.
+    const MAX_FRAGMENTS: usize = (ScrolledRing::WINDOW * 3 / 2).div_ceil(1214) + 1;
 
     /// target/release, after building mosh-server and udp-impair there.
     fn release_dir() -> PathBuf {
@@ -779,22 +872,37 @@ mod live {
             .clone()
     }
 
-    fn rust_server() -> String {
-        release_dir().join("mosh-server").display().to_string()
+    fn temp(name: &str, port: u16) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "scrollback-{name}-{port}-{}.txt",
+            std::process::id()
+        ))
     }
 
-    /// `server new -i 127.0.0.1 -p PORT [extra] -- seq 1 50000`; returns the key.
-    fn start_server(server: &str, port: u16, extra: &[&str]) -> String {
-        let out = Command::new(server)
-            .args(["new", "-i", "127.0.0.1", "-p", &port.to_string()])
-            .args(extra)
+    /// `server new -i 127.0.0.1 -p PORT -- seq 1 50000`, with `-v` and its
+    /// output in `log` for our server; returns the key.
+    fn start_server(server: &str, port: u16, log: Option<&Path>) -> String {
+        let mut cmd = Command::new(server);
+        cmd.args(["new", "-i", "127.0.0.1", "-p", &port.to_string()]);
+        if let Some(log) = log {
+            let f = std::fs::File::create(log).expect("server log");
+            cmd.arg("-v")
+                .stdout(f.try_clone().expect("log fd"))
+                .stderr(f);
+        } else {
+            cmd.stdout(Stdio::piped()).stderr(Stdio::null());
+        }
+        let out = cmd
             .args(["--", "seq", "1", "50000"])
             .env("LANG", "C.UTF-8")
             .stdin(Stdio::null())
             .output()
             .expect("run mosh-server");
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        assert!(out.status.success(), "{server} failed: {stdout}");
+        assert!(out.status.success(), "{server} failed");
+        let stdout = match log {
+            Some(log) => std::fs::read_to_string(log).expect("server log"),
+            None => String::from_utf8_lossy(&out.stdout).into_owned(),
+        };
         let connect = stdout
             .lines()
             .find_map(|l| l.strip_prefix("MOSH CONNECT "))
@@ -804,15 +912,38 @@ mod live {
         words.next().expect("key").to_string()
     }
 
-    /// udp-impair from `listen` to `target` with 30% loss and 100 ms delay.
+    /// The most fragments any instruction in a `-v` server log needed, and
+    /// how many instructions were sent; checks the log has no round-trip
+    /// verification failure.
+    fn fragments(log: &Path) -> (usize, usize) {
+        let text = std::fs::read_to_string(log).expect("server log");
+        assert!(!text.contains("verification failed"), "server: {text}");
+        let mut per_id: HashMap<u64, usize> = HashMap::new();
+        for l in text.lines().filter(|l| l.contains("] Sent [")) {
+            let field = |name: &str| -> u64 {
+                let rest = &l[l.find(name).expect("field") + name.len()..];
+                rest[..rest
+                    .find(|c: char| !c.is_ascii_digit())
+                    .unwrap_or(rest.len())]
+                    .parse()
+                    .expect("number")
+            };
+            let (id, frag) = (field(" id "), field(", frag ") as usize);
+            let n = per_id.entry(id).or_default();
+            *n = (*n).max(frag + 1);
+        }
+        (per_id.values().copied().max().unwrap_or(0), per_id.len())
+    }
+
+    /// udp-impair from `listen` to `target`.
     struct Impair(Child);
     impl Impair {
-        fn start(listen: u16, target: u16, control: u16) -> Impair {
+        fn start(listen: u16, target: u16, control: u16, loss: &str, delay_ms: &str) -> Impair {
             let mut child = Command::new(release_dir().join("udp-impair"))
                 .args(["--listen", &format!("127.0.0.1:{listen}")])
                 .args(["--target", &format!("127.0.0.1:{target}")])
                 .args(["--control", &format!("127.0.0.1:{control}")])
-                .args(["--loss", "0.30", "--delay-ms", "100", "--seed", "7"])
+                .args(["--loss", loss, "--delay-ms", delay_ms, "--seed", "7"])
                 .stdout(Stdio::piped())
                 .spawn()
                 .expect("run udp-impair");
@@ -832,18 +963,14 @@ mod live {
         }
     }
 
-    /// Runs the probe for at most 30 s; returns (whether the session ended
+    /// Runs the probe for at most 300 s; returns (whether the session ended
     /// with the server's shutdown, its counts line, the lines it wrote).
     fn probe(port: u16, key: &str) -> (bool, String, Vec<String>) {
-        let out_file = std::env::temp_dir().join(format!(
-            "scrollback-probe-{}-{}.txt",
-            port,
-            std::process::id()
-        ));
+        let out_file = temp("probe", port);
         let out = Command::new(env!("CARGO_BIN_EXE_scrollback-probe"))
             .args(["127.0.0.1", &port.to_string()])
             .arg(&out_file)
-            .args(["--timeout-s", "30"])
+            .args(["--timeout-s", "300"])
             .env("MOSH_KEY", key)
             .output()
             .expect("run scrollback-probe");
@@ -866,11 +993,8 @@ mod live {
             .unwrap_or_else(|| panic!("no {name} in {counts:?}"))
     }
 
-    fn seq_1_50000() -> Vec<String> {
-        (1..=50000).map(|i| i.to_string()).collect()
-    }
-
-    fn first_difference(got: &[String], want: &[String]) -> String {
+    fn first_difference(got: &[String]) -> String {
+        let want: Vec<String> = (1..=50000).map(|i| i.to_string()).collect();
         match (0..got.len().max(want.len())).find(|&i| got.get(i) != want.get(i)) {
             None => "identical".to_string(),
             Some(i) => format!(
@@ -883,66 +1007,64 @@ mod live {
         }
     }
 
-    /// Default ring (10,000 lines): seq writes its 50,000 lines faster than
-    /// one round trip, so the oldest are evicted before they can be sent and
-    /// arrive as `dropped`. Every line that does arrive is correct and in
-    /// order, and received plus lost accounts for every scrolled line.
-    #[test]
-    fn rust_server_default_ring() {
-        let key = start_server(&rust_server(), 61200, &[]);
-        let (shutdown, counts, got) = probe(61200, &key);
-        println!("rust server, clean, default ring: {counts}");
-        assert!(shutdown, "the session must end with the server's shutdown");
-        let (received, lost) = (count(&counts, "lines_received"), count(&counts, "lost"));
-        assert_eq!(received + lost, count(&counts, "scrolled_total"));
-        assert_eq!(got.len() as u64, 50000 - lost);
-        let numbers: Vec<u64> = got
-            .iter()
-            .map(|l| l.parse().unwrap_or_else(|_| panic!("not a number: {l:?}")))
-            .collect();
-        assert!(
-            numbers.windows(2).all(|w| w[0] < w[1]),
-            "lines out of order"
+    /// Our server with default settings, `seq 1 50000`, the probe on `port`
+    /// directly or through a proxy that `link` sets up: the probe's output
+    /// must be exactly seq 1 50000 and no instruction may exceed the
+    /// fragment bound.
+    fn session(what: &str, port: u16, link: impl FnOnce() -> (u16, Option<Impair>)) {
+        let log = temp("server", port);
+        let server = release_dir().join("mosh-server").display().to_string();
+        let key = start_server(&server, port, Some(&log));
+        let (probe_port, _impair) = link();
+        let (shutdown, counts, got) = probe(probe_port, &key);
+        let (max_fragments, instructions) = fragments(&log);
+        let _ = std::fs::remove_file(&log);
+        println!("{what}: {counts}");
+        println!(
+            "{what}: instructions={instructions} max_fragments={max_fragments} (bound {MAX_FRAGMENTS}); vs seq 1 50000: {}",
+            first_difference(&got)
         );
-        assert_eq!(numbers.last(), Some(&50000));
+        assert!(shutdown, "the session must end with the server's shutdown");
+        assert_eq!(count(&counts, "lost"), 0);
+        assert!(max_fragments <= MAX_FRAGMENTS);
+        assert!(first_difference(&got) == "identical");
     }
 
-    /// Exactly seq 1 50000 when the ring holds the whole burst.
     #[test]
-    #[ignore = "PLAN 6 open question: the 49,977-line ScrolledLines diff is about 87 fragments \
-                sent in one burst; the client's UDP receive buffer drops some of most bursts \
-                and every resend gets a new instruction id (the chaff differs), so the diff \
-                arrives only when one whole burst survives: 5 of 5 cargo runs passed after \
-                1.8-3.4 s, 2 of 2 shell runs got 0 lines in 10 s and 120 s"]
-    fn rust_server_ring_holds_burst() {
-        let key = start_server(&rust_server(), 61205, &["--scrollback", "60000"]);
-        let (shutdown, counts, got) = probe(61205, &key);
-        println!("rust server, clean, --scrollback 60000: {counts}");
-        println!("vs seq 1 50000: {}", first_difference(&got, &seq_1_50000()));
-        assert!(shutdown);
-        assert!(got == seq_1_50000());
+    fn rust_server_clean() {
+        session("rust server, clean", 61200, || (61200, None));
     }
 
-    /// Exactly seq 1 50000 through 30% loss and 100 ms delay.
     #[test]
-    #[ignore = "PLAN 6 open question: with the default ring the first diff carries about \
-                10,000 lines in about 17 fragments, which all arrive together with probability \
-                0.7^17 = 0.2%, and every resend has a new instruction id: 0 lines in 120 s"]
     fn rust_server_loss30_delay100() {
-        let key = start_server(&rust_server(), 61210, &[]);
-        let _impair = Impair::start(61211, 61210, 61212);
-        let (shutdown, counts, got) = probe(61211, &key);
-        println!("rust server, 30% loss, 100 ms delay: {counts}");
-        println!("vs seq 1 50000: {}", first_difference(&got, &seq_1_50000()));
-        assert!(shutdown);
-        assert!(got == seq_1_50000());
+        session("rust server, 30% loss, 100 ms delay", 61210, || {
+            (
+                61211,
+                Some(Impair::start(61211, 61210, 61212, "0.30", "100")),
+            )
+        });
+    }
+
+    /// 10 s of total silence while the history is still trickling in.
+    #[test]
+    fn rust_server_blackout_10s() {
+        session("rust server, 10 s blackout after 2 s", 61215, || {
+            let impair = Impair::start(61216, 61215, 61217, "0", "0");
+            std::thread::spawn(|| {
+                std::thread::sleep(Duration::from_secs(2));
+                let s = UdpSocket::bind("127.0.0.1:0").expect("control socket");
+                s.send_to(b"blackout 10000", "127.0.0.1:61217")
+                    .expect("send blackout");
+            });
+            (61216, Some(impair))
+        });
     }
 
     /// PLAN.md 6.5, new client with an old server: upstream's server skips
     /// the capability, sends no lines, and the session works as before.
     #[test]
     fn cxx_server_ignores_capability() {
-        let key = start_server(CXX_SERVER, 61220, &[]);
+        let key = start_server(CXX_SERVER, 61220, None);
         let (shutdown, counts, got) = probe(61220, &key);
         println!("C++ server, capability sent: {counts}");
         assert!(shutdown, "the session must end with the server's shutdown");
