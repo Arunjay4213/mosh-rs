@@ -23,11 +23,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.ref_name }}
           MESSAGE: ${{ github.event.head_commit.message }}
+          SHA: ${{ github.sha }}
         shell: bash
         run: |
           existing=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
           if [ -n "$existing" ]; then
             echo "PR #$existing is already open for $BRANCH"; exit 0
+          fi
+          # A push whose commits are all on main already (pushed and merged at once) needs no PR.
+          ahead=$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$SHA" --jq .ahead_by)
+          if [ "$ahead" = 0 ]; then
+            echo "$BRANCH has no commits that main lacks; no PR needed"; exit 0
           fi
           title=$(printf '%s\n' "$MESSAGE" | head -n 1)
           gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$BRANCH" --title "${title:-$BRANCH}" \

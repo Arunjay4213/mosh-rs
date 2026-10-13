@@ -40,7 +40,8 @@ jobs:
           fi
           if gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/main" -f sha="$SHA" -F force=false > /dev/null; then
             echo "main fast-forwarded to $SHA (PR #$pr)"
-            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH"
+            # The repo setting "automatically delete head branches" may have deleted it already.
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" || echo "$BRANCH was already deleted"
           else
             gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" --body "Rebase onto main and push again"
           fi
