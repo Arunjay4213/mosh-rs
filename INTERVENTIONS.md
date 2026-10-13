@@ -7,6 +7,11 @@ Newest entry first.
 
 - The v0.1.0 macOS asset ships the launcher bug agent C fixed on main (the address family was read from the wrong byte of a BSD `sockaddr`, so `mosh host` could not resolve anything on macOS; `mosh-client` and `mosh-server` were fine). The fix (776077b) is on main with green CI, proven by a real session from the rented Mac to devbox.
 - Agent C is adding a `## [0.1.1]` changelog entry and the macOS test-file fix. When that has landed, the user decides whether to tag v0.1.1 from main head (the Release workflow rebuilds and attaches all four assets). The orchestrator does not tag.
+## 2026-10-13 Tests find the real mosh on PATH; client_e2e runs on macOS (agent C)
+
+- Every test and driver that ran the real mosh 1.4.0 from `/usr/bin` (client_e2e, server_e2e, prediction_e2e, detached_warning, scrollback_server, launcher, interop.sh, interop-setup-loss.sh, scrollback.sh) now finds it on PATH through one helper, `mosh_tests::upstream` (shell: `upstream_bin`), which never takes a program whose `--version` names mosh-rs. A Rust test skips with "SKIPPED: the real mosh 1.4.0 (mosh, mosh-client, mosh-server) is not on PATH (apt install mosh, or brew install mosh)" when it is missing (checked with PATH=/usr/local/sbin); the shell drivers fall back to /usr/bin as before.
+- `client_e2e`'s `server_pid` uses `lsof -t` when `ss` cannot run (macOS has no `ss`).
+- On the Mac (`~/agentc-macos-netdb`, over ssh): `client_e2e` 7 passed; the C++ and our client both showed "mosh: Last contact 9 seconds ago" 9.1-9.2 s after the server was killed. `idle_cpu` passes there without measuring: it needs `pidstat` (Linux sysstat), which Homebrew does not provide. Not changed: `prediction_e2e` and `scrollback.sh` still use `ss` and were not run on the Mac.
 
 ## 2026-10-13 macOS launcher resolver fixed and verified on the Mac (agent C)
 

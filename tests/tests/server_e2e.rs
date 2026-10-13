@@ -33,7 +33,7 @@
 //
 // End-to-end tests of mosh-server with the real C++ mosh-client (apt
 // mosh 1.4.0) inside tmux. Every case runs first against
-// /usr/bin/mosh-server, so the test proves itself on upstream, then against
+// the real mosh-server from PATH, so the test proves itself on upstream, then against
 // ours. A user would notice each of these: command output and exit, typing
 // into a shell, a window resize reaching the program, and the server going
 // away after the client vanished.
@@ -47,9 +47,6 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
-
-const CXX_CLIENT: &str = "/usr/bin/mosh-client";
-const CXX_SERVER: &str = "/usr/bin/mosh-server";
 
 fn release_binary(name: &str) -> PathBuf {
     static BUILT: OnceLock<PathBuf> = OnceLock::new();
@@ -82,7 +79,7 @@ fn release_binary(name: &str) -> PathBuf {
 /// The number is added to the case's base port so the two never share one.
 fn servers() -> Vec<(&'static str, String, u16)> {
     vec![
-        ("cxx", CXX_SERVER.to_string(), 0),
+        ("cxx", mosh_tests::upstream::get().server.clone(), 0),
         (
             "rust",
             release_binary("mosh-server").display().to_string(),
@@ -201,13 +198,17 @@ fn require_ssh_localhost() {
 /// prints the exit status and stays open so the final screen can be read.
 fn launcher_session(server: &str, port: u16, command: &str) -> String {
     format!(
-        "export TERM=xterm-256color; {} --client={CXX_CLIENT} --server={server} -p {port} localhost -- {command}; echo MOSH_EXIT=$?; sleep 60",
-        release_binary("mosh").display()
+        "export TERM=xterm-256color; {} --client={} --server={server} -p {port} localhost -- {command}; echo MOSH_EXIT=$?; sleep 60",
+        release_binary("mosh").display(),
+        mosh_tests::upstream::get().client
     )
 }
 
 #[test]
 fn command_output_and_exit() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     require_ssh_localhost();
     for (name, server, offset) in servers() {
         let port = 61200 + offset;
@@ -244,6 +245,9 @@ fn command_output_and_exit() {
 
 #[test]
 fn typing_and_resize() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     require_ssh_localhost();
     for (name, server, offset) in servers() {
         let port = 61201 + offset;
@@ -338,12 +342,16 @@ fn connect_then_kill_client(
     let tmux = Tmux::start(
         name,
         &format!(
-            "export TERM=xterm-256color; MOSH_KEY={key} {CXX_CLIENT} 127.0.0.1 {port}; echo MOSH_EXIT=$?; sleep 60"
+            "export TERM=xterm-256color; MOSH_KEY={key} {} 127.0.0.1 {port}; echo MOSH_EXIT=$?; sleep 60",
+            mosh_tests::upstream::get().client
         ),
     );
     tmux.wait_for_line("CONNECTED", Duration::from_secs(20));
     // Anchored: the tmux server and the pane shell carry the same text.
-    let client_pid = pgrep(&format!("^{CXX_CLIENT} 127.0.0.1 {port}$"));
+    let client_pid = pgrep(&format!(
+        "^{} 127.0.0.1 {port}$",
+        mosh_tests::upstream::get().client
+    ));
     // SAFETY: plain kill of the client process found above.
     assert_eq!(0, unsafe { libc::kill(client_pid, libc::SIGKILL) });
     (server_pid, tmux, Instant::now())
@@ -362,6 +370,9 @@ fn wait_for_exit(pid: i32, timeout: Duration) -> Option<Duration> {
 
 #[test]
 fn network_timeout() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     for (name, server, offset) in servers() {
         let port = 61202 + offset;
         let (pid, _tmux, killed) = connect_then_kill_client(
@@ -390,6 +401,9 @@ fn network_timeout() {
 
 #[test]
 fn signal_timeout() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     for (name, server, offset) in servers() {
         let port = 61203 + offset;
         let (pid, _tmux, killed) = connect_then_kill_client(

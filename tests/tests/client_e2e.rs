@@ -34,7 +34,7 @@
 // `mosh-server` from apt, started by our launcher over `ssh localhost`.
 // The client runs in a tmux pane (the host terminal), and every assertion
 // reads that pane, as a user would see it. Every test runs the same steps
-// with `/usr/bin/mosh-client` first, so a failure of our client is not a
+// with the real (C++) `mosh-client` from PATH first, so a failure of our client is not a
 // test or environment problem.
 //
 // Needs `ssh -o BatchMode=yes localhost true` to succeed. UDP ports 61300-61399.
@@ -79,7 +79,7 @@ fn release_dir() -> PathBuf {
 /// The clients under test: upstream's first, so the test proves itself.
 fn clients() -> Vec<(&'static str, String)> {
     vec![
-        ("cxx", "/usr/bin/mosh-client".to_string()),
+        ("cxx", mosh_tests::upstream::get().client.clone()),
         (
             "rust",
             release_dir().join("mosh-client").display().to_string(),
@@ -194,18 +194,31 @@ impl Drop for Tmux {
 /// The launcher command line that runs `client` against the C++ server on `port`.
 fn mosh_command(client: &str, port: u16, remote: &str) -> String {
     format!(
-        "{} --client={client} --server=/usr/bin/mosh-server -p {port} localhost -- {remote}; echo MOSH_EXIT=$?",
-        release_dir().join("mosh").display()
+        "{} --client={client} --server={} -p {port} localhost -- {remote}; echo MOSH_EXIT=$?",
+        release_dir().join("mosh").display(),
+        mosh_tests::upstream::get().server
     )
 }
 
 /// The pid of the mosh-server listening on UDP `port`.
 fn server_pid(port: u16) -> Option<u32> {
-    let out = Command::new("ss")
+    // `ss` on Linux; macOS has no `ss`, so `lsof -t` (which prints only pids) there.
+    let Ok(out) = Command::new("ss")
         .args(["-H", "-u", "-l", "-n", "-p"])
         .arg(format!("sport = :{port}"))
         .output()
-        .ok()?;
+    else {
+        let out = Command::new("lsof")
+            .args(["-t", "-nP", &format!("-iUDP:{port}")])
+            .output()
+            .ok()?;
+        return String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .next()?
+            .trim()
+            .parse()
+            .ok();
+    };
     let text = String::from_utf8_lossy(&out.stdout);
     let at = text.find("pid=")? + 4;
     text[at..]
@@ -225,6 +238,9 @@ fn kill_server(port: u16) {
 
 #[test]
 fn command_output_and_exit() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     require_ssh_localhost();
     for (i, (name, client)) in clients().into_iter().enumerate() {
         let port = 61300 + i as u16;
@@ -259,6 +275,9 @@ fn command_output_and_exit() {
 
 #[test]
 fn interactive_shell_and_resize() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     require_ssh_localhost();
     for (i, (name, client)) in clients().into_iter().enumerate() {
         let port = 61310 + i as u16;
@@ -288,6 +307,9 @@ fn interactive_shell_and_resize() {
 
 #[test]
 fn escape_quit_restores_terminal() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     require_ssh_localhost();
     for (i, (name, client)) in clients().into_iter().enumerate() {
         let port = 61320 + i as u16;
@@ -343,6 +365,9 @@ fn escape_quit_restores_terminal() {
 
 #[test]
 fn killed_server_shows_last_contact() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     require_ssh_localhost();
     for (i, (name, client)) in clients().into_iter().enumerate() {
         let port = 61330 + i as u16;
@@ -380,6 +405,9 @@ fn killed_server_shows_last_contact() {
 /// shell prompt side by side while `pidstat` samples them for 60 s.
 #[test]
 fn idle_cpu() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     if Command::new("pidstat").arg("-V").output().is_err() {
         println!("SKIPPED: pidstat not installed (package sysstat)");
         return;
@@ -429,14 +457,18 @@ fn idle_cpu() {
 /// the terminal is usable), and `fg` brings the session back.
 #[test]
 fn escape_suspend_and_resume() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     require_ssh_localhost();
     for (i, (name, client)) in clients().into_iter().enumerate() {
         let port = 61345 + i as u16;
         let tmux = Tmux::start(&format!("suspend-{name}"));
         // No `; echo` after it: a list would go on running when mosh stops.
         tmux.type_line(&format!(
-            "{} --client={client} --server=/usr/bin/mosh-server -p {port} localhost -- env PS1='R$ ' bash --norc",
-            release_dir().join("mosh").display()
+            "{} --client={client} --server={} -p {port} localhost -- env PS1='R$ ' bash --norc",
+            release_dir().join("mosh").display(),
+            mosh_tests::upstream::get().server
         ));
         tmux.wait_line("R$", Duration::from_secs(30));
         tmux.type_line("echo BEFORE_SUSPEND");
@@ -471,6 +503,9 @@ fn escape_suspend_and_resume() {
 /// 15 s, and explains on stderr, exit 1.
 #[test]
 fn no_server_times_out() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     for (i, (name, client)) in clients().into_iter().enumerate() {
         let port = 61347 + i as u16;
         kill_server(port);

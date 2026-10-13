@@ -72,24 +72,11 @@ fn mosh_binary() -> PathBuf {
     .clone()
 }
 
-/// A real (upstream, C++ and Perl) mosh 1.4.0 program, found on PATH:
-/// apt installs them in /usr/bin on Linux, Homebrew in /opt/homebrew/bin on
-/// macOS. Falls back to /usr/bin so a missing install fails visibly.
-fn real_mosh(name: &str) -> String {
-    let paths = std::env::var_os("PATH").unwrap_or_default();
-    std::env::split_paths(&paths)
-        .map(|dir| dir.join(name))
-        .find(|p| p.is_file())
-        .map_or_else(|| format!("/usr/bin/{name}"), |p| p.display().to_string())
-}
-
-/// `--client=<real mosh-client> --server=<real mosh-server>`.
+/// `--client=<real mosh-client> --server=<real mosh-server>`, from PATH
+/// (`mosh_tests::upstream`); tests check `upstream::require()` first.
 fn real_client_server() -> String {
-    format!(
-        "--client={} --server={}",
-        real_mosh("mosh-client"),
-        real_mosh("mosh-server")
-    )
+    let up = mosh_tests::upstream::get();
+    format!("--client={} --server={}", up.client, up.server)
 }
 
 fn require_ssh_localhost() {
@@ -197,6 +184,9 @@ fn session(mosh_args: &str) -> String {
 
 #[test]
 fn launches_session_on_localhost_with_command() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     require_ssh_localhost();
     let tmux = Tmux::start(
         "localhost",
@@ -221,6 +211,9 @@ fn launches_session_on_localhost_with_command() {
 
 #[test]
 fn launches_session_with_user_at_ip_literal() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     require_ssh_localhost();
     let user = std::env::var("USER").expect("USER");
     let tmux = Tmux::start(
@@ -244,10 +237,13 @@ fn launches_session_with_user_at_ip_literal() {
 
 #[test]
 fn missing_server_is_reported() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     require_ssh_localhost();
     let out = Command::new(mosh_binary())
         .args([
-            &format!("--client={}", real_mosh("mosh-client")),
+            &format!("--client={}", mosh_tests::upstream::get().client),
             "--server=/bin/false",
             "localhost",
         ])
@@ -276,6 +272,9 @@ fn missing_server_is_reported() {
 /// first test covers this).
 #[test]
 fn launches_session_on_dual_stack_name() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
     let addrs = Command::new("getent")
         .args(["ahosts", "mosh-dualstack"])
         .output()
@@ -477,11 +476,10 @@ type Case<'a> = (Vec<&'a str>, Vec<(&'a str, &'a str)>);
 /// same arguments, same fake ssh and client, identical observable results.
 #[test]
 fn options_and_messages_match_mosh_pl() {
-    let mosh_pl = &real_mosh("mosh");
-    if !std::path::Path::new(mosh_pl).exists() {
-        println!("SKIPPED: {mosh_pl} (real mosh) is not installed");
+    let Some(up) = mosh_tests::upstream::require() else {
         return;
-    }
+    };
+    let mosh_pl = &up.mosh;
     let ours = mosh_binary().display().to_string();
     let connect = "MOSH CONNECT 60001 AAAAAAAAAAAAAAAAAAAAAA\n";
     let fake_server = fake_tools().join("fakessh").display().to_string();
@@ -638,11 +636,12 @@ fn options_and_messages_match_mosh_pl() {
 #[test]
 fn proxy_resolves_canonical_name_like_mosh_pl() {
     let hosts = std::fs::read_to_string("/etc/hosts").unwrap_or_default();
-    let mosh_pl = &real_mosh("mosh");
-    if !hosts.contains("mosh-alias") || !std::path::Path::new(mosh_pl).exists() {
-        println!(
-            "SKIPPED: needs real mosh on PATH and the mosh-alias/mosh-canon lines in /etc/hosts"
-        );
+    let Some(up) = mosh_tests::upstream::require() else {
+        return;
+    };
+    let mosh_pl = &up.mosh;
+    if !hosts.contains("mosh-alias") {
+        println!("SKIPPED: needs the mosh-alias/mosh-canon lines in /etc/hosts");
         return;
     }
     let ours = mosh_binary().display().to_string();

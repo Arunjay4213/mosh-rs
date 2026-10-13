@@ -896,8 +896,6 @@ mod live {
     use mosh::statesync::ScrolledRing;
     use mosh_tests::oracle::root;
 
-    const CXX_SERVER: &str = "/usr/bin/mosh-server";
-
     /// Holds /tmp/mosh-rs-interop.lock (the lock of tests/interop.sh,
     /// tests/scrollback.sh and tools/bench) while it lives, so live sessions
     /// of concurrent runs never share ports. Live tests in this file also
@@ -1136,8 +1134,11 @@ mod live {
     /// the capability, sends no lines, and the session works as before.
     #[test]
     fn cxx_server_ignores_capability() {
+        let Some(up) = mosh_tests::upstream::require() else {
+            return;
+        };
         let _lock = lock();
-        let key = start_server(CXX_SERVER, 61220, None, 50000);
+        let key = start_server(&up.server, 61220, None, 50000);
         let (shutdown, counts, got) = probe(61220, &key);
         println!("C++ server, capability sent: {counts}");
         assert!(shutdown, "the session must end with the server's shutdown");

@@ -703,3 +703,9 @@ Also in this commit: the unused `unicode-width` and `lexopt` declarations are re
 - The launcher's address lookup read the socket address family at the Linux offset, so on macOS it found no address for any host. `netdb.rs` now uses the same decoder as `socket.rs` (`socket::from_sockaddr`, through libc's `sockaddr`).
 - On the Apple silicon Mac (macOS 15.8), built from this branch: `mosh --fake-proxy -- 127.0.0.1 22` prints `MOSH IP 127.0.0.1` (before: "Could not connect to 127.0.0.1, last tried :"); a session from the Mac to devbox over the network with our launcher, client and server ran a typed command on devbox and exited with `[mosh is exiting.]`, status 0; `mosh --local` works; `platform_tty` 1 and `launcher` 8 passed there, including 73 option cases identical to Homebrew's mosh.pl. `client_e2e` cannot run on the Mac until it finds the C++ mosh on PATH (hard-coded /usr/bin).
 - Devbox: platform_tty 1, launcher 8, client_e2e 7, server_e2e 4, detached_warning 1 passed; fmt; clippy -D warnings stable and 1.89.0; Windows clippy and build: clean. README: the macOS real-session box is ticked, with the note that the v0.1.0 macOS launcher has this bug until the asset is rebuilt.
+
+## 2026-10-13 Tests portable to macOS; CHANGELOG 0.1.1 (agent C)
+
+- The real mosh 1.4.0 used as a comparison in the tests is found on PATH (`mosh_tests::upstream`, never a mosh-rs build), with a skip message when missing; `client_e2e` finds the server pid with `lsof` where `ss` is missing.
+- Mac (Apple silicon, macOS 15.8): `client_e2e` 7 passed (`idle_cpu` without its pidstat measurement). Devbox: client_e2e 7, server_e2e 4, prediction_e2e 3, detached_warning 1, launcher 8, scrollback_server `cxx_server_ignores_capability` 1 passed; fmt; clippy -D warnings stable and 1.89.0 clean.
+- CHANGELOG has `[0.1.1] - unreleased` with the macOS launcher fix and the platform review fixes P1-P13; the README's macOS section says v0.1.1 carries the fix once tagged. Nothing tagged.

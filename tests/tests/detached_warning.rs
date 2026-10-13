@@ -35,7 +35,7 @@
 // with utempter) leaves a detached session with a `mosh [PID]` utmp record.
 // Then each server under test starts a login-shell session, and the
 // screen a client sees must carry upstream's warning naming that session:
-// first `/usr/bin/mosh-server` itself, then ours from target/release
+// first the real mosh-server from PATH itself, then ours from target/release
 // (glibc), then the static musl build when it has been built
 // (scripts/build-release.sh). Our warning text must equal the C++ one.
 //
@@ -127,7 +127,7 @@ impl Drop for Detached {
 }
 
 /// Starts `server new -i 127.0.0.1 -p PORT` (login shell, so motd and the
-/// warning) on a pty, attaches `/usr/bin/mosh-client` in a 120x60 tmux pane,
+/// warning) on a pty, attaches the real `mosh-client` in a 120x60 tmux pane,
 /// and returns the warning block from the screen: the lines from
 /// "Mosh: You have" up to the first empty line.
 fn warning_seen(name: &str, server: &str, port: u16) -> Vec<String> {
@@ -158,7 +158,7 @@ fn warning_seen(name: &str, server: &str, port: u16) -> Vec<String> {
             &format!("MOSH_KEY={key}"),
             "TERM=xterm-256color",
             "LANG=C.UTF-8",
-            "/usr/bin/mosh-client",
+            &mosh_tests::upstream::get().client,
             "127.0.0.1",
             &port.to_string(),
         ])
@@ -211,10 +211,9 @@ fn warning_seen(name: &str, server: &str, port: u16) -> Vec<String> {
 
 #[test]
 fn detached_session_is_reported() {
-    assert!(
-        Path::new("/usr/bin/mosh-server").exists(),
-        "needs mosh 1.4.0 from apt (/usr/bin/mosh-server)"
-    );
+    let Some(up) = mosh_tests::upstream::require() else {
+        return;
+    };
     let rust = release_dir().join("mosh-server").display().to_string();
     let lock = OpenOptions::new()
         .create(true)
@@ -229,7 +228,7 @@ fn detached_session_is_reported() {
     ));
 
     // The detached session. utempter writes its record shortly after start.
-    let out = Command::new("/usr/bin/mosh-server")
+    let out = Command::new(&up.server)
         .args([
             "new",
             "-i",
@@ -243,7 +242,7 @@ fn detached_session_is_reported() {
         .env("LANG", "C.UTF-8")
         .stdin(Stdio::null())
         .output()
-        .expect("run /usr/bin/mosh-server");
+        .expect("run the real mosh-server");
     let detached = Detached {
         pid: detached_pid(&String::from_utf8_lossy(&out.stderr)).expect("detached pid"),
     };
@@ -264,7 +263,7 @@ fn detached_session_is_reported() {
         sleep(Duration::from_millis(100));
     }
 
-    let mut servers = vec![("cxx", "/usr/bin/mosh-server".to_string()), ("rust", rust)];
+    let mut servers = vec![("cxx", up.server.clone()), ("rust", rust)];
     if musl.exists() {
         servers.push(("rust-musl", musl.display().to_string()));
     } else {
@@ -293,7 +292,7 @@ fn detached_session_is_reported() {
     for (name, block) in &blocks[1..] {
         assert_eq!(
             block, &blocks[0].1,
-            "[{name}] warning differs from /usr/bin/mosh-server's"
+            "[{name}] warning differs from the real mosh-server's"
         );
     }
     drop(detached);

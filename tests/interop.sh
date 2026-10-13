@@ -37,8 +37,8 @@
 #                  [--profile clean|loss5|loss30|blackout|rebind|all]
 #                  [--scenario seq|colors|vim|wide|resize|typing|all]
 #
-# Each option may be given more than once. cxx is mosh 1.4.0 from apt
-# (/usr/bin/mosh-client, /usr/bin/mosh-server), rust is target/release/
+# Each option may be given more than once. cxx is mosh 1.4.0 from PATH
+# (apt: /usr/bin/mosh-client, /usr/bin/mosh-server), rust is target/release/
 # (built here with `cargo build --release -p mosh`), all is both.
 #
 # One cell = one client, one server, one network profile, one scenario:
@@ -160,10 +160,25 @@ if [ ${#missing[@]} -ne 0 ]; then
     exit 1
 fi
 
+# upstream_bin NAME: the real mosh 1.4.0 program NAME from PATH (apt puts it
+# in /usr/bin, Homebrew in /opt/homebrew/bin), never a mosh-rs build; falls
+# back to /usr/bin/NAME so a missing install fails visibly.
+upstream_bin() {
+    local dir
+    local IFS=:
+    for dir in $PATH; do
+        if [ -x "$dir/$1" ] && ! "$dir/$1" --version 2>/dev/null | grep -q mosh-rs; then
+            echo "$dir/$1"
+            return 0
+        fi
+    done
+    echo "/usr/bin/$1"
+}
+
 # bin_path cxx|rust|PATH client|server
 bin_path() {
     case $1 in
-        cxx) echo "/usr/bin/mosh-$2" ;;
+        cxx) upstream_bin "mosh-$2" ;;
         rust) echo "$root/target/release/mosh-$2" ;;
         *) realpath -m -- "$1" ;;
     esac
