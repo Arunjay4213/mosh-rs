@@ -95,6 +95,7 @@ fn instruction_wire_format() {
                 resize: None,
                 echoack: None,
                 scrolledlines: None,
+                screenmode: None,
             },
             host_buffers::Instruction {
                 hostbytes: None,
@@ -106,6 +107,7 @@ fn instruction_wire_format() {
                     echo_ack_num: Some(5),
                 }),
                 scrolledlines: None,
+                screenmode: None,
             },
         ],
     };
@@ -119,9 +121,10 @@ fn instruction_wire_format() {
         host
     );
 
-    /* the same with an unknown field 10 inside an Instruction (field 9 is the
-    mosh-rs ScrolledLines) and an unknown field 9 inside HostMessage */
-    let with_unknown = unhex("0a0a 1204 22026869 5202 0102 0a0a 1a04 28503018 3a02 4005 4a01 ff");
+    /* the same with an unknown field 11 inside an Instruction (fields 9 and
+    10 are the mosh-rs ScrolledLines and ScreenMode) and an unknown field 9
+    inside HostMessage */
+    let with_unknown = unhex("0a0a 1204 22026869 5a02 0102 0a0a 1a04 28503018 3a02 4005 4a01 ff");
     assert_eq!(
         host_buffers::HostMessage::decode(with_unknown.as_slice()).unwrap(),
         host

@@ -35,7 +35,7 @@
 #
 # tests/scrollback.sh [VARIANT...]
 #
-# VARIANT is one of clean loss30 vim clear resize shrink grow oldserver dropped (default:
+# VARIANT is one of clean loss30 vim clear altscreen resize shrink grow oldserver dropped (default:
 # all of them, in that order). Each runs a mosh-rs session in a fresh tmux
 # server (80x24, history-limit 200000), which plays the host terminal, and
 # then reads the host's history plus screen with `capture-pane -S -200000`:
@@ -65,6 +65,13 @@
 #   grow      the same, the window made 6 rows taller: tmux pulls its last 6
 #             history lines (2972-2977) back onto the screen, and the
 #             repaint overwrites them, so exactly those are missing.
+#   altscreen `seq 1 3000`, then vim (text typed, `:q!`), then less on a
+#             3000-line file (`q`), then `seq 3001 6000`: while vim and less
+#             run the host terminal is in its alternate screen; after each
+#             exits the visible screen equals the one a plain tmux pane shows
+#             for the same keys (the last rows of `seq 1 3000` and the
+#             prompts, PLAN 6.6); history is exactly 1-6000 plus the command
+#             lines, nothing from vim or less.
 #   oldserver `mosh --scrollback --server=/usr/bin/mosh-server`: the client
 #             stays in the alternate screen, shows the notice, and nothing
 #             reaches the host's history.
@@ -86,7 +93,7 @@ out_dir=$root/target/scrollback
 bin=$root/target/release
 PORT_FIRST=61500
 PORT_LAST=61599
-ALL=(clean loss30 vim clear resize shrink grow oldserver dropped)
+ALL=(clean loss30 vim clear altscreen resize shrink grow oldserver dropped)
 
 variants=("$@")
 [ ${#variants[@]} -eq 0 ] && variants=("${ALL[@]}")
@@ -372,6 +379,85 @@ v_grow() {
     keys 'seq 3001 6000; echo DONE-SEQ' Enter
     wait_line 30 DONE-SEQ || return 1
     wait_history 60 6000 grow
+}
+
+# wait_last SECONDS TEXT: until the screen's last non-empty line is TEXT.
+wait_last() {
+    local end=$(($(now_ms) + $1 * 1000))
+    while [ "$(now_ms)" -lt $end ]; do
+        [ "$(screen | sed '/^$/d' | tail -1)" = "$2" ] && return 0
+        sleep 0.2
+    done
+    why="last screen line is not \"$2\" within $1 s: \"$(screen | sed '/^$/d' | tail -1)\""
+    return 1
+}
+# wait_screen SECONDS FILE: until the screen equals FILE.
+wait_screen() {
+    local end=$(($(now_ms) + $1 * 1000))
+    while [ "$(now_ms)" -lt $end ]; do
+        screen | cmp -s - "$2" && return 0
+        sleep 0.2
+    done
+    screen > "$2.got"
+    why="screen differs from $(basename "$2"): $(diff "$2" "$2.got" | head -6 | tr '\n' '|')"
+    return 1
+}
+# alt_on WANT: the host pane's alternate_on is WANT (only checked for mosh).
+alt_on() {
+    [ "$mode" = direct ] && return 0
+    local a
+    a=$(tmux -S "$sock" display -p -t sb '#{alternate_on}')
+    [ "$a" = "$1" ] || { why="host alternate_on=$a, expected $1 ($2)"; return 1; }
+}
+# The keys of the altscreen variant. mode=direct saves the screens after
+# vim and after less in $dir/direct-*.txt; mode=mosh waits for the same.
+alt_steps() {
+    wait_line 30 '$' || return 1
+    keys 'seq 1 3000' Enter
+    wait_last 30 '$' || return 1
+    keys 'vim -u NONE -N' Enter
+    wait_text 30 '~' || return 1
+    alt_on 1 "in vim" || return 1
+    keys i 'VIMTEXT one' Escape
+    wait_text 10 'VIMTEXT one' || return 1
+    keys ':q!' Enter
+    if [ "$mode" = direct ]; then
+        wait_last 30 '$' || return 1
+        sleep 0.5
+        screen > "$dir/direct-vim.txt"
+    else
+        wait_screen 30 "$dir/direct-vim.txt" || return 1
+    fi
+    alt_on 0 "after vim" || return 1
+    keys "less $tmp/less.txt" Enter
+    wait_text 30 'less.txt' || return 1
+    alt_on 1 "in less" || return 1
+    keys q
+    if [ "$mode" = direct ]; then
+        wait_last 30 '$' || return 1
+        sleep 0.5
+        screen > "$dir/direct-less.txt"
+    else
+        wait_screen 30 "$dir/direct-less.txt" || return 1
+    fi
+    alt_on 0 "after less"
+}
+
+v_altscreen() {
+    seq 1 3000 > "$tmp/less.txt"
+    # The reference: the same keys in a plain tmux pane (as over ssh), with
+    # the TERM mosh-server gives the remote shell.
+    mode=direct
+    tmux -f "$tmp/tmux.conf" -S "$sock" new-session -d -s sb -x 80 -y 24 \
+        "env TERM=xterm-256color LANG=C.UTF-8 sh; exec sleep 1000000"
+    alt_steps || { why="direct run: $why"; return 1; }
+    end_session
+    mode=mosh
+    start_launcher || return 1
+    alt_steps || return 1
+    keys 'seq 3001 6000; echo DONE-SEQ' Enter
+    wait_line 30 DONE-SEQ || return 1
+    wait_history 60 6000 exact
 }
 
 v_oldserver() {

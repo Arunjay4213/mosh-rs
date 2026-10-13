@@ -52,7 +52,10 @@
 //! (a retransmitted diff repeats them). Both sides also carry
 //! `scrollback_on`, so the server's first diff after the capability holds a
 //! `ScrolledLines` (with no line if none is due): the client's announcement
-//! that this server keeps history. Without the capability nothing here
+//! that this server keeps history. In scrollback mode the diff also says
+//! when the program switches between the main and the alternate screen
+//! (`ScreenMode`), so the client's host terminal can follow. Without the
+//! capability nothing here
 //! is active and every diff is byte-identical to upstream's.
 
 use mosh_platform::errln;
@@ -62,7 +65,7 @@ use std::rc::Rc;
 
 use mosh_network::prost::Message;
 use mosh_network::proto::host_buffers::{
-    EchoAck, HostBytes, HostMessage, Instruction, ResizeMessage, ScrolledLines,
+    EchoAck, HostBytes, HostMessage, Instruction, ResizeMessage, ScreenMode, ScrolledLines,
 };
 use mosh_network::transport::dos_detected;
 use mosh_network::{CryptoError, State};
@@ -418,6 +421,12 @@ impl Complete {
         self.scrollback_on
     }
 
+    /// mosh-rs scrollback (PLAN.md 6.6): the program is on the alternate
+    /// screen (server: its own emulator; client: as the server last said).
+    pub fn alternate_screen(&self) -> bool {
+        self.get_fb().ds.alternate_screen
+    }
+
     /// Feeds host output bytes; returns the replies for the host.
     pub fn act(&mut self, s: &[u8]) -> Vec<u8> {
         let terminal_to_host = self.act_octets(s);
@@ -582,6 +591,18 @@ impl Complete {
             });
         }
 
+        // mosh-rs scrollback (PLAN.md 6.6): which screen the program shows,
+        // after the lines (they left the screen before the switch, or after
+        // the switch back, and the client orders them by the switch).
+        if self.scrollback_on && self.alternate_screen() != existing.alternate_screen() {
+            output.instruction.push(Instruction {
+                screenmode: Some(ScreenMode {
+                    alternate_screen: Some(self.alternate_screen()),
+                }),
+                ..Default::default()
+            });
+        }
+
         if !(existing.get_fb() == self.get_fb()) {
             let (ew, eh) = (
                 existing.get_fb().ds.get_width(),
@@ -623,10 +644,13 @@ impl PartialEq for Complete {
         // mosh-rs scrollback: scrolled_total too, or lines that scroll off
         // without changing the final screen would never be sent. It is 0 on
         // both sides unless the client asked for scrollback.
+        // The alternate-screen flag counts only in scrollback mode, where it
+        // is sent (old peers: unchanged).
         (self.terminal == x.terminal)
             && (self.echo_ack == x.echo_ack)
             && (self.scrolled_total == x.scrolled_total)
             && (self.scrollback_on == x.scrollback_on)
+            && (!self.scrollback_on || self.alternate_screen() == x.alternate_screen())
     }
 }
 
@@ -712,6 +736,11 @@ impl State for Complete {
                 }
                 self.scrolled_total = end - 1;
                 self.scrollback_on = true;
+            } else if let Some(m) = &inst.screenmode {
+                // mosh-rs scrollback (PLAN.md 6.6): only the flag; the frame
+                // itself comes as host bytes.
+                self.terminal.get_fb_mut().ds.alternate_screen =
+                    m.alternate_screen.unwrap_or(false);
             }
         }
         Ok(())

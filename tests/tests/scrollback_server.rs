@@ -41,9 +41,10 @@
 //   (as after loss and retransmission), acknowledging some of them, arrives
 //   as scrolled lines plus the final screen with no gap and no duplicate;
 //   no diff carries more than the window; also with a resize, an
-//   alternate-screen excursion and `clear` (the screen they cover or erase
-//   is kept as history), a partial scrolling region, and a small backlog
-//   that overflows while the client is away.
+//   alternate-screen excursion (a real second screen in scrollback mode)
+//   and `clear` (the erased screen is kept as history), a partial
+//   scrolling region, and a small backlog that overflows while the client
+//   is away.
 // - Live: scrollback-probe against a real mosh-server, clean, through 30%
 //   loss, through a 10 s blackout, and against the C++ server, each holding
 //   /tmp/mosh-rs-interop.lock for its session.
@@ -121,14 +122,22 @@ fn capability_wire_format() {
 /// into `chunks` pieces, with a resize in the middle (the chunking of
 /// statesync_roundtrip). The scrollback limit is set as mosh-server sets it;
 /// only `capability` turns capture on.
-fn corpus_diffs(data: &[u8], w: usize, h: usize, chunks: usize, capability: bool) -> Vec<Vec<u8>> {
+fn corpus_diffs(
+    data: &[u8],
+    w: usize,
+    h: usize,
+    chunks: usize,
+    capability: bool,
+) -> (Vec<Vec<u8>>, Complete) {
     let offsets = prefix_offsets(data, chunks);
     let mut server = Complete::new(w, h);
     server.set_scrollback_limit(32 << 20);
+    // The client's first state predates the capability, so the first diff
+    // carries the server's announcement, as in a session.
+    let mut prev = server.clone();
     if capability {
         send_capability(&mut server);
     }
-    let mut prev = server.clone();
     let mut diffs = Vec::new();
     let mut start = 0usize;
     for (i, &end) in offsets.iter().enumerate() {
@@ -141,7 +150,7 @@ fn corpus_diffs(data: &[u8], w: usize, h: usize, chunks: usize, capability: bool
         diffs.push(server.diff_from(&prev));
         prev = server.clone();
     }
-    diffs
+    (diffs, server)
 }
 
 /// The ScrolledLines instructions of a diff, after checking they come
@@ -182,6 +191,7 @@ fn old_peer_diffs_unchanged() {
     let mut digests = String::new();
     let mut all = Vec::new();
     let (mut steps, mut on_mismatches, mut diffs_with_lines, mut lines_sent) = (0, 0, 0, 0u64);
+    let (mut alternate_steps, mut alternate_files) = (0, 0);
     for file in &files {
         let name = file
             .strip_prefix(root())
@@ -190,7 +200,7 @@ fn old_peer_diffs_unchanged() {
             .to_string();
         let data = std::fs::read(file).expect("read corpus file");
         for (chunks, (w, h)) in CHUNKS.iter().flat_map(|&c| SIZES.map(|s| (c, s))) {
-            let off = corpus_diffs(&data, w, h, chunks, false);
+            let (off, _) = corpus_diffs(&data, w, h, chunks, false);
             let mut recs = Vec::new();
             for d in &off {
                 record(&mut recs, d);
@@ -210,11 +220,16 @@ fn old_peer_diffs_unchanged() {
             steps += off.len();
 
             // With the capability: the same frames, plus the scrolled lines,
-            // which a client applies without loss or duplication.
-            let on = corpus_diffs(&data, w, h, chunks, true);
+            // which a client applies without loss or duplication, until the
+            // program first enters the alternate screen, which is a real
+            // second screen in scrollback mode (PLAN.md 6.2, 6.6); from then
+            // on the frames differ by design, and the client must still
+            // end with the server's screen.
+            let (on, server) = corpus_diffs(&data, w, h, chunks, true);
             assert_eq!(on.len(), off.len());
             let mut client = Complete::new(w, h);
             let rx = client.enable_scrollback_receive();
+            let mut alternate_seen = false;
             for (i, (a, b)) in on.iter().zip(off.iter()).enumerate() {
                 let mut msg = HostMessage::decode(a.as_slice()).expect("diff decodes");
                 let sls = scrolled_lines_of(&msg);
@@ -223,6 +238,11 @@ fn old_peer_diffs_unchanged() {
                     lines_sent += sls.iter().map(|sl| sl.line.len() as u64).sum::<u64>();
                 }
                 client.apply_string(a).expect("diff applies");
+                alternate_seen |= msg.instruction.iter().any(|i| i.screenmode.is_some());
+                if alternate_seen {
+                    alternate_steps += 1;
+                    continue;
+                }
                 msg.instruction.retain(|i| i.scrolledlines.is_none());
                 if msg.encode_to_vec() != *b {
                     on_mismatches += 1;
@@ -232,6 +252,11 @@ fn old_peer_diffs_unchanged() {
                     );
                 }
             }
+            assert!(
+                !client.compare(&server),
+                "{name} {w}x{h} chunks {chunks}: the client's screen differs from the server's"
+            );
+            alternate_files += usize::from(alternate_seen);
             let rx = rx.borrow();
             assert_eq!(rx.lost(), 0, "{}: lines lost", name);
         }
@@ -252,7 +277,7 @@ fn old_peer_diffs_unchanged() {
         println!("DIGEST MISMATCH\n{}", d);
     }
     println!(
-        "files={} cells={} steps={} off_bytes={} digests_differing={} capture_on_frame_mismatches={} diffs_with_lines={} lines_sent={}",
+        "files={} cells={} steps={} off_bytes={} digests_differing={} capture_on_frame_mismatches={} diffs_with_lines={} lines_sent={} alternate_screen_cells={} steps_after_alternate={}",
         files.len(),
         got.len(),
         steps,
@@ -260,7 +285,9 @@ fn old_peer_diffs_unchanged() {
         differing.len(),
         on_mismatches,
         diffs_with_lines,
-        lines_sent
+        lines_sent,
+        alternate_files,
+        alternate_steps
     );
     assert!(differing.is_empty(), "diffs for old peers changed");
     assert_eq!(on_mismatches, 0, "capture changed the frames");
@@ -527,13 +554,10 @@ fn seq_with_resizes() {
 fn alternate_screen_is_not_captured() {
     let mut link = Link::new(80, 24, 32 << 20, 3);
     link.feed(&seq(1, 3000));
-    // Upstream ignores the alternate screen, so the program's clear erases
-    // the rows on screen when it enters it; they are captured on entry, as
-    // a host terminal would keep them and scroll them off later.
-    let kept = screen_text(link.server.get_fb())
-        .iter()
-        .filter(|l| !l.is_empty())
-        .count() as u64;
+    // In scrollback mode the alternate screen is a real second screen: the
+    // main screen's rows are put aside, come back when the program leaves,
+    // and scroll off later, as on a host terminal.
+    let main = screen_text(link.server.get_fb());
     let mut vim = b"\x1b[?1049h\x1b[H\x1b[2J".to_vec();
     for i in 0..200 {
         vim.extend_from_slice(format!("VIM line {}\r\n", i).as_bytes());
@@ -543,10 +567,16 @@ fn alternate_screen_is_not_captured() {
     link.feed(&vim);
     assert_eq!(
         link.server.get_scrollback_captured(),
-        before + kept,
-        "the main screen is captured on entry, nothing on the alternate screen"
+        before,
+        "nothing scrolled on the alternate screen is captured"
     );
-    link.feed(b"\x1b[?1049l\r\n");
+    link.feed(b"\x1b[?1049l");
+    assert_eq!(
+        screen_text(link.server.get_fb()),
+        main,
+        "leaving the alternate screen brings the main screen back"
+    );
+    link.feed(b"\r\n");
     link.feed(&seq(3001, 6000));
     let (lines, screen) = link.finish();
     link.report("seq, vim-like alternate screen, seq", &lines);

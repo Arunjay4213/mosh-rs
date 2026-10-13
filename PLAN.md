@@ -145,9 +145,13 @@ Design, all gated on negotiation so old peers see byte-identical behavior:
    Like any non-empty user diff, a diff holding only the capability registers an input frame on the server (one echo ack).
 2. Server capture.
    The `Framebuffer::scroll` path records each row that leaves the top when the scroll region is the full screen and the remote program has not enabled the alternate screen (DEC mode 1049, 1047 or 47, tracked as a new flag in `DrawState`; upstream ignores those modes entirely).
-   Rows created or last written while that flag is on carry a mark (`Row::alternate`, not part of row equality) and are never captured, also after the program left the alternate screen: upstream keeps that screen's rows on display, so vim's last screen would otherwise scroll into history when the shell continues.
+   Rows created or last written while that flag is on carry a mark (`Row::alternate`, not part of row equality) and are never captured.
+   In scrollback mode (capture on) the alternate screen is a real second screen, as in tmux (`Framebuffer::enter_alternate_screen`, `leave_alternate_screen`): setting DEC 47, 1047 or 1049 while the flag is off puts the main screen's rows aside (and the cursor, for 1049) and the program draws on a blank screen; resetting any of them brings the rows (and that cursor) back, so after vim the shell continues below the pre-vim screen, whose rows scroll into history later, in the order a host terminal over ssh shows.
+   The saved rows follow resizes the way the shown screen does (cut or added at the bottom); a full reset (RIS) drops them.
+   Without scrollback mode only the flag is recorded and upstream's single screen is kept, so old peers see upstream's bytes.
    Rows removed from the bottom by a height shrink were never scrolled off and are not history; they are lost exactly as upstream's framebuffer loses them.
-   Two more cases make rows history although they do not scroll (`Framebuffer::capture_screen`), because a host terminal over ssh would keep them: entering the alternate screen (DEC 47, 1047 or 1049 set while the flag is off) captures the rows from the top through the last non-blank one before anything draws over them (and marks them, so they are not captured again if they later scroll off; over ssh they stay on the main screen and scroll into history later, so the order is the same); erasing the whole display with a full-screen scrolling region and the flag off (ED 2, or ED 0 from the home position) captures the same rows before the erase, as tmux 3.4 does (`scroll-on-clear`).
+   One more case makes rows history although they do not scroll (`Framebuffer::capture_screen`), because a host terminal over ssh would keep them: erasing the whole display with a full-screen scrolling region and the flag off (ED 2, or ED 0 from the home position) captures the rows from the top through the last non-blank one before the erase, as tmux 3.4 does (`scroll-on-clear`).
+   (Before the real alternate screen, entering it captured the same rows; with the main screen saved and restored that is no longer needed, and would duplicate them.)
    `clear` on devbox sends `CSI H CSI 2J CSI 3J` for TERM=xterm-256color (what mosh-server sets), `CSI H CSI J CSI 3J` for tmux-256color and `CSI H CSI J` for screen.
    ED 3 (erase saved lines) stays ignored, as upstream: the host terminal's history belongs to the host, and mosh never erases it (tmux over ssh does: after `seq 1 30; clear` its history is empty, measured).
    Capture interface: the terminal crate knows nothing of mosh.
@@ -175,7 +179,8 @@ Design, all gated on negotiation so old peers see byte-identical behavior:
    W is 4 × 1214 = 4856 bytes: the payload of four fragments at upstream's IPv4 MTU (1280 - 28 IP and UDP - 12 nonce and timestamps - 16 OCB tag - 10 fragment header = 1214).
    With two bytes of protobuf framing per line, incompressible lines need at most six fragments plus one for the frame; `seq` lines compress about 4:1, and a live `seq 1 50000` never needed more than two fragments per instruction.
    `Complete::diff_from(existing)` sends the published lines numbered `(existing.scrolled_total, self.scrolled_total]`, one `ScrolledLines` instruction per run of held lines: `first_index` is the number of `line[0]` (one past the last number covered when the range ends in a gap and the instruction has no line), and `dropped` (absent when 0) counts the lines missing just before it.
-   Instruction order in a `HostMessage`: echo ack, scrolled lines, resize, host bytes.
+   New `HostBuffers::Instruction` field 10, `ScreenMode { optional bool alternate_screen = 1; }`: sent in scrollback mode only, when the flag differs between the two states (`init_diff` sends it when the program is on the alternate screen); the client stores it in its framebuffer's `DrawState` flag. `Complete` equality includes the flag in scrollback mode only.
+   Instruction order in a `HostMessage`: echo ack, scrolled lines, screen mode, resize, host bytes.
    A client prints the lines first, then applies the frame.
    `Complete` equality includes `scrolled_total` (0 on both sides unless the client asked for scrollback), otherwise publishing without a screen change would never be sent.
    Announcement: `Complete` also carries `scrollback_on`, set on the server when the capability turns capture on and on the client when any `ScrolledLines` arrives, and part of equality.
@@ -202,8 +207,9 @@ Design, all gated on negotiation so old peers see byte-identical behavior:
    For a one-line scroll this degenerates to one newline plus one row repaint, same cost as today.
    The notification bar and prediction underlines are drawn into row 1 and other rows of the frame, never injected: the only row that enters the host's history is row 1, and it always holds an injected line at that moment.
    The whole render is wrapped in synchronized output (`\e[?2026h` ... `\e[?2026l`), which terminals that lack it ignore.
-   Exit: the final screen stays (no rmcup), `close()` restores the terminal modes, and the cursor goes to the start of the first row below the screen's text (or the cursor's row, if lower), where `[mosh is exiting.]` is printed.
-   Suspend (escape key, Ctrl-Z): the screen is erased without entering history (it is mosh's screen, not history; the server sends its rows later when they scroll off) and the local shell gets an empty screen; on resume what the local shell printed is scrolled into history the same way as at startup, then the screen is repainted.
+   The host follows the program's screen (item 6): when the server's flag turns on, the client injects the lines received so far (they left the main screen before the switch), writes `CSI ?1049h` and repaints; when it turns off, it writes `CSI ?1049l` (the host brings back its main screen and cursor), injects the lines received meanwhile (they left after the switch back) and repaints; while the host shows its alternate screen no line is injected, they wait in the queue.
+   Exit: the final screen stays (no rmcup), `close()` restores the terminal modes, and the cursor goes to the start of the first row below the screen's text (or the cursor's row, if lower), where `[mosh is exiting.]` is printed; if the host is in its alternate screen, the client leaves it instead and the message goes where the host's main-screen cursor was.
+   Suspend (escape key, Ctrl-Z): the host leaves its alternate screen if it is in it, the screen is erased without entering history (it is mosh's screen, not history; the server sends its rows later when they scroll off) and the local shell gets an empty screen; on resume what the local shell printed is scrolled into history the same way as at startup, then the screen is repainted (in the alternate screen again if the program is still there).
    Known limits, measured with tmux as the host (`tests/scrollback.sh`):
    - Height shrink by k with the cursor on the last row: tmux moves its top k rows into its own history, and they arrive again when they scroll off on the server, so they appear twice; the server's emulator cuts the bottom k rows as upstream's does, so they never reach history (2978-2983 twice and 2995-3000 missing, for k = 6 after `seq 1 3000`).
    - Height growth by k: tmux pulls its last k history lines back onto the screen and the repaint overwrites them, so they are gone from history (2972-2977 for k = 6 after `seq 1 3000`).
@@ -215,8 +221,10 @@ Design, all gated on negotiation so old peers see byte-identical behavior:
    Old client, new server: no capability arrives, scrollback mode stays off, behavior identical to upstream.
    New client, old server: the first frame carries no announcement, so the client stays in the alternate screen exactly as upstream (no history accumulates, nothing reaches the host's main screen) and shows the one-line notice in the notification bar for 5 s.
    The same happens with a mosh-rs server started with `--scrollback 0`.
-6. Stretch, only after oracle 6 passes.
-   Forward the alternate-screen flag to the host terminal (emit 1049h/l on transitions, then a full repaint), so the mouse wheel inside vim behaves as it does over ssh and the pre-vim screen is restored on exit.
+6. Alternate screen forwarded (done after oracle 6 passed).
+   In scrollback mode the server keeps a real alternate screen (item 2) and sends its flag (item 3); the client writes `CSI ?1049h` and `CSI ?1049l` on its transitions, each with a full repaint inside synchronized output (item 4).
+   So the mouse wheel inside vim or less does what the host does in its alternate screen, and when the program exits the host shows the pre-vim screen and the prompt, as over ssh (`tests/scrollback.sh altscreen` compares it with a plain tmux pane).
+   History stays exact: the main screen's rows are neither captured on entry nor lost; they scroll off later, once.
 
 ## 7. Windows client
 
@@ -247,7 +255,8 @@ Supported flags for v0.1: `--server`, `--ssh`, `--port`, `--predict`, `--no-init
 3. `--bind-server` supports `ssh` and `any` only.
 4. Scrollback extension (section 6), alternate-screen flag in `DrawState`.
    This includes `mosh-server --scrollback MIB` (listed in its usage line, `K` suffix for KiB), and the read-only `Transport::get_sent_state_acked_state` the server uses to pace published lines.
-   Client side, only with `MOSH_SCROLLBACK=1` (`mosh --scrollback`): the capability, the deferred alternate-screen decision, `Display`'s host-history mode (`Display::set_host_history`), line injection with `Framebuffer::host_scrolled`, the notice line and the old-server notice, and the exit and suspend handling of section 6.4.
+   Server side, only in scrollback mode: the real alternate screen (6.2) and `ScreenMode` (6.3).
+   Client side, only with `MOSH_SCROLLBACK=1` (`mosh --scrollback`): the capability, the deferred alternate-screen decision, `Display`'s host-history mode (`Display::set_host_history`), line injection with `Framebuffer::host_scrolled`, the notice line and the old-server notice, following the program's alternate screen (6.6), and the exit and suspend handling of section 6.4.
 5. Synchronized output around client renders.
 6. Runtime terminfo lookup is replaced by a table generated at build-authoring time from every entry in the devbox terminfo database (ncurses 6.4, plus the kitty-terminfo package), holding exactly the capabilities upstream reads (ech, bce, smcup, rmcup, and what it uses for title support). An exact TERM match gives the same answer upstream would get; an unknown TERM falls back to xterm where upstream would fail to start. The table also carries `colors`, so `mosh-client -c` answers from it; for an unknown TERM it prints xterm's count where upstream prints "unknown terminal type" and exits 1. Needed because Windows has no terminfo.
 7. Timestamps start at 1,000,000,000 ms instead of milliseconds since boot, so upstream's `now - 0` comparisons behave as they do on a machine that has been up for a while.

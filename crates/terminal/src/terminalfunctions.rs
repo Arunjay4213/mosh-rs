@@ -84,7 +84,7 @@ fn CSI_ED(fb: &mut Framebuffer, dispatch: &mut Dispatcher) {
         && fb.ds.get_scrolling_region_top_row() == 0
         && fb.ds.get_scrolling_region_bottom_row() == fb.ds.get_height() - 1
     {
-        fb.capture_screen(false);
+        fb.capture_screen();
     }
     match dispatch.getparam(0, 0) {
         0 => {
@@ -354,11 +354,10 @@ fn CSI_DECSM(fb: &mut Framebuffer, dispatch: &mut Dispatcher) {
         } else if param == 1005 || param == 1006 || param == 1015 {
             fb.ds.mouse_encoding_mode = mouse_encoding_mode(param);
         } else {
-            // mosh-rs scrollback (PLAN.md 6.2): entering the alternate screen
-            // keeps the main screen's rows as history before anything draws
-            // over them (a host terminal would restore and later scroll them).
+            // mosh-rs scrollback (PLAN.md 6.2, 6.6): a real alternate screen
+            // while capturing (see Framebuffer::enter_alternate_screen).
             if matches!(param, 47 | 1047 | 1049) {
-                fb.capture_screen(true);
+                fb.enter_alternate_screen(param == 1049);
             }
             set_if_available(get_DEC_mode(param, fb), true);
         }
@@ -378,6 +377,10 @@ fn CSI_DECRM(fb: &mut Framebuffer, dispatch: &mut Dispatcher) {
         } else if param == 1005 || param == 1006 || param == 1015 {
             fb.ds.mouse_encoding_mode = MOUSE_ENCODING_DEFAULT;
         } else {
+            // mosh-rs scrollback: the main screen comes back.
+            if matches!(param, 47 | 1047 | 1049) {
+                fb.leave_alternate_screen();
+            }
             set_if_available(get_DEC_mode(param, fb), false);
         }
         i += 1;

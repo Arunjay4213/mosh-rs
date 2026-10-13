@@ -216,6 +216,9 @@ pub struct STMClient {
     /// mosh-rs scrollback: the host screen was handed to the local shell
     /// (suspend); on resume, what it shows goes into the host's history.
     screen_given_away: bool,
+    /// mosh-rs scrollback (PLAN.md 6.6): the host terminal is in its
+    /// alternate screen because the server's program is in its own.
+    host_alternate: bool,
 }
 
 impl STMClient {
@@ -268,6 +271,7 @@ impl STMClient {
             lost_shown: 0,
             notice_until: None,
             screen_given_away: false,
+            host_alternate: false,
         };
         if let Some(predict_mode) = predict_mode {
             let pref = match predict_mode {
@@ -341,14 +345,23 @@ impl STMClient {
         self.display.set_host_history();
         out.extend(self.display.open());
         out.extend(self.push_screen_to_history());
-        let close = self.display.close();
+        self.set_panic_close();
+        self.repaint_requested = true;
+        out
+    }
+
+    /// mosh-rs scrollback: what the panic hook writes: `close()`, after
+    /// leaving the host's alternate screen if the client entered it.
+    fn set_panic_close(&self) {
+        let mut close = self.display.close();
+        if self.host_alternate {
+            close.extend_from_slice(b"\x1b[?1049l");
+        }
         TERMINAL.with(|t| {
             if let Some((_, c)) = t.borrow_mut().as_mut() {
                 *c = close;
             }
         });
-        self.repaint_requested = true;
-        out
     }
 
     /// mosh-rs scrollback (PLAN.md 6.4): the received history lines as host
@@ -529,7 +542,12 @@ impl STMClient {
 
         /* Restore terminal and terminal-driver state */
         let mut out = self.display.close();
-        if self.scrollback == Scrollback::On {
+        if self.scrollback == Scrollback::On && self.host_alternate {
+            // mosh-rs scrollback: back to the host's main screen and the
+            // cursor it saved there, as when the program ends over ssh.
+            out.extend_from_slice(b"\x1b[?1049l");
+            self.host_alternate = false;
+        } else if self.scrollback == Scrollback::On {
             // mosh-rs scrollback: the final screen stays; the cursor goes to
             // the start of the row below it (its last non-blank row or the
             // cursor's row, whichever is lower).
@@ -664,8 +682,34 @@ impl STMClient {
         self.overlays.apply(&mut self.new_state);
 
         if self.scrollback == Scrollback::On {
-            /* mosh-rs scrollback: history lines first, then the frame */
-            out.extend(self.inject_history());
+            /* mosh-rs scrollback: history lines first, then the frame. The
+            host follows the program's screen (PLAN.md 6.6); lines go into
+            the host's history only from its main screen: the ones that
+            left before the program switched go first, the ones after it
+            switched back go after the host restored its main screen, and
+            none are written while the host shows its alternate screen. */
+            let alternate = self
+                .network
+                .as_ref()
+                .expect("network initialized")
+                .get_latest_remote_state()
+                .state
+                .alternate_screen();
+            if alternate && !self.host_alternate {
+                out.extend(self.inject_history());
+                out.extend_from_slice(b"\x1b[?1049h");
+                self.host_alternate = true;
+                self.set_panic_close();
+                self.repaint_requested = true;
+            } else if !alternate && self.host_alternate {
+                out.extend_from_slice(b"\x1b[?1049l");
+                self.host_alternate = false;
+                self.set_panic_close();
+                self.repaint_requested = true;
+                out.extend(self.inject_history());
+            } else if !self.host_alternate {
+                out.extend(self.inject_history());
+            }
             // A frame of another size than the host's would wrap and scroll
             // the host; wait for the server to apply the resize. The host
             // may reflow its screen meanwhile, so the next frame repaints.
@@ -769,7 +813,14 @@ impl STMClient {
                     let mut out = self.display.close();
                     if self.scrollback == Scrollback::On {
                         // mosh-rs scrollback: the screen is mosh's, not
-                        // history; the local shell gets an empty one.
+                        // history; the local shell gets an empty main
+                        // screen (the next frame re-enters the alternate
+                        // screen if the program is still in it).
+                        if self.host_alternate {
+                            out.extend_from_slice(b"\x1b[?1049l");
+                            self.host_alternate = false;
+                            self.set_panic_close();
+                        }
                         out.extend_from_slice(ERASE_SCREEN_KEEP_HISTORY);
                         self.screen_given_away = true;
                     }

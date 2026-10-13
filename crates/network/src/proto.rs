@@ -43,8 +43,8 @@
 //! mosh-rs scrollback (PLAN.md section 6, 9.4) adds two extensions that
 //! upstream does not know: `ClientBuffers::Instruction` field 4
 //! (`ClientCapabilities`) and `HostBuffers::Instruction` field 9
-//! (`ScrolledLines`). Upstream parses them as unknown extensions and its
-//! `apply_string` if/else-if chains skip them.
+//! (`ScrolledLines`) and 10 (`ScreenMode`). Upstream parses them as
+//! unknown extensions and its `apply_string` if/else-if chains skip them.
 
 /// `package TransportBuffers`
 pub mod transport_buffers {
@@ -152,6 +152,18 @@ pub mod host_buffers {
         /// mosh-rs extension `scrolledlines = 9` (PLAN.md 6.3)
         #[prost(message, optional, tag = "9")]
         pub scrolledlines: Option<ScrolledLines>,
+        /// mosh-rs extension `screenmode = 10` (PLAN.md 6.6)
+        #[prost(message, optional, tag = "10")]
+        pub screenmode: Option<ScreenMode>,
+    }
+
+    /// mosh-rs `HostBuffers::ScreenMode` (PLAN.md 6.6): which screen the
+    /// server's program shows; sent only in scrollback mode, when it changes.
+    #[derive(Clone, PartialEq, ::prost::Message)]
+    pub struct ScreenMode {
+        /// The program is on the alternate screen (DEC 47, 1047 or 1049).
+        #[prost(bool, optional, tag = "1")]
+        pub alternate_screen: Option<bool>,
     }
 
     /// mosh-rs `HostBuffers::ScrolledLines` (PLAN.md 6.3): lines that left

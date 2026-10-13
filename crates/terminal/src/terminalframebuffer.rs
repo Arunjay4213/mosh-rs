@@ -631,8 +631,7 @@ pub struct Row {
     pub gen: u64,
     /// mosh-rs scrollback (PLAN.md 6.2, 9.4), not in upstream and not part
     /// of row equality: the row was created or last written while
-    /// `DrawState::alternate_screen` was on, or it was already captured by
-    /// `Framebuffer::capture_screen`. Such a row is not (new) history, so
+    /// `DrawState::alternate_screen` was on. Such a row is not history, so
     /// `Framebuffer::scroll` does not capture it even after the program left
     /// the alternate screen (upstream keeps that screen's rows on display).
     pub alternate: bool,
@@ -1227,6 +1226,13 @@ pub struct Framebuffer {
     /// region while `ds.alternate_screen` is off, oldest first, for the owner
     /// to take with `take_scrolled_rows`. Not part of equality.
     scrolled_rows: Option<Vec<row_pointer>>,
+
+    /// mosh-rs scrollback (PLAN.md 6.2, 6.6), not in upstream: while
+    /// capturing (scrollback mode) the alternate screen is a real second
+    /// screen, as in a host terminal; this is the main screen's rows, and
+    /// for DEC 1049 its cursor, while the alternate screen is shown. Not
+    /// part of equality.
+    saved_main: Option<(rows_type, Option<(i32, i32)>)>,
 }
 
 impl PartialEq for Framebuffer {
@@ -1271,6 +1277,7 @@ impl Framebuffer {
             title_initialized: false,
             ds: DrawState::new(s_width, s_height),
             scrolled_rows: None,
+            saved_main: None,
         }
     }
 
@@ -1321,11 +1328,8 @@ impl Framebuffer {
     /// mosh-rs scrollback (PLAN.md 6.2, not upstream): when capturing and
     /// not on the alternate screen, the rows from the top through the last
     /// non-blank one become history now, in order, because the program is
-    /// about to erase the screen or enter the alternate screen and they
-    /// would never scroll off. With `keep` (entering the alternate screen,
-    /// where the rows stay on display until drawn over) they are marked so
-    /// they are not captured a second time if they scroll off later.
-    pub fn capture_screen(&mut self, keep: bool) {
+    /// about to erase the screen and they would never scroll off.
+    pub fn capture_screen(&mut self) {
         let Some(out) = &mut self.scrolled_rows else {
             return;
         };
@@ -1340,10 +1344,37 @@ impl Framebuffer {
             return;
         };
         out.extend(self.rows[..=last].iter().filter(|r| !r.alternate).cloned());
-        if keep {
-            for r in &mut self.rows[..=last] {
-                Rc::make_mut(r).alternate = true;
-            }
+    }
+
+    /// mosh-rs scrollback (PLAN.md 6.2, 6.6, not upstream): DEC 47, 1047 or
+    /// 1049 set. Only while capturing: the main screen's rows (and with
+    /// `save_cursor`, for 1049, the cursor) are put aside and the program
+    /// draws on a blank screen, as in tmux; the rows come back on leaving,
+    /// so they scroll into history later, in the order a host terminal
+    /// would show. Otherwise only the flag is set, as before (upstream
+    /// ignores these modes).
+    pub fn enter_alternate_screen(&mut self, save_cursor: bool) {
+        if self.scrolled_rows.is_none() || self.ds.alternate_screen {
+            return;
+        }
+        let cursor = save_cursor.then(|| (self.ds.get_cursor_row(), self.ds.get_cursor_col()));
+        self.ds.alternate_screen = true;
+        let blank = self.newrow();
+        let rows = std::mem::replace(&mut self.rows, vec![blank; idx(self.ds.get_height())]);
+        self.saved_main = Some((rows, cursor));
+    }
+
+    /// mosh-rs scrollback: DEC 47, 1047 or 1049 reset; the main screen comes
+    /// back (see `enter_alternate_screen`).
+    pub fn leave_alternate_screen(&mut self) {
+        let Some((rows, cursor)) = self.saved_main.take() else {
+            return;
+        };
+        self.rows = rows;
+        if let Some((row, col)) = cursor {
+            self.ds.cursor_row = row.min(self.ds.get_height() - 1);
+            self.ds.cursor_col = col.min(self.ds.get_width() - 1);
+            self.ds.next_print_will_wrap = false;
         }
     }
 
@@ -1552,6 +1583,7 @@ impl Framebuffer {
         self.window_title.clear();
         self.clipboard.clear();
         /* do not reset bell_count */
+        self.saved_main = None; /* mosh-rs scrollback: back on the main screen */
     }
 
     /// DECSTR.
@@ -1617,6 +1649,7 @@ impl Framebuffer {
         let oldheight = self.ds.get_height();
         let oldwidth = self.ds.get_width();
         self.ds.resize(s_width, s_height);
+        self.resize_saved_main(s_width, s_height); /* mosh-rs scrollback */
 
         let blankrow = self.newrow();
         if oldheight != s_height {
@@ -1634,6 +1667,24 @@ impl Framebuffer {
             r.set_wrap(false);
             r.cells.resize(idx(s_width), Cell::new(bg));
             *i = Rc::new(r);
+        }
+    }
+
+    /// mosh-rs scrollback: the saved main screen follows a resize the way
+    /// `resize` treats the shown one (rows cut or added at the bottom).
+    fn resize_saved_main(&mut self, s_width: i32, s_height: i32) {
+        let Some((rows, _)) = &mut self.saved_main else {
+            return;
+        };
+        let bg = self.ds.get_background_rendition() as color_type;
+        rows.resize(idx(s_height), Rc::new(Row::new(idx(s_width), 0)));
+        for i in rows.iter_mut() {
+            if i.cells.len() != idx(s_width) {
+                let mut r = (**i).clone();
+                r.set_wrap(false);
+                r.cells.resize(idx(s_width), Cell::new(bg));
+                *i = Rc::new(r);
+            }
         }
     }
 
