@@ -290,3 +290,14 @@ Measured:
   - identical for `xterm-256color` (256), `xterm` (8), `xterm-kitty` (256), `dumb` (-1), `xerox1720` (hardcopy message), `unknown` (generic message), and empty and unset TERM (message, exit 1)
   - `no-such-term` gives 8, the PLAN 9.6 fallback
 - `client_e2e`: 7 passed. `launcher`: 4 passed. `cargo build -p mosh --bin mosh-client --target x86_64-pc-windows-gnu`: builds.
+
+## 2026-10-13 Client (agent E) verified by the orchestrator; overlay review pending
+
+Rerun by the orchestrator at 058508b, not taken from the agent's report:
+- `client_e2e`: 7 passed (command output, interactive shell, resize to 100x30, quit with Ctrl-^ . restoring the terminal, suspend, "Last contact" after the server is killed, idle CPU 0%), each also run with the C++ client first.
+- `prediction_e2e` at 300 ms round trip: a typed key, a backspace and a mid-line insert appear in 2 ms with prediction on (C++ client: 2 ms); with prediction off they take 311-317 ms (C++: 313-316 ms). A wrong prediction is removed after 373 ms (C++: 368 ms).
+- `tests/interop.sh --client rust --server cxx` (quick mode, 10 s blackout): 30 of 30 cells passed in 42 s.
+- `tests/upstream-check.sh --client rust --server cxx`: upstream's own `make check` with our client, 32 tests, 30 PASS, 2 XFAIL, 0 FAIL, 0 ERROR, 0 XPASS.
+- `mosh-client -c` matches upstream for every terminal type devbox knows (2832 cases); an unknown TERM prints xterm's 8 per PLAN 9.6.
+
+Not yet passed: the line-by-line review of the prediction overlay, which now runs from the laptop (NEEDS THE USER in INTERVENTIONS.md).
