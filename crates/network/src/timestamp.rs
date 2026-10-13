@@ -57,6 +57,7 @@ pub fn frozen_timestamp() -> u64 {
 
 pub fn freeze_timestamp() {
     let start = CLOCK_START.get_or_init(Instant::now);
+    /* u128 to u64: overflows only after 584 million years */
     let millis = CLOCK_BASE_MS + start.elapsed().as_millis() as u64;
     MILLIS_CACHE.store(millis, Ordering::Relaxed);
 }

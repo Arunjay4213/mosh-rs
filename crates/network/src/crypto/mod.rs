@@ -111,7 +111,9 @@ pub(crate) fn strtol(s: &[u8]) -> (i64, usize, bool) {
     (value, i, overflow)
 }
 
-/// `myatoi`: strict decimal integer parse.
+/// `myatoi`: strict decimal integer parse (whole string, no overflow).
+/// No caller in this crate; upstream's frontends use it, so it is here
+/// for `crates/mosh`.
 pub fn myatoi(s: &str) -> Result<i64, CryptoError> {
     let (ret, end, overflow) = strtol(s.as_bytes());
     if overflow || end != s.len() {
@@ -243,6 +245,15 @@ pub struct Session {
     key: Base64Key,
     ctx: AeCtx,
     blocks_encrypted: u64,
+}
+
+/// Upstream `Session::~Session` calls `ae_clear()`, which wipes the key
+/// schedule. The AES round keys are wiped by `aes`'s `zeroize` feature
+/// when `ctx` drops; this wipes the session's copy of the key.
+impl Drop for Session {
+    fn drop(&mut self) {
+        zeroize::Zeroize::zeroize(&mut self.key.key);
+    }
 }
 
 impl Session {

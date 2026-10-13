@@ -6,9 +6,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-aes.workspace = true
+# zeroize: wipe the AES key schedule on drop, as upstream's ae_clear() does
+aes = { workspace = true, features = ["zeroize"] }
 ocb3.workspace = true
 rand.workspace = true
 prost.workspace = true
 flate2.workspace = true
 mosh-platform = { path = "../platform" }
+# already in the build through aes; used directly to wipe Session's key copy without unsafe
+zeroize = "1"

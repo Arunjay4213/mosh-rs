@@ -66,6 +66,7 @@ pub fn base64_decode(b64: &[u8], raw: &mut [u8; 16]) -> bool {
         bytes |= sixbit as u32;
         /* write groups of 3 */
         if i % 4 == 3 {
+            /* as u8 keeps the low byte, as the C uint8_t assignments do */
             raw[out] = (bytes >> 16) as u8;
             raw[out + 1] = (bytes >> 8) as u8;
             raw[out + 2] = bytes as u8;
@@ -74,6 +75,7 @@ pub fn base64_decode(b64: &[u8], raw: &mut [u8; 16]) -> bool {
         }
     }
     /* last byte of output */
+    /* as u8 keeps the low byte, as the C uint8_t assignment does */
     raw[out] = (bytes >> 4) as u8;
     if b64[22] != b'=' || b64[23] != b'=' {
         return false;

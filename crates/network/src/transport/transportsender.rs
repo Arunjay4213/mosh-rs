@@ -109,7 +109,9 @@ impl<MyState: State> TransportSender<MyState> {
 
     /// Try to send roughly two frames per RTT, bounded by limits on frame rate
     pub fn send_interval(&self, connection: &Connection) -> u32 {
+        /* f64 to i32 saturates; SRTT is a non-negative RTT under 5000 ms, as upstream's lrint() to int */
         let send_interval = (connection.get_srtt() / 2.0).ceil() as i32;
+        /* clamped to 20..=250, so the u32 is exact */
         send_interval.clamp(SEND_INTERVAL_MIN, SEND_INTERVAL_MAX) as u32
     }
 
@@ -177,6 +179,7 @@ impl<MyState: State> TransportSender<MyState> {
         }
 
         if next_wakeup > now {
+            /* next_wakeup is at most next_ack_time, a few seconds ahead; upstream returns the same difference as int */
             (next_wakeup - now) as i32
         } else {
             0
@@ -373,6 +376,7 @@ impl<MyState: State> TransportSender<MyState> {
 
         let fragments = self.fragmenter.make_fragments(
             &inst,
+            /* MTU is at least DEFAULT_SEND_MTU (500), so the difference is positive */
             (connection.get_mtu() - Connection::ADDED_BYTES - Session::ADDED_BYTES as i32) as usize,
         )?;
         for i in &fragments {
@@ -380,6 +384,7 @@ impl<MyState: State> TransportSender<MyState> {
 
             if self.verbose != 0 {
                 eprintln!(
+                    /* the as i32 casts below mirror upstream's (int) casts in this message: u64::MAX prints as -1 */
                     "[{}] Sent [{}=>{}] id {}, frag {} ack={}, throwaway={}, len={}, frame rate={:.2}, timeout={}, srtt={:.1}",
                     (timestamp() % 100000) as u32,
                     inst.old_num() as i32,

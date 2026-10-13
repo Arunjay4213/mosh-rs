@@ -70,6 +70,7 @@ pub fn uncompress_str(input: &[u8]) -> Result<Vec<u8>, CryptoError> {
     let mut d = Decompress::new(true);
     let mut out: Vec<u8> = Vec::with_capacity((input.len() * 4 + 64).min(BUFFER_SIZE));
     loop {
+        /* total_in() counts bytes of `input`, so it fits usize */
         let consumed = d.total_in() as usize;
         let before_out = out.len();
         let status = d
@@ -89,6 +90,7 @@ pub fn uncompress_str(input: &[u8]) -> Result<Vec<u8>, CryptoError> {
             out.reserve_exact(grow);
             continue;
         }
+        /* as above: bounded by input.len() */
         if d.total_in() as usize == consumed && out.len() == before_out {
             /* no progress with output space available: input is truncated */
             return Err(err());

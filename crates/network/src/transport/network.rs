@@ -47,6 +47,7 @@ pub fn timestamp() -> u64 {
 }
 
 pub fn timestamp16() -> u16 {
+    /* the remainder is below 65536, so the u16 is exact */
     let mut ts = (timestamp() % 65536) as u16;
     if ts == u16::MAX {
         ts = ts.wrapping_add(1);
@@ -61,6 +62,7 @@ pub fn timestamp_diff(tsnew: u16, tsold: u16) -> u16 {
     }
     assert!(diff >= 0);
     assert!(diff <= 65535);
+    /* 0..=65535 by the asserts above */
     diff as u16
 }
 
@@ -342,6 +344,7 @@ impl Connection {
 
         let mut saved_errno = 0;
         for i in search_low..=search_high {
+            /* i is 0..=65535 (parse_portrange checks the range; defaults are 60001..60999), as htons( i ) */
             local_addr.set_port(i as u16);
 
             let sock = self.socks.back_mut().expect("socket pushed above");
@@ -407,6 +410,7 @@ impl Connection {
             /* send "corrected" timestamp advanced by how long we held it */
             outgoing_timestamp_reply = self
                 .saved_timestamp
+                /* truncation intended: upstream adds into a uint16_t; the difference is under 1000 here */
                 .wrapping_add(now.wrapping_sub(self.saved_timestamp_received_at) as u16);
             self.saved_timestamp = u16::MAX;
             self.saved_timestamp_received_at = 0;
@@ -621,6 +625,7 @@ impl Connection {
     }
 
     pub fn timeout(&self) -> u64 {
+        /* SRTT and RTTVAR are non-negative and below 5000, so the u64 is exact (upstream: lrint) */
         let rto = (self.srtt + 4.0 * self.rttvar).ceil() as u64;
         rto.clamp(Connection::MIN_RTO, Connection::MAX_RTO)
     }
@@ -664,6 +669,7 @@ impl Connection {
             return false;
         }
 
+        /* range-checked to 0..=65535 above */
         *desired_port_low = value as i32;
         if end == s.len() {
             /* not a port range */
@@ -682,6 +688,7 @@ impl Connection {
             return false;
         }
 
+        /* range-checked to 0..=65535 above */
         *desired_port_high = value as i32;
         if *desired_port_low > *desired_port_high {
             eprintln!(

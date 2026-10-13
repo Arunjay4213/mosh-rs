@@ -190,6 +190,7 @@ impl FragmentAssembly {
                 ));
             }
             self.fragments
+                /* fragments_total = num + 1 here, positive */
                 .resize(self.fragments_total as usize, Fragment::default());
         }
 
@@ -208,6 +209,7 @@ impl FragmentAssembly {
         assert!(self.fragments_arrived == self.fragments_total);
 
         let mut encoded = Vec::new();
+        /* positive: get_assembly is only called after add_fragment set a total */
         for i in 0..self.fragments_total as usize {
             assert!(self.fragments[i].initialized);
             encoded.extend_from_slice(&self.fragments[i].contents);

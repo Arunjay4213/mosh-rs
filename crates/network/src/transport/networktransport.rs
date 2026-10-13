@@ -161,6 +161,7 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
                     /* deny letting state grow further */
                     if self.verbose != 0 {
                         eprintln!(
+                            /* the as i32 casts below mirror upstream's (int) casts in this message: u64::MAX prints as -1 */
                             "[{}] Receiver queue full, discarding {} (malicious sender or long-unidirectional connectivity?)",
                             (timestamp() % 100000) as u32,
                             inst.new_num() as i32
@@ -202,6 +203,7 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
                 self.received_states.insert(pos, new_state);
                 if self.verbose != 0 {
                     eprintln!(
+                        /* the as i32 casts below mirror upstream's (int) casts in this message: u64::MAX prints as -1 */
                         "[{}] Received OUT-OF-ORDER state {} [ack {}]",
                         (timestamp() % 100000) as u32,
                         num as i32,
@@ -212,6 +214,7 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
             }
             if self.verbose != 0 {
                 eprintln!(
+                    /* the as i32 casts below mirror upstream's (int) casts in this message: u64::MAX prints as -1 */
                     "[{}] Received state {} [coming from {}, ack {}]",
                     (timestamp() % 100000) as u32,
                     new_state.num as i32,
