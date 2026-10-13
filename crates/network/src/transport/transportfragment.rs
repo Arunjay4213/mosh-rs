@@ -29,6 +29,10 @@
 // also delete it here.
 // Ported from: upstream/src/network/transportfragment.h, upstream/src/network/transportfragment.cc
 
+//! Port of upstream `src/network/transportfragment.h` and
+//! `transportfragment.cc`: splitting compressed instructions into
+//! datagram-sized fragments and reassembling them.
+
 use prost::Message as _;
 
 use super::compressor::{compress_str, uncompress_str};
@@ -36,12 +40,18 @@ use super::dos_detected;
 use crate::crypto::CryptoError;
 use crate::proto::transport_buffers::Instruction;
 
+/// A piece of a compressed instruction that fits one datagram (`Network::Fragment`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Fragment {
+    /// Instruction id; all fragments of one instruction share it.
     pub id: u64,
+    /// Index within the instruction (15 bits).
     pub fragment_num: u16,
+    /// True on the last fragment.
     pub final_: bool,
+    /// False only for the empty slots `FragmentAssembly` keeps.
     pub initialized: bool,
+    /// The fragment's share of the compressed instruction.
     pub contents: Vec<u8>,
 }
 
@@ -58,8 +68,10 @@ impl Default for Fragment {
 }
 
 impl Fragment {
+    /// Header bytes: u64 id, u16 fragment number with the final flag in the top bit.
     pub const FRAG_HEADER_LEN: usize = 8 /* uint64_t */ + 2 /* uint16_t */;
 
+    /// A fragment from its parts.
     pub fn new(s_id: u64, s_fragment_num: u16, s_final: bool, s_contents: Vec<u8>) -> Fragment {
         Fragment {
             id: s_id,
@@ -91,6 +103,7 @@ impl Fragment {
         })
     }
 
+    /// Wire form: big-endian id, big-endian number with the final flag, contents.
     pub fn tostring(&self) -> Vec<u8> {
         assert!(self.initialized);
         let mut ret = Vec::with_capacity(Fragment::FRAG_HEADER_LEN + self.contents.len());
@@ -108,6 +121,7 @@ impl Fragment {
     }
 }
 
+/// Collects the fragments of the current instruction (`Network::FragmentAssembly`).
 pub struct FragmentAssembly {
     fragments: Vec<Fragment>,
     current_id: u64,
@@ -122,6 +136,7 @@ impl Default for FragmentAssembly {
 }
 
 impl FragmentAssembly {
+    /// An empty assembly.
     pub fn new() -> FragmentAssembly {
         FragmentAssembly {
             fragments: Vec::new(),
@@ -205,6 +220,7 @@ impl FragmentAssembly {
         Ok(self.fragments_arrived == self.fragments_total)
     }
 
+    /// Decompresses and decodes the completed instruction. Errors on a bad zlib stream or protobuf.
     pub fn get_assembly(&mut self) -> Result<Instruction, CryptoError> {
         assert!(self.fragments_arrived == self.fragments_total);
 
@@ -233,6 +249,7 @@ impl FragmentAssembly {
     }
 }
 
+/// Splits instructions into fragments, numbering instructions (`Network::Fragmenter`).
 pub struct Fragmenter {
     next_instruction_id: u64,
     last_instruction: Instruction,
@@ -246,6 +263,7 @@ impl Default for Fragmenter {
 }
 
 impl Fragmenter {
+    /// A fragmenter whose first instruction gets id 1.
     pub fn new() -> Fragmenter {
         Fragmenter {
             next_instruction_id: 0,
@@ -258,6 +276,7 @@ impl Fragmenter {
         }
     }
 
+    /// Compresses and splits `inst` into fragments of at most `mtu` bytes. A resend of the same instruction keeps its id.
     pub fn make_fragments(
         &mut self,
         inst: &Instruction,
@@ -315,6 +334,7 @@ impl Fragmenter {
         Ok(ret)
     }
 
+    /// The `ack_num` of the last instruction fragmented.
     pub fn last_ack_sent(&self) -> u64 {
         self.last_instruction.ack_num()
     }

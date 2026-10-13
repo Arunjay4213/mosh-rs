@@ -29,6 +29,8 @@
 // also delete it here.
 // Ported from: upstream/src/crypto/ae.h (interface only; OCB comes from the ocb3 + aes crates)
 
+//! Port of upstream `src/crypto/ae.h` (the interface; the OCB code is the `ocb3` and `aes` crates).
+//!
 //! The `ae_*` authenticated-encryption interface that `crypto.cc` and
 //! `src/tests/ocb-aes.cc` use: AES-128 in OCB3 mode (RFC 7253), 12-byte
 //! nonce, 16-byte tag. As in upstream, the tag is appended to the
@@ -39,8 +41,11 @@ use ocb3::aead::{AeadInOut, KeyInit};
 use ocb3::consts::{U12, U16};
 use ocb3::Ocb3;
 
+/// AES-128 key length in bytes.
 pub const KEY_LEN: usize = 16;
+/// OCB nonce length in bytes (`ae_init( ..., 12, 16 )`).
 pub const NONCE_LEN: usize = 12;
+/// OCB tag length in bytes.
 pub const TAG_LEN: usize = 16;
 
 /// Initialized `ae_ctx` (`ae_init( ctx, key, 16, 12, 16 )`).
@@ -48,6 +53,7 @@ pub struct AeCtx {
     cipher: Ocb3<Aes128, U12, U16>,
 }
 
+/// `ae_init( ctx, key, 16, 12, 16 )`: an OCB context for `key`.
 pub fn ae_init(key: &[u8; KEY_LEN]) -> AeCtx {
     AeCtx {
         cipher: Ocb3::new(&(*key).into()),

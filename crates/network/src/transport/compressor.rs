@@ -29,6 +29,8 @@
 // also delete it here.
 // Ported from: upstream/src/network/compressor.h, upstream/src/network/compressor.cc
 
+//! Port of upstream `src/network/compressor.h` and `compressor.cc`.
+//!
 //! zlib `compress()` / `uncompress()` with upstream's fixed 4 MiB output
 //! buffer as the size limit. Upstream keeps one static `Compressor` to
 //! reuse that buffer; here the functions allocate per call instead.

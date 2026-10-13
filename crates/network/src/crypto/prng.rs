@@ -29,19 +29,24 @@
 // also delete it here.
 // Ported from: upstream/src/crypto/prng.h
 
+//! Port of upstream `src/crypto/prng.h`.
+//!
 //! OS randomness (upstream uses getrandom(2) where available).
 
 use super::CryptoError;
 use rand::rngs::SysRng;
 use rand::TryRng;
 
+/// Source of OS randomness (`PRNG`).
 pub struct Prng;
 
 impl Prng {
+    /// A handle to the OS random source.
     pub fn new() -> Prng {
         Prng
     }
 
+    /// Fills `dest` with random bytes.
     pub fn fill(&mut self, dest: &mut [u8]) -> Result<(), CryptoError> {
         if dest.is_empty() {
             return Ok(());
@@ -51,18 +56,21 @@ impl Prng {
             .map_err(|_| CryptoError::new("getrandom fell short"))
     }
 
+    /// A random byte.
     pub fn uint8(&mut self) -> Result<u8, CryptoError> {
         let mut x = [0u8; 1];
         self.fill(&mut x)?;
         Ok(x[0])
     }
 
+    /// A random u32.
     pub fn uint32(&mut self) -> Result<u32, CryptoError> {
         let mut x = [0u8; 4];
         self.fill(&mut x)?;
         Ok(u32::from_ne_bytes(x))
     }
 
+    /// A random u64.
     pub fn uint64(&mut self) -> Result<u64, CryptoError> {
         let mut x = [0u8; 8];
         self.fill(&mut x)?;

@@ -29,6 +29,12 @@
 // also delete it here.
 // Ported from: upstream/src/network/network.h, upstream/src/network/network.cc
 
+//! Port of upstream `src/network/network.h` and `network.cc`: the 16-bit
+//! wire timestamps, `Packet` (plaintext layout and nonce), and
+//! `Connection`, the encrypted UDP connection with port hopping, roaming
+//! and RTT estimation. The socket system calls are in
+//! `mosh_platform::socket`.
+
 use std::collections::VecDeque;
 use std::fmt;
 use std::net::{SocketAddr, UdpSocket};
@@ -40,12 +46,15 @@ use super::{dos_detected, Error};
 use crate::crypto::{unique, Base64Key, CryptoError, Message, Nonce, Session};
 use crate::timestamp::frozen_timestamp;
 
+/// SSP protocol version carried in every `Instruction`.
 pub const MOSH_PROTOCOL_VERSION: u32 = 2; /* bumped for echo-ack */
 
+/// The frozen millisecond clock (`frozen_timestamp`).
 pub fn timestamp() -> u64 {
     frozen_timestamp()
 }
 
+/// The low 16 bits of the clock for the wire; never 0xFFFF, which means "no timestamp".
 pub fn timestamp16() -> u16 {
     /* the remainder is below 65536, so the u16 is exact */
     let mut ts = (timestamp() % 65536) as u16;
@@ -55,6 +64,7 @@ pub fn timestamp16() -> u16 {
     ts
 }
 
+/// `tsnew - tsold` modulo 2^16.
 pub fn timestamp_diff(tsnew: u16, tsold: u16) -> u16 {
     let mut diff = tsnew as i32 - tsold as i32;
     if diff < 0 {
@@ -69,11 +79,14 @@ pub fn timestamp_diff(tsnew: u16, tsold: u16) -> u16 {
 /// `Network::NetworkException`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NetworkError {
+    /// The failing call, or a message.
     pub function: String,
+    /// errno, or 0.
     pub the_errno: i32,
 }
 
 impl NetworkError {
+    /// An error for `s_function` with errno `s_errno`.
     pub fn new(s_function: impl Into<String>, s_errno: i32) -> NetworkError {
         NetworkError {
             function: s_function.into(),
@@ -96,25 +109,35 @@ impl From<SysError> for NetworkError {
     }
 }
 
+/// Which way a packet travels; the top bit of the nonce.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
+    /// Client to server.
     ToServer = 0,
+    /// Server to client.
     ToClient = 1,
 }
 
 const DIRECTION_MASK: u64 = 1u64 << 63;
 const SEQUENCE_MASK: u64 = u64::MAX ^ DIRECTION_MASK;
 
+/// A decrypted datagram (`Network::Packet`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Packet {
+    /// Sequence number (low 63 bits of the nonce).
     pub seq: u64,
+    /// Direction (top bit of the nonce).
     pub direction: Direction,
+    /// Sender's 16-bit clock, or 0xFFFF for none.
     pub timestamp: u16,
+    /// Echo of the peer's timestamp, advanced by how long it was held, or 0xFFFF.
     pub timestamp_reply: u16,
+    /// The fragment carried.
     pub payload: Vec<u8>,
 }
 
 impl Packet {
+    /// An outgoing packet with the next sequence number from `unique()`.
     pub fn new(
         s_direction: Direction,
         s_timestamp: u16,
@@ -166,6 +189,7 @@ impl Packet {
     }
 }
 
+/// The encrypted UDP connection: sockets, port hopping, roaming, and RTT estimation (`Network::Connection`).
 pub struct Connection {
     socks: VecDeque<UdpSocket>,
     has_remote_addr: bool,
@@ -241,6 +265,7 @@ impl Connection {
     const CONGESTION_TIMESTAMP_PENALTY: u16 = 500; /* ms */
 
     /* Network transport overhead. */
+    /// Bytes the connection adds to each payload.
     pub const ADDED_BYTES: i32 = 8 /* seqno/nonce */ + 4 /* timestamps */;
 
     fn blank(server: bool, key: Base64Key) -> Connection {
@@ -459,6 +484,7 @@ impl Connection {
         }
     }
 
+    /// Encrypts and sends one payload to the peer; records `sendto` failures in `get_send_error`. Clients hop to a new port when no round trip succeeded for 10 s; servers detach after 40 s of silence.
     pub fn send(&mut self, s: &[u8]) -> Result<(), Error> {
         if !self.has_remote_addr {
             return Ok(());
@@ -501,6 +527,7 @@ impl Connection {
         Ok(())
     }
 
+    /// Receives and decrypts one datagram from any open socket and returns its payload. Errors when nothing was waiting ("No packet received") or the datagram is rejected.
     pub fn recv(&mut self) -> Result<Vec<u8>, Error> {
         assert!(!self.socks.is_empty());
         for i in 0..self.socks.len() {
@@ -598,14 +625,17 @@ impl Connection {
         Ok(Some(p.payload))
     }
 
+    /// Socket handles to poll for input, oldest first.
     pub fn fds(&self) -> Vec<SocketHandle> {
         self.socks.iter().map(sys::socket_handle).collect()
     }
 
+    /// Current application datagram MTU.
     pub fn get_mtu(&self) -> i32 {
         self.mtu
     }
 
+    /// Local port of the newest socket, as a decimal string.
     pub fn port(&self) -> Result<String, NetworkError> {
         match self.sock().local_addr() {
             Ok(a) => Ok(a.port().to_string()),
@@ -616,20 +646,24 @@ impl Connection {
         }
     }
 
+    /// The printable session key.
     pub fn get_key(&self) -> String {
         self.key.printable_key()
     }
 
+    /// Whether a peer address is known.
     pub fn get_has_remote_addr(&self) -> bool {
         self.has_remote_addr
     }
 
+    /// Retransmission timeout in ms from SRTT and RTTVAR, clamped to 50..=1000.
     pub fn timeout(&self) -> u64 {
         /* SRTT and RTTVAR are non-negative and below 5000, so the u64 is exact (upstream: lrint) */
         let rto = (self.srtt + 4.0 * self.rttvar).ceil() as u64;
         rto.clamp(Connection::MIN_RTO, Connection::MAX_RTO)
     }
 
+    /// Smoothed round-trip time in ms.
     pub fn get_srtt(&self) -> f64 {
         self.srtt
     }
@@ -640,14 +674,17 @@ impl Connection {
         self.remote_addr
     }
 
+    /// The last `sendto` error, for the frontend to show (it clears it).
     pub fn get_send_error(&mut self) -> &mut String {
         &mut self.send_error
     }
 
+    /// Time of the last end-to-end round trip, set by the transport.
     pub fn set_last_roundtrip_success(&mut self, s_success: u64) {
         self.last_roundtrip_success = s_success;
     }
 
+    /// Parses "PORT" or "LOW:HIGH" as upstream does, printing the reason on failure.
     pub fn parse_portrange(
         desired_port: &str,
         desired_port_low: &mut i32,

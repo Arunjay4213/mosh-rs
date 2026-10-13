@@ -29,6 +29,8 @@
 // also delete it here.
 // Ported from: upstream/src/crypto/base64.cc
 
+//! Port of upstream `src/crypto/base64.cc`.
+//!
 //! Base64 for 128-bit Mosh keys only: 16 raw bytes <-> 24 characters
 //! ending in "==".
 

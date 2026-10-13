@@ -29,6 +29,10 @@
 // also delete it here.
 // Ported from: upstream/src/network/transportstate.h
 
+//! Port of upstream `src/network/transportstate.h` (`TimestampedState`),
+//! plus the `State` trait that stands for the template parameter
+//! upstream's `TransportSender` and `Transport` take.
+
 /// What `TransportSender<MyState>` and `Transport<MyState, RemoteState>`
 /// require of a state type (upstream's implicit template interface).
 pub trait State: PartialEq + Clone {
@@ -36,6 +40,7 @@ pub trait State: PartialEq + Clone {
     fn diff_from(&self, existing: &Self) -> Vec<u8>;
     /// The diff from the initial (empty) state.
     fn init_diff(&self) -> Vec<u8>;
+    /// Applies a diff produced by `diff_from`.
     fn apply_string(&mut self, diff: &[u8]);
     /// Drop the part of `self` that `prefix` already contains.
     fn subtract(&mut self, prefix: &Self);
@@ -52,14 +57,19 @@ pub trait State: PartialEq + Clone {
     fn reset_input(&mut self);
 }
 
+/// A state with its number and the time it was sent or received.
 #[derive(Clone, Debug)]
 pub struct TimestampedState<S> {
+    /// Milliseconds (`timestamp()`).
     pub timestamp: u64,
+    /// State number.
     pub num: u64,
+    /// The state.
     pub state: S,
 }
 
 impl<S> TimestampedState<S> {
+    /// A timestamped state from its parts.
     pub fn new(s_timestamp: u64, s_num: u64, s_state: S) -> TimestampedState<S> {
         TimestampedState {
             timestamp: s_timestamp,

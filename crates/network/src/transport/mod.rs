@@ -29,11 +29,19 @@
 // also delete it here.
 // Ported from: upstream/src/network (module root; no single upstream file)
 
+//! Port of upstream `src/network`: the SSP transport. This file holds the
+//! error type shared by the submodules (upstream throws `NetworkException`
+//! or `CryptoException`) and `dos_detected` (upstream `dos_assert`).
+
 pub mod compressor;
+/// Port of `network.h`/`network.cc`: packets, timestamps, and the UDP `Connection`.
 pub mod network;
+/// Port of `networktransport.h`/`networktransport-impl.h`: `Transport`, sender plus receiver.
 pub mod networktransport;
+/// Port of `transportfragment.h`/`transportfragment.cc`.
 pub mod transportfragment;
 pub mod transportsender;
+/// Port of `transportstate.h`, plus the `State` trait.
 pub mod transportstate;
 
 use std::fmt;
@@ -46,7 +54,9 @@ use network::NetworkError;
 /// Frontends handle them differently, as upstream's catch clauses do.
 #[derive(Debug, Clone)]
 pub enum Error {
+    /// A `NetworkException`.
     Network(NetworkError),
+    /// A `CryptoException`.
     Crypto(CryptoError),
 }
 

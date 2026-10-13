@@ -29,6 +29,8 @@
 // also delete it here.
 // Ported from: upstream/src/network/transportsender.h, upstream/src/network/transportsender-impl.h
 
+//! Port of upstream `src/network/transportsender.h` and `transportsender-impl.h`.
+//!
 //! The sender half of SSP. Upstream holds a `Connection*`; here the
 //! owning `Transport` passes the connection into each call instead.
 
@@ -41,13 +43,20 @@ use crate::crypto::{CryptoError, Session};
 use crate::proto::transport_buffers::Instruction;
 
 /* timing parameters */
+/// Minimum ms between frames.
 pub const SEND_INTERVAL_MIN: i32 = 20; /* ms between frames */
+/// Maximum ms between frames.
 pub const SEND_INTERVAL_MAX: i32 = 250; /* ms between frames */
+/// Ms between empty acks.
 pub const ACK_INTERVAL: u64 = 3000; /* ms between empty acks */
+/// Ms before a delayed ack.
 pub const ACK_DELAY: u64 = 100; /* ms before delayed ack */
+/// Shutdown packets to send before giving up.
 pub const SHUTDOWN_RETRIES: i32 = 16; /* number of shutdown packets to send before giving up */
+/// Ms to keep resending at frame rate after last hearing from the peer.
 pub const ACTIVE_RETRY_TIMEOUT: u64 = 10000; /* attempt to resend at frame rate */
 
+/// The sending half of SSP: state history, timers, and acks (`Network::TransportSender`).
 pub struct TransportSender<MyState: State> {
     /* state of sender */
     current_state: MyState,
@@ -86,6 +95,7 @@ pub struct TransportSender<MyState: State> {
 }
 
 impl<MyState: State> TransportSender<MyState> {
+    /// A sender whose first state is `initial_state`, number 0.
     pub fn new(initial_state: &MyState) -> TransportSender<MyState> {
         TransportSender {
             current_state: initial_state.clone(),
@@ -491,40 +501,49 @@ impl<MyState: State> TransportSender<MyState> {
         &mut self.current_state
     }
 
+    /// Replaces the current state and calls its `reset_input()`.
     pub fn set_current_state(&mut self, x: &MyState) {
         assert!(!self.shutdown_in_progress);
         self.current_state = x.clone();
         self.current_state.reset_input();
     }
 
+    /// Verbosity of diagnostics on stderr (0 is quiet).
     pub fn set_verbose(&mut self, s_verbose: u32) {
         self.verbose = s_verbose;
     }
 
+    /// Whether shutdown has started.
     pub fn get_shutdown_in_progress(&self) -> bool {
         self.shutdown_in_progress
     }
 
+    /// Whether the peer acknowledged our shutdown state.
     pub fn get_shutdown_acknowledged(&self) -> bool {
         self.sent_states[0].num == u64::MAX
     }
 
+    /// Whether we acknowledged the peer's shutdown.
     pub fn get_counterparty_shutdown_acknowledged(&self) -> bool {
         self.fragmenter.last_ack_sent() == u64::MAX
     }
 
+    /// When the newest acknowledged state was sent.
     pub fn get_sent_state_acked_timestamp(&self) -> u64 {
         self.sent_states[0].timestamp
     }
 
+    /// Number of the newest acknowledged state.
     pub fn get_sent_state_acked(&self) -> u64 {
         self.sent_states[0].num
     }
 
+    /// Number of the newest sent state.
     pub fn get_sent_state_last(&self) -> u64 {
         self.sent_states.last().expect("sent_states not empty").num
     }
 
+    /// Minimum ms to collect changes before sending.
     pub fn set_send_delay(&mut self, new_delay: u32) {
         self.send_mindelay = new_delay;
     }

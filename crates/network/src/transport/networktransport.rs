@@ -29,6 +29,11 @@
 // also delete it here.
 // Ported from: upstream/src/network/networktransport.h, upstream/src/network/networktransport-impl.h
 
+//! Port of upstream `src/network/networktransport.h` and
+//! `networktransport-impl.h`: `Transport`, one end of an SSP session,
+//! joining a `TransportSender` with the receiver that assembles
+//! fragments and keeps the received states.
+
 use std::net::SocketAddr;
 
 use super::network::{timestamp, Connection, NetworkError, SocketHandle, MOSH_PROTOCOL_VERSION};
@@ -38,6 +43,7 @@ use super::transportstate::{State, TimestampedState};
 use super::{dos_detected, Error};
 use crate::crypto::CryptoError;
 
+/// One end of an SSP session: sends `MyState`, receives `RemoteState` (`Network::Transport`).
 pub struct Transport<MyState: State, RemoteState: State> {
     /* the underlying, encrypted network connection */
     connection: Connection,
@@ -288,18 +294,22 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
         self.sender.start_shutdown();
     }
 
+    /// Whether this side has started shutdown.
     pub fn shutdown_in_progress(&self) -> bool {
         self.sender.get_shutdown_in_progress()
     }
 
+    /// Whether the peer acknowledged our shutdown.
     pub fn shutdown_acknowledged(&self) -> bool {
         self.sender.get_shutdown_acknowledged()
     }
 
+    /// Whether to give up waiting for the shutdown acknowledgement.
     pub fn shutdown_ack_timed_out(&self) -> bool {
         self.sender.shutdown_ack_timed_out()
     }
 
+    /// Whether a peer address is known.
     pub fn has_remote_addr(&self) -> bool {
         self.connection.get_has_remote_addr()
     }
@@ -309,22 +319,27 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
         self.sender.get_counterparty_shutdown_acknowledged()
     }
 
+    /// Local UDP port.
     pub fn port(&self) -> Result<String, NetworkError> {
         self.connection.port()
     }
 
+    /// The printable session key.
     pub fn get_key(&self) -> String {
         self.connection.get_key()
     }
 
+    /// The state being sent, to modify in place.
     pub fn get_current_state(&mut self) -> &mut MyState {
         self.sender.get_current_state()
     }
 
+    /// Replaces the state being sent.
     pub fn set_current_state(&mut self, x: &MyState) {
         self.sender.set_current_state(x);
     }
 
+    /// Number of the newest received state.
     pub fn get_remote_state_num(&self) -> u64 {
         self.received_states
             .last()
@@ -332,45 +347,55 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
             .num
     }
 
+    /// The newest received state.
     pub fn get_latest_remote_state(&self) -> &TimestampedState<RemoteState> {
         self.received_states
             .last()
             .expect("received_states not empty")
     }
 
+    /// Socket handles to poll for input.
     pub fn fds(&self) -> Vec<SocketHandle> {
         self.connection.fds()
     }
 
+    /// Verbosity of diagnostics on stderr (0 is quiet).
     pub fn set_verbose(&mut self, s_verbose: u32) {
         self.sender.set_verbose(s_verbose);
         self.verbose = s_verbose;
     }
 
+    /// Minimum ms to collect changes before sending.
     pub fn set_send_delay(&mut self, new_delay: u32) {
         self.sender.set_send_delay(new_delay);
     }
 
+    /// When the newest acknowledged sent state was sent.
     pub fn get_sent_state_acked_timestamp(&self) -> u64 {
         self.sender.get_sent_state_acked_timestamp()
     }
 
+    /// Number of the newest acknowledged sent state.
     pub fn get_sent_state_acked(&self) -> u64 {
         self.sender.get_sent_state_acked()
     }
 
+    /// Number of the newest sent state.
     pub fn get_sent_state_last(&self) -> u64 {
         self.sender.get_sent_state_last()
     }
 
+    /// Current interval between frames in ms.
     pub fn send_interval(&self) -> u32 {
         self.sender.send_interval(&self.connection)
     }
 
+    /// The peer's address; `None` before a server has heard from a client.
     pub fn get_remote_addr(&self) -> Option<SocketAddr> {
         self.connection.get_remote_addr()
     }
 
+    /// The last `sendto` error, for the frontend to show (it clears it).
     pub fn get_send_error(&mut self) -> &mut String {
         self.connection.get_send_error()
     }

@@ -30,13 +30,18 @@
 //
 // Ported from: (none; crate root)
 
+//! Port of upstream `src/crypto`, `src/network`, `src/protobufs` and `src/util/timestamp.cc`.
+//!
 //! Crypto, protocol buffers, and the SSP transport.
 
 #![forbid(unsafe_code)]
+#![deny(missing_docs)]
 
+/// Port of `src/crypto`: keys, nonces, OCB sessions, base64, randomness.
 pub mod crypto;
 pub mod proto;
 pub mod timestamp;
+/// Port of `src/network`: compression, fragments, the SSP sender and receiver, and the UDP connection.
 pub mod transport;
 
 /// Re-exported so users of `proto` can call `encode_to_vec()` / `decode()`.

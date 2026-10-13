@@ -29,6 +29,11 @@
 // also delete it here.
 // Ported from: upstream/src/crypto/crypto.h, upstream/src/crypto/crypto.cc
 
+//! Port of upstream `src/crypto/crypto.h` and `crypto.cc`: the session key
+//! (`Base64Key`), nonces, `Session` (AES-128-OCB encrypt and decrypt of
+//! whole packets), `unique()` sequence numbers, and `myatoi`. Core-dump
+//! control from `crypto.cc` lives in `mosh_platform::coredump`.
+
 pub mod ae;
 pub mod base64;
 pub mod prng;
@@ -43,11 +48,14 @@ use prng::Prng;
 /// `Crypto::CryptoException`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CryptoError {
+    /// Message (`CryptoException::text`).
     pub text: String,
+    /// True when the session must end (`CryptoException::fatal`).
     pub fatal: bool,
 }
 
 impl CryptoError {
+    /// A non-fatal error: the packet or input is rejected and the session goes on.
     pub fn new(text: impl Into<String>) -> CryptoError {
         CryptoError {
             text: text.into(),
@@ -55,6 +63,7 @@ impl CryptoError {
         }
     }
 
+    /// A fatal error: the session cannot continue (counter wrap, 2^47 blocks).
     pub fn fatal(text: impl Into<String>) -> CryptoError {
         CryptoError {
             text: text.into(),
@@ -135,6 +144,7 @@ pub fn unique() -> Result<u64, CryptoError> {
     Ok(rv)
 }
 
+/// The 128-bit session key, printed as 22 base64 characters (`Crypto::Base64Key`).
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Base64Key {
     key: [u8; 16],
@@ -146,12 +156,14 @@ impl Base64Key {
         Base64Key::from_prng(&mut Prng::new())
     }
 
+    /// A key filled from `prng`.
     pub fn from_prng(prng: &mut Prng) -> Result<Base64Key, CryptoError> {
         let mut key = [0u8; 16];
         prng.fill(&mut key)?;
         Ok(Base64Key { key })
     }
 
+    /// Parses the 22-character printable key; rejects any string that is not the canonical encoding of 16 bytes.
     pub fn from_printable(printable_key: &str) -> Result<Base64Key, CryptoError> {
         if printable_key.len() != 22 {
             return Err(CryptoError::new("Key must be 22 letters long."));
@@ -170,6 +182,7 @@ impl Base64Key {
         Ok(ret)
     }
 
+    /// The 22-character printable form (base64 without the trailing "==").
     pub fn printable_key(&self) -> String {
         let base64 = base64_encode(&self.key);
         assert!(
@@ -179,6 +192,7 @@ impl Base64Key {
         String::from_utf8(base64[..22].to_vec()).expect("base64 is ASCII")
     }
 
+    /// The raw 16 key bytes.
     pub fn data(&self) -> &[u8; 16] {
         &self.key
     }
@@ -190,20 +204,24 @@ impl fmt::Debug for Base64Key {
     }
 }
 
+/// The 12-byte OCB nonce: 4 zero bytes, then the big-endian packet number whose top bit is the direction (`Crypto::Nonce`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Nonce {
     bytes: [u8; Nonce::NONCE_LEN],
 }
 
 impl Nonce {
+    /// Nonce length in bytes.
     pub const NONCE_LEN: usize = 12;
 
+    /// The nonce for the 64-bit value `val`.
     pub fn new(val: u64) -> Nonce {
         let mut bytes = [0u8; Nonce::NONCE_LEN];
         bytes[4..].copy_from_slice(&val.to_be_bytes());
         Nonce { bytes }
     }
 
+    /// The nonce from its 8 wire bytes.
     pub fn from_bytes(s_bytes: &[u8]) -> Result<Nonce, CryptoError> {
         if s_bytes.len() != 8 {
             return Err(CryptoError::new(
@@ -220,27 +238,34 @@ impl Nonce {
         &self.bytes[4..]
     }
 
+    /// All 12 nonce bytes, as passed to OCB.
     pub fn data(&self) -> &[u8; Nonce::NONCE_LEN] {
         &self.bytes
     }
 
+    /// The 64-bit value (direction bit and sequence number).
     pub fn val(&self) -> u64 {
         u64::from_be_bytes(self.bytes[4..].try_into().expect("8 bytes"))
     }
 }
 
+/// A nonce and its plaintext (`Crypto::Message`).
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Message {
+    /// The packet nonce.
     pub nonce: Nonce,
+    /// The plaintext.
     pub text: Vec<u8>,
 }
 
 impl Message {
+    /// A message from its parts.
     pub fn new(nonce: Nonce, text: Vec<u8>) -> Message {
         Message { nonce, text }
     }
 }
 
+/// AES-128-OCB encryption and decryption under one key (`Crypto::Session`).
 pub struct Session {
     key: Base64Key,
     ctx: AeCtx,
@@ -257,10 +282,12 @@ impl Drop for Session {
 }
 
 impl Session {
+    /// Largest datagram the receiver accepts, in bytes.
     pub const RECEIVE_MTU: usize = 2048;
     /// Overhead (not counting the nonce, which is handled by network transport)
     pub const ADDED_BYTES: usize = 16 /* final OCB block */;
 
+    /// A session for `s_key`.
     pub fn new(s_key: Base64Key) -> Session {
         Session {
             key: s_key,
@@ -269,10 +296,12 @@ impl Session {
         }
     }
 
+    /// The session key.
     pub fn key(&self) -> &Base64Key {
         &self.key
     }
 
+    /// Encrypts `plaintext` into a wire packet: the 8 nonce bytes, then ciphertext and tag. Fatal error after 2^47 blocks under one key.
     pub fn encrypt(&mut self, plaintext: &Message) -> Result<Vec<u8>, CryptoError> {
         let pt_len = plaintext.text.len();
         let ciphertext_len = pt_len + 16;
@@ -315,6 +344,7 @@ impl Session {
         Ok(ret)
     }
 
+    /// Decrypts a wire packet. Errors (non-fatal) on a packet shorter than 24 bytes, longer than `RECEIVE_MTU` plus the nonce, or failing authentication.
     pub fn decrypt(&self, s: &[u8]) -> Result<Message, CryptoError> {
         if s.len() < 24 {
             return Err(CryptoError::new("Ciphertext must contain nonce and tag."));

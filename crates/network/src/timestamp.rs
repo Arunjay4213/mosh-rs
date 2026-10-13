@@ -29,6 +29,8 @@
 // also delete it here.
 // Ported from: upstream/src/util/timestamp.cc
 
+//! Port of upstream `src/util/timestamp.cc`.
+//!
 //! Millisecond monotonic clock with a per-loop frozen value.
 //!
 //! Upstream reads `CLOCK_MONOTONIC` (milliseconds since boot) and caches
@@ -48,6 +50,7 @@ const CLOCK_BASE_MS: u64 = 1_000_000_000;
 static CLOCK_START: OnceLock<Instant> = OnceLock::new();
 static MILLIS_CACHE: AtomicU64 = AtomicU64::new(u64::MAX);
 
+/// The frozen clock in milliseconds, freezing it first if it never was.
 pub fn frozen_timestamp() -> u64 {
     if MILLIS_CACHE.load(Ordering::Relaxed) == u64::MAX {
         freeze_timestamp();
@@ -55,6 +58,7 @@ pub fn frozen_timestamp() -> u64 {
     MILLIS_CACHE.load(Ordering::Relaxed)
 }
 
+/// Reads the clock and caches it; frontends call this once per loop iteration.
 pub fn freeze_timestamp() {
     let start = CLOCK_START.get_or_init(Instant::now);
     /* u128 to u64: overflows only after 584 million years */
