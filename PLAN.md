@@ -122,7 +122,7 @@ Measured by `tools/bench` against C++ mosh 1.4.0 on devbox, and published in the
 - Idle CPU of client and server over 60 seconds: 0.0% (no polling faster than the computed send interval).
 - Resident memory, client and server, after a 1-hour session: no more than C++ mosh.
 - Static binary size: under 4 MB.
-- Startup to first frame on loopback: under 20 ms.
+- Startup: the client's own startup (exec to its first terminal write) under 20 ms, and the first frame on loopback no slower than C++ mosh. (The original target, first frame under 20 ms, cannot be met with upstream's timing: the round-trip estimate starts at 1000 ms (`network.cc` `SRTT( 1000 )`), so the first send interval is the 250 ms maximum, and both implementations show the first frame after about 252-257 ms.)
 - Keystroke to screen with prediction: one render, no visible delay at 300 ms simulated RTT.
 - `seq 1 100000` through mosh on loopback: no slower than C++ mosh.
 - Release profile: `opt-level = 3`, `lto = "fat"`, `codegen-units = 1`, `panic = "unwind"` (the client restores the terminal from a panic hook).

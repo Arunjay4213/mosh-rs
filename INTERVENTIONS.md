@@ -3,6 +3,11 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 PLAN 5 startup target changed; musl utmp gap
+
+- Agent P's bench: the first frame arrives about 252 ms after the client starts, for our client (252.32 ms) and for C++ mosh 1.4.0 (257.08 ms) alike, against a PLAN 5 target of 20 ms. Cause, checked in upstream's source: the round-trip estimate starts at 1000 ms, so the first send interval is the 250 ms maximum. Decision: keep upstream's timing (changing it would be a protocol-timing deviation for no compatibility gain). PLAN 5 now targets the client's own startup under 20 ms (measured 1.50 ms, C++ 3.05 ms) and a first frame no slower than C++ mosh.
+- The static musl `mosh-server` never printed upstream's "You have a detached Mosh session" warning, because musl's `getutxent` always returns nothing. Agent P is changing the platform crate to read the utmp file directly, so the glibc and musl builds behave the same.
+
 ## 2026-10-13 Devbox installs for the static release build (agent P)
 
 - `rustup target add aarch64-unknown-linux-musl x86_64-unknown-linux-musl`.
