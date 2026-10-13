@@ -3,6 +3,19 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 NEEDS THE USER: Windows test, rerun steps 3-6 with fixed binaries
+
+- Agent C fixed the ProxyCommand quoting (8a32d96): on Windows each argument is quoted by the Windows command-line rules (no quotes unless it has a space, tab or double quote; then double quotes), following how Win32-OpenSSH's `posix_spawnp` builds the command line it gives `CreateProcessW` (`contrib/win32/win32compat/misc.c`). Unix quoting is unchanged; launcher tests 5/5 on devbox.
+- Exception to the testing rules, accepted by the orchestrator: the quoting is checked by a direct call to the pure function `windows_command_line_quote` in `tests/tests/launcher.rs`, because devbox cannot run Windows ssh; the real end-to-end check is the laptop rerun below.
+- New Windows binaries, built on devbox from 8a32d96, in `target/dist/windows-x86_64/`:
+
+```
+mosh.exe         638396 bytes  sha256 c045f2cc8b650b718adad46481a2e1cb30f239ae61e7c6b45a6e86f603a3daf5
+mosh-client.exe  1093557 bytes sha256 58b43899132166d455bdcb8d9c06ca08eb9f9fc41af5b52d19a4496f5707f9df
+```
+
+- Laptop: copy them as in step 1 of the "Phase 3 Windows test on the laptop" entry below, then run steps 3 to 6 of that checklist, including step 5's folder with a space in its path. Record results as before.
+
 ## 2026-10-13 PLAN 5 startup target changed; musl utmp gap
 
 - Agent P's bench: the first frame arrives about 252 ms after the client starts, for our client (252.32 ms) and for C++ mosh 1.4.0 (257.08 ms) alike, against a PLAN 5 target of 20 ms. Cause, checked in upstream's source: the round-trip estimate starts at 1000 ms, so the first send interval is the 250 ms maximum. Decision: keep upstream's timing (changing it would be a protocol-timing deviation for no compatibility gain). PLAN 5 now targets the client's own startup under 20 ms (measured 1.50 ms, C++ 3.05 ms) and a first frame no slower than C++ mosh.
