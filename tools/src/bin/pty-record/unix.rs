@@ -27,28 +27,10 @@
 // so, delete this exception statement from your version. If you delete
 // this exception statement from all source files in the program, then
 // also delete it here.
+//
+// Ported from: (new; test tooling)
 
-//! pty-record: run a command under a pseudoterminal, drive it from a script,
-//! and record every byte it writes.
-//!
-//! pty-record --cols 80 --rows 24 --out FILE --script SCRIPT -- COMMAND ARGS...
-//!
-//! The child gets TERM=xterm-256color and LANG=C.UTF-8, with COLUMNS and
-//! LINES removed, so programs size themselves from the pty. FILE receives the
-//! raw output bytes. FILE.meta receives command, size, byte count, duration
-//! and exit status.
-//!
-//! Script lines (blank lines and lines starting with '#' are ignored):
-//!   wait MS             keep recording for MS milliseconds
-//!   send TEXT           write TEXT to the child; escapes \n \r \t \\ \xHH
-//!   resize COLSxROWS    TIOCSWINSZ on the pty, then SIGWINCH to the
-//!                       foreground process group
-//!   expect TEXT MS      wait until TEXT (escapes allowed) appears in the
-//!                       output after the previous expect's match; fail if it
-//!                       does not appear within MS milliseconds
-//!   end                 send nothing more; wait up to 10 s for the child to
-//!                       exit, then SIGHUP it
-//! A script that runs out of lines behaves as if it ended with `end`.
+//! The unix implementation of `pty-record` (see `main.rs`).
 
 use std::ffi::CString;
 use std::fs::File;
@@ -276,7 +258,8 @@ impl Session {
     }
 }
 
-fn main() {
+/// The program; `main.rs` calls it on unix.
+pub fn main() {
     let mut cols = 80u16;
     let mut rows = 24u16;
     let mut out_path = None;

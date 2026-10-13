@@ -28,10 +28,13 @@
 // this exception statement from all source files in the program, then
 // also delete it here.
 //
+// Ported from: (new; test tooling)
 
 //! End-to-end test of tools/udp-impair: runs the real binary between a
 //! client socket and an echo server and checks that loss, delay, reordering,
-//! rebind, blackout and stats behave as advertised.
+//! rebind, blackout and stats behave as advertised. Unix only, as udp-impair.
+
+#![cfg(unix)]
 
 use std::io::{BufRead, BufReader, Read};
 use std::net::{SocketAddr, UdpSocket};

@@ -365,3 +365,10 @@ Open, assigned to agent F: upstream's "round-trip Instruction verification faile
 - Without the plant: `tests/upstream-check.sh --client cxx --server rust`: total=32 pass=30 xfail=2 fail=0 error=0 xpass=0.
 - Client side not testable this way, as upstream: the client runs the block (stmclient.cc:271 sets the transport verbose) but its state is `UserStream`, whose `compare` always returns false (user.h:93), and e2e-test greps only the server's stderr (e2e-test:243).
 
+
+## 2026-10-13 Windows workspace build (agent F)
+
+The unix-only test programs `udp-impair`, `pty-record` (tools) and `toy-sync` (tests) are now each a directory: `main.rs` keeps the doc comment and, on unix, calls the unchanged code in `unix.rs`; elsewhere it prints "<name> is unix-only" and exits 1. The integration tests that run them (`udp_impair`, `transport_sync`) carry `#![cfg(unix)]` like the other unix-only tests. No shipped crate changed.
+- `cargo build --workspace --target x86_64-pc-windows-gnu`: builds (before: 19 errors in `udp-impair` and `pty-record`, then 11 in `toy-sync`, 3 in `tests/tests/udp_impair.rs`).
+- `cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warnings`: clean.
+- Native: `udp_impair` 6 passed, `transport_sync` 1 passed.

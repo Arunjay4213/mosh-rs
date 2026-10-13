@@ -29,21 +29,7 @@
 // also delete it here.
 // Ported from: (none; test endpoint whose main loops follow upstream/src/frontend/stmclient.cc and mosh-server.cc)
 
-//! toy-sync: two SSP endpoints synchronizing a toy state, one per
-//! process, each running upstream's loop shape: compute `wait_time()`,
-//! poll the network fds, freeze the clock, `recv()`, `tick()`.
-//!
-//!   toy-sync server [PORT]
-//!       Binds 127.0.0.1 (PORT or the 60001-60999 range), prints
-//!       `MOSH CONNECT <port> <key>`, and runs until stdin is closed.
-//!       Then prints one line:
-//!       `server packets=<n> acked_ts_advance=<ms> remote_addr=<addr|none> remote=<hex>`
-//!       where `remote` is every byte received, in order.
-//!   toy-sync client KEY IP PORT CHANGES DURATION_MS SEED
-//!       Appends CHANGES random chunks to its state, evenly over
-//!       DURATION_MS, then runs until the server has acknowledged all of
-//!       it (60 s limit). Prints one line:
-//!       `client status=<done|timeout> elapsed_ms=<n> packets=<n> acked_ts_advance=<ms> log=<hex>`
+//! The unix implementation of `toy-sync` (see `main.rs`).
 
 use std::io::Write;
 use std::os::fd::RawFd;
@@ -270,7 +256,8 @@ fn client(
     }
 }
 
-fn main() -> ExitCode {
+/// The program; `main.rs` calls it on unix.
+pub fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
     let a: Vec<&str> = args.iter().map(String::as_str).collect();
     match a.as_slice() {

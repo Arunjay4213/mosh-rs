@@ -30,30 +30,7 @@
 //
 // Ported from: (new; test tooling)
 
-//! udp-impair: a UDP proxy for one mosh client/server pair that drops,
-//! delays, jitters and reorders packets, and can change its source port.
-//!
-//! udp-impair --listen ADDR --target ADDR --control ADDR
-//!            [--loss P] [--delay-ms MS] [--jitter-ms MS] [--reorder P] [--seed N]
-//!
-//! Client packets arrive on --listen. They are forwarded to --target from an
-//! "upstream" socket bound to an ephemeral port. Replies from the target go
-//! back to the most recent client address. Both directions get the same
-//! impairment: each packet is dropped with probability `loss`, otherwise it is
-//! delivered at now + delay + uniform(0, jitter). With probability `reorder`
-//! a packet is held back and delivered right after the next packet of the
-//! same direction (or after HOLD_TIMEOUT if no next packet comes).
-//!
-//! Control datagrams on --control (each gets a one-line reply):
-//!   rebind        new upstream socket, so the target sees a new source port
-//!   blackout MS   drop everything, both directions, for MS milliseconds
-//!   loss P        set loss probability
-//!   delay MS      set base delay
-//!   stats         counters per direction
-//!
-//! Any of the ports may be 0. The bound addresses are printed as one line on
-//! stdout at startup. On SIGINT or SIGTERM the stats go to stderr and the
-//! process exits 0.
+//! The unix implementation of `udp-impair` (see `main.rs`).
 
 use std::net::{SocketAddr, UdpSocket};
 use std::os::fd::AsFd;
@@ -360,7 +337,8 @@ fn parse_args() -> Proxy {
     }
 }
 
-fn main() {
+/// The program; `main.rs` calls it on unix.
+pub fn main() {
     let mut proxy = parse_args();
     unsafe {
         signal(Signal::SIGINT, SigHandler::Handler(on_signal)).expect("signal");

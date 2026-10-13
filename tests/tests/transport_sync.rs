@@ -40,6 +40,10 @@
 //! - `MOSH_SYNC_SERVER_PORT=PORT`: server port (default: first free port
 //!   in 60001-60999, as mosh-server does).
 //! - `SYNC_SEED=N`: seed for the client's random changes.
+//!
+//! Unix only, as `toy-sync`.
+
+#![cfg(unix)]
 
 use std::io::{BufRead, BufReader};
 use std::net::SocketAddr;
