@@ -179,6 +179,20 @@ pub fn exec(cmd: &mut Command) -> io::Error {
     }
     #[cfg(windows)]
     {
+        /* On unix the launcher becomes the client. Here it waits for it, and
+        Ctrl+Break reaches both processes: the client turns it into its clean
+        shutdown (select.rs), so the waiting launcher ignores it rather than
+        exiting first and giving the console back while the client still
+        runs. */
+        unsafe extern "system" fn ignore_interrupt(ctrl_type: u32) -> windows_sys::core::BOOL {
+            use windows_sys::Win32::System::Console::{CTRL_BREAK_EVENT, CTRL_C_EVENT};
+            i32::from(ctrl_type == CTRL_BREAK_EVENT || ctrl_type == CTRL_C_EVENT)
+        }
+        // SAFETY: registers a handler with the documented signature; it only
+        // compares its argument.
+        unsafe {
+            windows_sys::Win32::System::Console::SetConsoleCtrlHandler(Some(ignore_interrupt), 1);
+        }
         match cmd.status() {
             Ok(status) => std::process::exit(status.code().unwrap_or(1)),
             Err(e) => e,

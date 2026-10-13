@@ -35,6 +35,8 @@
 //! the pseudoterminal (unix only), process spawning for the launcher, and
 //! locale checks, and the system calls only mosh-server makes (unix only).
 
+#![deny(missing_docs)]
+
 pub mod coredump;
 pub mod locale;
 pub mod netdb;
