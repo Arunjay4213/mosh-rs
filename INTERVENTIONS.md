@@ -3,6 +3,11 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 Fable review of terminal and transport, PLAN 9.6 widened
+
+- The line-by-line Fable review (`reviews/phase1-terminal.md`, `reviews/phase1-transport.md`) found 1 high and 6 low items. The five transport items were already fixed or covered by PLAN section 9 items 8 and 9; the orchestrator answered them in the files.
+- High item T-2: kitty sets `TERM=xterm-kitty`, which the hand-written TERM table did not list, so it got xterm answers (BCE on) where its terminfo says BCE off. Devbox does not even have the `xterm-kitty` entry installed, so the table's kitty row had no checkable source. Decision: replace the hand-written table with one generated from every terminfo entry on devbox (1829 entries, plus `apt install kitty-terminfo`). PLAN 9.6 now says so. Reason: hand-picked rows and prefix matching keep producing wrong answers for real terminals (the review also found `screen.xterm-256color`), while a generated table matches upstream exactly for every TERM terminfo knows.
+
 ## 2026-10-13 Phase 1 review fixes: network (agent A)
 
 - Review F3: the socket system calls (`new_socket`, `resolve`, `bind`, `recv_raw`, `strerror`, the TOS/ECN read) moved from `crates/network/src/transport/network.rs` to `crates/platform/src/socket.rs`, and `disable_dumping_core`/`reenable_dumping_core` to `crates/platform/src/coredump.rs`. `crates/network` now depends on `mosh-platform`, no longer on `libc`, and carries `#![forbid(unsafe_code)]`. PLAN.md section 2 updated to say sockets live in the platform crate. Two signatures changed to fit the new boundary: `bind` takes the one socket instead of the socket deque (on Windows it replaces the socket with a newly bound one), and `recv_raw` takes the maximum datagram length; errors come back as `mosh_platform::socket::SysError`, which converts to `NetworkError`.

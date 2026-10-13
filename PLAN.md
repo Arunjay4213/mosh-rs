@@ -187,7 +187,7 @@ Supported flags for v0.1: `--server`, `--ssh`, `--port`, `--predict`, `--no-init
 3. `--bind-server` supports `ssh` and `any` only.
 4. Scrollback extension (section 6), alternate-screen flag in `DrawState`.
 5. Synchronized output around client renders.
-6. Terminfo lookup is replaced by fixed xterm-class assumptions plus `TERM`-based overrides for the few terminals that lack ECH or BCE.
+6. Runtime terminfo lookup is replaced by a table generated at build-authoring time from every entry in the devbox terminfo database (ncurses 6.4, plus the kitty-terminfo package), holding exactly the capabilities upstream reads (ech, bce, smcup, rmcup, and what it uses for title support). An exact TERM match gives the same answer upstream would get; an unknown TERM falls back to xterm where upstream would fail to start. Needed because Windows has no terminfo.
 7. Timestamps start at 1,000,000,000 ms instead of milliseconds since boot, so upstream's `now - 0` comparisons behave as they do on a machine that has been up for a while.
 8. Malformed input from a peer that holds the session key returns an error and drops the packet where upstream aborts the process with `fatal_assert` or `assert` (short fragment, conflicting duplicate fragment, fragment index past the final one, undecodable protobuf, `throwaway_num` above every received state, oversized ciphertext handed to `Session::decrypt`).
 9. Two places where upstream dereferences an erased iterator (undefined behavior) are made defined: `add_sent_state` moves `assumed_receiver_state` to the previous element when the assumed one is erased, and `Transport::recv` looks the reference state up again after `process_throwaway_until` and drops the instruction if it is gone.
