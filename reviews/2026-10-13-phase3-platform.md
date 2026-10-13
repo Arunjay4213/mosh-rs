@@ -156,16 +156,16 @@ Fix: split on `%`, parse the zone as the interface index into `SocketAddrV6::sco
 
 | Finding | Status | Commit | Note |
 |---------|--------|--------|------|
-| P1 | fixed | eb4c13d | the input thread starts in `raw_mode_on` (after line input is off), errors return through its `io::Result`, the client prints them and exits 1 as for `tcgetattr`; `stdin_fd` is INVALID_SOCKET and `read_stdin` an error before that; no `.expect`. Not run on Windows here: laptop checklist (INTERVENTIONS.md) |
-| P2 | fixed | eb4c13d | `Select::add_signal(SIGINT)` installs a console control handler that turns Ctrl+Break (and a generated Ctrl+C event) into SIGINT, the clean shutdown upstream does for SIGINT, which restores the console; a pending flag moved into the signal set after each poll, 50 ms cap while installed; the waiting `mosh.exe` ignores the event; PLAN 7. Not run on Windows here: laptop checklist |
-| P3 | fixed | eb4c13d | `[const { AtomicBool::new(false) }; N]`, const and allow removed |
-| P4 | fixed | eb4c13d | PLAN 9 item 15 (13 was taken); a file that is not whole records yields no records; devbox `/run/utmp` 19200 bytes = 48 x 400, `detached_warning` passes |
-| P5 | fixed | eb4c13d | 0 from `GetConsoleCP`/`GetConsoleOutputCP` is an error from `raw_mode_on`. Not run on Windows here: laptop checklist |
-| P6 | fixed | eb4c13d | `ENABLE_PROCESSED_OUTPUT` ORed into the raw output mode. Not run on Windows here: laptop checklist |
-| P7 | fixed | eb4c13d | no sockets and a negative timeout sleep 50 ms and return 0 (callers loop and see signals) |
-| P8 | fixed | eb4c13d | the input thread prints `read: <strerror>` with the shared `perror` before ending the input. Not run on Windows here: laptop checklist |
-| P9 | fixed | eb4c13d | `mosh_platform::stdio::perror` (strerror text), used at the five sites and by the client in place of its own; Windows `strerror` strips " (os error N)" |
-| P10 | fixed | eb4c13d | `netdb.rs` reads `sin6_flowinfo` with native order, the raw field as `socket.rs` and std's `SocketAddrV6` keep it (the field holds network order; neither path swaps it). New test `platform_resolve`: scoped IPv6 literals (`fe80::1%1`, `fe80::1%lo`) give identical `SocketAddr`s through both files with scope id 1; a planted wrong scope byte order fails it. getaddrinfo never returns a non-zero flow label, so the flow label itself cannot be exercised this way |
-| P11 | fixed | eb4c13d | `target_os = "cygwin"` added to both IUTF8 lists (libc defines `IUTF8` for cygwin, `unix/cygwin/mod.rs`); the cygwin target is not built here |
-| P12 | fixed | eb4c13d | `#![deny(missing_docs)]` in `lib.rs` |
-| P13 | fixed | eb4c13d | Windows `resolve` accepts `addr%index`, the zone becoming `scope_id` (numeric zones, which is what WinSock's getaddrinfo accepts). Not run on Windows here: laptop checklist |
+| P1 | fixed | 9efec13 | the input thread starts in `raw_mode_on` (after line input is off), errors return through its `io::Result`, the client prints them and exits 1 as for `tcgetattr`; `stdin_fd` is INVALID_SOCKET and `read_stdin` an error before that; no `.expect`. Not run on Windows here: laptop checklist (INTERVENTIONS.md) |
+| P2 | fixed | 9efec13 | `Select::add_signal(SIGINT)` installs a console control handler that turns Ctrl+Break (and a generated Ctrl+C event) into SIGINT, the clean shutdown upstream does for SIGINT, which restores the console; a pending flag moved into the signal set after each poll, 50 ms cap while installed; the waiting `mosh.exe` ignores the event; PLAN 7. Not run on Windows here: laptop checklist |
+| P3 | fixed | 9efec13 | `[const { AtomicBool::new(false) }; N]`, const and allow removed |
+| P4 | fixed | 9efec13 | PLAN 9 item 15 (13 was taken); a file that is not whole records yields no records; devbox `/run/utmp` 19200 bytes = 48 x 400, `detached_warning` passes |
+| P5 | fixed | 9efec13 | 0 from `GetConsoleCP`/`GetConsoleOutputCP` is an error from `raw_mode_on`. Not run on Windows here: laptop checklist |
+| P6 | fixed | 9efec13 | `ENABLE_PROCESSED_OUTPUT` ORed into the raw output mode. Not run on Windows here: laptop checklist |
+| P7 | fixed | 9efec13 | no sockets and a negative timeout sleep 50 ms and return 0 (callers loop and see signals) |
+| P8 | fixed | 9efec13 | the input thread prints `read: <strerror>` with the shared `perror` before ending the input. Not run on Windows here: laptop checklist |
+| P9 | fixed | 9efec13 | `mosh_platform::stdio::perror` (strerror text), used at the five sites and by the client in place of its own; Windows `strerror` strips " (os error N)" |
+| P10 | fixed | 9efec13 | `netdb.rs` reads `sin6_flowinfo` with native order, the raw field as `socket.rs` and std's `SocketAddrV6` keep it (the field holds network order; neither path swaps it). Test `numeric_addresses_resolve_the_same_in_both_paths` (tests/tests/launcher.rs): scoped IPv6 literals (`fe80::1%1`, `fe80::1%lo`) give identical `SocketAddr`s through both files with scope id 1; a planted wrong scope byte order fails it. getaddrinfo never returns a non-zero flow label, so the flow label itself cannot be exercised this way |
+| P11 | fixed | 9efec13 | `target_os = "cygwin"` added to both IUTF8 lists (libc defines `IUTF8` for cygwin, `unix/cygwin/mod.rs`); the cygwin target is not built here |
+| P12 | fixed | 9efec13 | `#![deny(missing_docs)]` in `lib.rs` |
+| P13 | fixed | 9efec13 | Windows `resolve` accepts `addr%index`, the zone becoming `scope_id` (numeric zones, which is what WinSock's getaddrinfo accepts). Not run on Windows here: laptop checklist |

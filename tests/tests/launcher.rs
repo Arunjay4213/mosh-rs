@@ -648,3 +648,50 @@ fn proxy_resolves_canonical_name_like_mosh_pl() {
         assert_eq!(got, want, "--family={family}");
     }
 }
+
+/// The two places mosh resolves numeric addresses must agree: the network
+/// code's `socket::resolve` (upstream network.cc, used by mosh-client and
+/// mosh-server for the address on their command line) and the launcher's
+/// `netdb::getaddrinfo` (mosh.pl `resolvename`). Review P10 found they
+/// decoded `sockaddr_in6` differently; a scoped IPv6 literal such as a
+/// link-local server address goes through both, so both must give the same
+/// address, port, scope id and flow information.
+#[test]
+fn numeric_addresses_resolve_the_same_in_both_paths() {
+    // `lo` is interface 1 on Linux; the numeric zone works everywhere.
+    let cases = [
+        ("fe80::1%1", "60001"),
+        ("fe80::1%lo", "60001"),
+        ("fe80::abcd:1234%1", "22"),
+        ("::1", "60001"),
+        ("127.0.0.1", "60001"),
+    ];
+    for (host, port) in cases {
+        let via_socket = mosh_platform::socket::resolve(Some(host), port, false)
+            .unwrap_or_else(|e| panic!("socket::resolve({host}): {e:?}"));
+        let via_netdb = mosh_platform::netdb::getaddrinfo(
+            host,
+            port,
+            None,
+            mosh_platform::netdb::Flags::NumericHost,
+        )
+        .unwrap_or_else(|e| panic!("netdb::getaddrinfo({host}): {}", e.message));
+        println!(
+            "{host:<20} socket.rs {via_socket:?}  netdb.rs {:?}",
+            via_netdb.addrs.first()
+        );
+        assert_eq!(via_netdb.addrs.first(), Some(&via_socket), "{host}");
+        if let std::net::SocketAddr::V6(a) = via_socket {
+            if host.contains('%') {
+                assert_eq!(
+                    a.scope_id(),
+                    1,
+                    "{host}: the zone must become scope id 1 (lo)"
+                );
+            }
+            // getaddrinfo never sets a flow label; both paths read the raw
+            // `sin6_flowinfo` field, as std's SocketAddrV6 does.
+            assert_eq!(a.flowinfo(), 0, "{host}");
+        }
+    }
+}
