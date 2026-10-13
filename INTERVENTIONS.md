@@ -3,6 +3,11 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 NEEDS THE USER: tag v0.1.1 once the changelog entry lands
+
+- The v0.1.0 macOS asset ships the launcher bug agent C fixed on main (the address family was read from the wrong byte of a BSD `sockaddr`, so `mosh host` could not resolve anything on macOS; `mosh-client` and `mosh-server` were fine). The fix (776077b) is on main with green CI, proven by a real session from the rented Mac to devbox.
+- Agent C is adding a `## [0.1.1]` changelog entry and the macOS test-file fix. When that has landed, the user decides whether to tag v0.1.1 from main head (the Release workflow rebuilds and attaches all four assets). The orchestrator does not tag.
+
 ## 2026-10-13 macOS launcher resolver fixed and verified on the Mac (agent C)
 
 - Cause of the blocking macOS item ("Could not connect to 172.31.37.176, last tried :"): `netdb.rs` (my code, review G11) decoded `getaddrinfo` results from raw bytes with the address family as a 16-bit value at byte 0. On macOS and the BSDs byte 0 is `sa_len` and the family is the byte after it, so every result was dropped. Not the hints. `socket.rs` was right because it reads `sa_family` through libc's struct, which is why our client and server worked on the Mac and only the launcher failed.
