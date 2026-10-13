@@ -397,3 +397,7 @@ Proof (driver: `mosh-server new -v -i 127.0.0.1 -- sh -c 'sleep 1; echo hello-fr
 - After: every stderr write still fails (`write(2, "[", 1) = -1 ENOSPC`), the session output appears on screen, the client exits 0 after 4.1 s when the command ends, all server processes `exit_group(0)`.
 - `2>&-` (closed stderr) never panicked, before or after: Rust's runtime reopens a closed fd 0, 1 or 2 on `/dev/null` at startup (strace: `openat("/dev/null", O_RDWR) = 2`), so writes succeed. The failing case in practice is an stderr that errors (full device, a pipe or pty whose other end is gone).
 - `client_e2e` 7, `server_e2e` 4, `launcher` 4, `transport_roundtrip` 3, `statesync_roundtrip` 5: all passed.
+
+## 2026-10-13 Phase 4 started: scrollback, server side first
+
+Agent S1 (Opus, medium effort, own worktree) implements the server half of PLAN section 6: the capability negotiation, the alternate-screen flag, capture of scrolled-off rows into a ring, and the new wire field. One agent, because the client half depends on the server half's wire format, and PLAN 10 says the two run in sequence. Its gate proves old peers are untouched (full interop matrix, upstream's `make check`) and that a capable client receives every scrolled line exactly once.

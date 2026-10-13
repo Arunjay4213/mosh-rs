@@ -3,6 +3,11 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 Phase 4 starts with Phase 2 and Phase 3 items outstanding
+
+- Decision: Phase 4 (scrollback) starts now, although the Phase 2 gate is not declared passed and Phase 3 has not been tested on Windows. Reason: everything still open needs the laptop (the overlay review, pushing `ci/terminfo`, the Windows test), and nothing devbox can run is failing. Scrollback is negotiated, so old peers see byte-identical behavior; its gate reruns the full interop matrix and upstream's `make check`, which re-verifies Phase 2 for old peers.
+- The scrollback server agent starts only now because agent F's change to the `State` trait (`compare`, 0ccd5b6) has landed; two agents editing the same trait in parallel caused the earlier breakages.
+
 ## 2026-10-13 PLAN 9.10 withdrawn (agent F)
 
 - `compare` is back in the `State` trait and the sender's verbose round-trip check is ported as upstream has it. Reason: without it upstream's `make check` could not catch a wrong server diff in our binaries ("round-trip Instruction verification failed" is grepped by e2e-test and was never printed). PLAN sections 2 and 9.10 updated; the item number is kept.
