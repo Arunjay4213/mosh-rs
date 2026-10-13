@@ -39,19 +39,32 @@
 //! do. The saved terminal state lives in a thread-local, not in the struct,
 //! so the panic hook (`restore_terminal_after_panic`) can reach it.
 //! PLAN 9.5: every non-empty frame is wrapped in synchronized output.
+//!
+//! mosh-rs scrollback (PLAN.md 6.4, 6.5), not in upstream, only when asked
+//! for (`MOSH_SCROLLBACK=1`, which `mosh --scrollback` sets): the client
+//! sends the capability and starts in the alternate screen exactly as
+//! upstream. When the first frame arrives it decides: if the server
+//! announced scrollback, it leaves the alternate screen, moves what the host
+//! showed above the cursor into the host's history, and from then on draws
+//! on the main screen, where history lines are injected at the top and
+//! scrolled into the host's history before each frame; otherwise it stays in
+//! the alternate screen and shows a notice.
 
 use mosh_platform::{errln, errp, outp};
 use std::cell::RefCell;
 use std::io::Write;
+use std::rc::Rc;
 
 use mosh_network::{freeze_timestamp, timestamp, Error, Transport};
 use mosh_platform::locale::{get_ctype, is_utf8_locale, locale_charset};
 use mosh_platform::select::{Select, SIGCONT, SIGHUP, SIGINT, SIGPIPE, SIGTERM, SIGWINCH};
 use mosh_platform::tty::{self, RawModeGuard};
-use mosh_terminal::{Display, Framebuffer, Resize, UserByte};
+use mosh_terminal::{
+    Actions, Display, Emulator, Framebuffer, Hyperlink, Resize, UTF8Parser, UserByte,
+};
 
 use super::terminaloverlay::{swprintf128, DisplayPreference, OverlayManager};
-use crate::statesync::{Complete, UserStream};
+use crate::statesync::{ClientCapabilities, Complete, ReceivedScrollback, UserStream};
 
 type NetworkType = Transport<UserStream, Complete>;
 
@@ -99,15 +112,60 @@ fn swrite(bytes: &[u8]) {
 }
 
 /// PLAN 9.5: synchronized output around each non-empty render.
-fn swrite_frame(diff: &str) {
+fn swrite_frame(diff: &[u8]) {
     if diff.is_empty() {
         return;
     }
     let mut out = Vec::with_capacity(diff.len() + 16);
     out.extend_from_slice(b"\x1b[?2026h");
-    out.extend_from_slice(diff.as_bytes());
+    out.extend_from_slice(diff);
     out.extend_from_slice(b"\x1b[?2026l");
     swrite(&out);
+}
+
+/// mosh-rs scrollback: the client's scrollback mode.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Scrollback {
+    /// Not asked for, or the server does not support it: upstream behavior.
+    Off,
+    /// Asked for; the first frame has not arrived, so the client is in the
+    /// alternate screen as upstream and does not know the server yet.
+    Pending,
+    /// The server announced scrollback: the client draws on the main screen.
+    On,
+}
+
+/// mosh-rs scrollback: how long the "no scrollback" notice stays (ms).
+const SCROLLBACK_NOTICE_MS: u64 = 5000;
+const SCROLLBACK_NOTICE: &str = "Server does not support scrollback; using the alternate screen.";
+
+/// mosh-rs scrollback: erases the host screen without moving it into the
+/// host's history (see `Display::host_history`), leaving the cursor at home.
+const ERASE_SCREEN_KEEP_HISTORY: &[u8] = b"\x1b[0m\x1b[H\x1b[K\x1b[2;1H\x1b[J\x1b[H";
+
+/// mosh-rs scrollback: `line`, as the server sent it, re-drawn as host rows
+/// of `width` columns. It is fed to a one-row emulator, so every row that
+/// leaves it (a line wider than the host wraps) and the last row come out of
+/// mosh's own renderer: nothing the server sends reaches the host terminal
+/// unparsed.
+fn host_rows(line: &[u8], width: usize) -> Vec<String> {
+    let mut emulator = Emulator::new(width.max(1), 1);
+    emulator.get_fb_mut().set_scroll_capture(true);
+    let mut parser = UTF8Parser::new();
+    let mut actions = Actions::new();
+    for &c in line {
+        parser.input(c, &mut actions);
+        for act in actions.iter() {
+            act.act_on_terminal(&mut emulator);
+        }
+        actions.clear();
+    }
+    /* replies (a line holding a terminal query) go nowhere */
+    emulator.read_octets_to_host();
+    let fb = emulator.get_fb_mut();
+    let mut rows = fb.take_scrolled_rows();
+    rows.push(fb.get_rows()[0].clone());
+    rows.iter().map(Display::render_scrolled_row).collect()
 }
 
 /// What one pass of the main loop asks `main` to do next.
@@ -145,6 +203,19 @@ pub struct STMClient {
     verbose: u32,
 
     sel: Select,
+
+    /// mosh-rs scrollback: the mode, and the received lines (when asked for).
+    scrollback: Scrollback,
+    received: Option<Rc<RefCell<ReceivedScrollback>>>,
+    /// mosh-rs scrollback: number of the next line expected, and the lost
+    /// lines already shown as a notice line.
+    next_line: u64,
+    lost_shown: u64,
+    /// mosh-rs scrollback: when the "no scrollback" notice goes away.
+    notice_until: Option<u64>,
+    /// mosh-rs scrollback: the host screen was handed to the local shell
+    /// (suspend); on resume, what it shows goes into the host's history.
+    screen_given_away: bool,
 }
 
 impl STMClient {
@@ -163,6 +234,7 @@ impl STMClient {
         predict_mode: Option<&str>,
         s_verbose: u32,
         predict_overwrite: Option<&str>,
+        scrollback: bool,
     ) -> STMClient {
         let mut c = STMClient {
             ip: s_ip.to_string(),
@@ -186,6 +258,16 @@ impl STMClient {
             clean_shutdown: false,
             verbose: s_verbose,
             sel: Select::new(),
+            scrollback: if scrollback {
+                Scrollback::Pending
+            } else {
+                Scrollback::Off
+            },
+            received: None,
+            next_line: 1,
+            lost_shown: 0,
+            notice_until: None,
+            screen_given_away: false,
         };
         if let Some(predict_mode) = predict_mode {
             let pref = match predict_mode {
@@ -218,10 +300,112 @@ impl STMClient {
         }
 
         /* Put terminal in application-cursor-key mode */
-        swrite(&self.display.open());
+        let mut out = self.display.open();
+        // mosh-rs scrollback: what the local shell printed while suspended
+        // stays in the host's history; the repaint does not push it there.
+        if self.scrollback == Scrollback::On && self.screen_given_away {
+            out.extend(self.push_screen_to_history());
+            self.screen_given_away = false;
+        }
+        swrite(&out);
 
         /* Flag that outer terminal state is unknown */
         self.repaint_requested = true;
+    }
+
+    /// mosh-rs scrollback: from the cursor's row, one CR LF per screen row:
+    /// the rows down to the cursor's scroll into the host's history (the
+    /// rows below the cursor are taken as empty and do not), and the screen
+    /// is ready for a repaint.
+    fn push_screen_to_history(&self) -> Vec<u8> {
+        b"\r\n".repeat(usize::from(self.window_size.1))
+    }
+
+    /// mosh-rs scrollback: the first frame has arrived; pick the mode.
+    /// Returns what to write before that frame (in the same synchronized
+    /// output).
+    fn decide_scrollback(&mut self, announced: bool) -> Vec<u8> {
+        if !announced {
+            /* old server (or one with scrollback off): stay as upstream */
+            self.scrollback = Scrollback::Off;
+            self.overlays
+                .get_notification_engine()
+                .set_notification_string(SCROLLBACK_NOTICE, true, false);
+            self.notice_until = Some(timestamp() + SCROLLBACK_NOTICE_MS);
+            return Vec::new();
+        }
+        self.scrollback = Scrollback::On;
+        /* leave the alternate screen (the cursor goes back to where it was
+        before mosh started) and keep the host's screen above the cursor */
+        let mut out = self.display.close();
+        self.display.set_host_history();
+        out.extend(self.display.open());
+        out.extend(self.push_screen_to_history());
+        let close = self.display.close();
+        TERMINAL.with(|t| {
+            if let Some((_, c)) = t.borrow_mut().as_mut() {
+                *c = close;
+            }
+        });
+        self.repaint_requested = true;
+        out
+    }
+
+    /// mosh-rs scrollback (PLAN.md 6.4): the received history lines as host
+    /// output, each written on the first row and scrolled into the host's
+    /// history with a line feed on the last row, with a dim notice line
+    /// where lines were lost. Updates `local_framebuffer` to what the host
+    /// shows afterwards.
+    fn inject_history(&mut self) -> Vec<u8> {
+        let Some(received) = &self.received else {
+            return Vec::new();
+        };
+        let (pending, lost) = {
+            let mut r = received.borrow_mut();
+            (r.take_pending(), r.lost())
+        };
+        let (ws_col, ws_row) = self.window_size;
+        let width = usize::from(ws_col);
+        // Dim (SGR 2), which mosh's emulator drops, so written directly:
+        // ASCII, cut to the width, the rest of the row erased.
+        let notice = |n: u64| {
+            let mut text = format!("[mosh: {n} lines of history were dropped]");
+            text.truncate(width.max(1));
+            format!("\x1b[2m{text}\x1b[m\x1b[K")
+        };
+        let mut rows: Vec<String> = Vec::new();
+        for (index, line) in pending {
+            if index > self.next_line {
+                let n = index - self.next_line;
+                rows.push(notice(n));
+                self.lost_shown += n;
+            }
+            rows.extend(host_rows(&line, width));
+            self.next_line = index + 1;
+        }
+        if lost > self.lost_shown {
+            /* lines lost after the last one received */
+            let n = lost - self.lost_shown;
+            rows.push(notice(n));
+            self.lost_shown = lost;
+            self.next_line += n;
+        }
+        if rows.is_empty() {
+            return Vec::new();
+        }
+
+        let mut out = String::from("\x1b[?25l\x1b[0m");
+        if !self.local_framebuffer.ds.get_hyperlink().empty() {
+            out.push_str(&Hyperlink::default().osc8());
+        }
+        let last_row = format!("\x1b[{ws_row};1H\n");
+        for row in &rows {
+            out.push_str("\x1b[H");
+            out.push_str(row);
+            out.push_str(&last_row);
+        }
+        self.local_framebuffer.host_scrolled(rows.len());
+        out.into_bytes()
     }
 
     /// Check the locale, put the terminal in raw mode, and read the escape key settings.
@@ -344,7 +528,14 @@ impl STMClient {
         self.output_new_frame();
 
         /* Restore terminal and terminal-driver state */
-        swrite(&self.display.close());
+        let mut out = self.display.close();
+        if self.scrollback == Scrollback::On {
+            // mosh-rs scrollback: the final screen stays; the cursor goes to
+            // the start of the row below it (its last non-blank row or the
+            // cursor's row, whichever is lower).
+            out.extend(self.cursor_below_screen());
+        }
+        swrite(&out);
 
         if let Some((guard, _)) = TERMINAL.with(|t| t.borrow_mut().take()) {
             if let Err(e) = tty::raw_mode_off(guard) {
@@ -368,6 +559,25 @@ impl STMClient {
                 "\n\nmosh did not shut down cleanly. Please note that the\n\
                  mosh-server process may still be running on the server.\n"
             );
+        }
+    }
+
+    /// mosh-rs scrollback: moves the cursor to the start of the first row
+    /// below the screen's text, or of the cursor's row if that is lower
+    /// (scrolling the host when the text reaches the last row).
+    fn cursor_below_screen(&self) -> Vec<u8> {
+        let fb = &self.local_framebuffer;
+        let below_text = fb
+            .get_rows()
+            .iter()
+            .rposition(|r| r.cells.iter().any(|c| !c.empty()))
+            .map_or(0, |r| r as i32 + 1);
+        let row = below_text.max(fb.ds.get_cursor_row());
+        let height = fb.ds.get_height();
+        if row < height {
+            format!("\x1b[{};1H", row + 1).into_bytes()
+        } else {
+            format!("\x1b[{height};1H\r\n").into_bytes()
         }
     }
 
@@ -399,15 +609,26 @@ impl STMClient {
         let init = self
             .display
             .new_frame(false, &self.local_framebuffer, &self.local_framebuffer);
-        swrite_frame(&init);
+        swrite_frame(init.as_bytes());
 
         /* open network */
         let blank = UserStream::new();
-        let local_terminal = Complete::new(usize::from(ws_col), usize::from(ws_row));
+        let mut local_terminal = Complete::new(usize::from(ws_col), usize::from(ws_row));
+        if self.scrollback == Scrollback::Pending {
+            /* mosh-rs scrollback: every copy of the remote state shares it */
+            self.received = Some(local_terminal.enable_scrollback_receive());
+        }
         let mut network =
             NetworkType::new_client(&blank, &local_terminal, &self.key, &self.ip, &self.port)?;
 
         network.set_send_delay(1); /* minimal delay on outgoing keystrokes */
+
+        /* mosh-rs scrollback (PLAN.md 6.1): ask for it, as the first event */
+        if self.scrollback == Scrollback::Pending {
+            network
+                .get_current_state()
+                .push_back_capabilities(ClientCapabilities { scrollback: true });
+        }
 
         /* tell server the size of the terminal */
         network
@@ -428,11 +649,35 @@ impl STMClient {
             return;
         };
 
+        /* mosh-rs scrollback: the first frame tells whether the server keeps history */
+        let mut out = Vec::new();
+        if self.scrollback == Scrollback::Pending && network.get_remote_state_num() != 0 {
+            let announced = network.get_latest_remote_state().state.get_scrollback_on();
+            out = self.decide_scrollback(announced);
+        }
+        let network = self.network.as_ref().expect("network initialized");
+
         /* fetch target state */
         self.new_state = network.get_latest_remote_state().state.get_fb().clone();
 
         /* apply local overlays */
         self.overlays.apply(&mut self.new_state);
+
+        if self.scrollback == Scrollback::On {
+            /* mosh-rs scrollback: history lines first, then the frame */
+            out.extend(self.inject_history());
+            // A frame of another size than the host's would wrap and scroll
+            // the host; wait for the server to apply the resize. The host
+            // may reflow its screen meanwhile, so the next frame repaints.
+            let (ws_col, ws_row) = self.window_size;
+            if self.new_state.ds.get_width() != i32::from(ws_col)
+                || self.new_state.ds.get_height() != i32::from(ws_row)
+            {
+                swrite_frame(&out);
+                self.repaint_requested = true;
+                return;
+            }
+        }
 
         /* calculate minimal difference from where we are */
         let diff = self.display.new_frame(
@@ -440,7 +685,8 @@ impl STMClient {
             &self.local_framebuffer,
             &self.new_state,
         );
-        swrite_frame(&diff);
+        out.extend_from_slice(diff.as_bytes());
+        swrite_frame(&out);
 
         self.repaint_requested = false;
 
@@ -520,7 +766,14 @@ impl STMClient {
                 } else if the_byte == 0x1a {
                     /* Suspend sequence is escape_key Ctrl-Z */
                     /* Restore terminal and terminal-driver state */
-                    swrite(&self.display.close());
+                    let mut out = self.display.close();
+                    if self.scrollback == Scrollback::On {
+                        // mosh-rs scrollback: the screen is mosh's, not
+                        // history; the local shell gets an empty one.
+                        out.extend_from_slice(ERASE_SCREEN_KEEP_HISTORY);
+                        self.screen_given_away = true;
+                    }
+                    swrite(&out);
 
                     if let Err(e) = with_guard(|g| g.restore_saved()) {
                         perror("tcsetattr", &e);
@@ -663,6 +916,20 @@ impl STMClient {
         self.output_new_frame();
 
         let mut wait_time = self.net().wait_time().min(self.overlays.wait_time());
+
+        /* mosh-rs scrollback: the "no scrollback" notice expires */
+        if let Some(until) = self.notice_until {
+            let now = timestamp();
+            if now >= until {
+                self.notice_until = None;
+                let notifications = self.overlays.get_notification_engine();
+                if notifications.get_notification_string() == SCROLLBACK_NOTICE {
+                    notifications.set_notification_string("", false, true);
+                }
+            } else {
+                wait_time = wait_time.min(i32::try_from(until - now).unwrap_or(i32::MAX));
+            }
+        }
 
         /* Handle startup "Connecting..." message */
         if self.still_connecting() {

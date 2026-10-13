@@ -208,6 +208,9 @@ pub fn main() -> i32 {
     let predict_overwrite = std::env::var("MOSH_PREDICTION_OVERWRITE").ok();
     /* can be NULL */
 
+    /* mosh-rs scrollback (PLAN.md 6.4): `mosh --scrollback` sets it */
+    let scrollback = std::env::var_os("MOSH_SCROLLBACK").is_some_and(|v| v == "1");
+
     let key = env_key.to_string_lossy().into_owned();
 
     std::env::remove_var("MOSH_KEY");
@@ -224,6 +227,7 @@ pub fn main() -> i32 {
         predict_mode.as_deref(),
         verbose,
         predict_overwrite.as_deref(),
+        scrollback,
     );
     client.init();
 

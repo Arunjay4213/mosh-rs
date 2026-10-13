@@ -276,9 +276,9 @@ pub fn main() -> i32 {
     let mut desired_port: Option<String> = None;
     let mut command_argv: Option<Vec<OsString>> = None;
     let mut colors: i32 = 0;
-    /* mosh-rs scrollback (PLAN.md 6.2): MiB of undelivered scrolled lines
+    /* mosh-rs scrollback (PLAN.md 6.2): bytes of undelivered scrolled lines
     kept for a client that asks (0 = none) */
-    let mut scrollback: usize = 32;
+    let mut scrollback: usize = 32 << 20;
     let mut verbose: u32 = 0; /* don't close stdin/stdout/stderr */
     /* Will cause mosh-server not to correctly detach on old versions of sshd. */
     let mut locale_vars: Vec<OsString> = Vec::new();
@@ -327,9 +327,15 @@ pub fn main() -> i32 {
                 None => new_args.push(argv[i].clone()),
                 Some(v) => {
                     let v = v.to_string_lossy().into_owned();
-                    match myatoi(&v) {
-                        Ok(n) if (0..=1 << 20).contains(&n) && !v.is_empty() => {
-                            scrollback = n as usize
+                    /* MiB, or KiB with a K suffix (the dropped-lines test
+                    needs a backlog of a few KiB) */
+                    let (digits, shift) = match v.strip_suffix('K') {
+                        Some(d) => (d, 10),
+                        None => (v.as_str(), 20),
+                    };
+                    match myatoi(digits) {
+                        Ok(n) if (0..=1 << 20).contains(&n) && !digits.is_empty() => {
+                            scrollback = (n as usize) << shift
                         }
                         _ => {
                             errln!("{argv0}: Bad scrollback size ({v})");
@@ -574,7 +580,7 @@ fn run_server(
     /* open parser and terminal */
     let mut terminal = Complete::new(window_size.ws_col as usize, window_size.ws_row as usize);
     /* mosh-rs scrollback: used only if the client's capabilities ask for it */
-    terminal.set_scrollback_limit(scrollback << 20);
+    terminal.set_scrollback_limit(scrollback);
 
     /* open network */
     let blank = UserStream::new();

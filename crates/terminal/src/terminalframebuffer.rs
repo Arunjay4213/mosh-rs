@@ -1281,6 +1281,27 @@ impl Framebuffer {
         f
     }
 
+    /// mosh-rs scrollback (not upstream), for the client's copy of what the
+    /// host terminal shows: the host moved its top `n` rows into history and
+    /// scrolled up `n` rows (PLAN.md 6.4 line injection), leaving the cursor
+    /// hidden at the start of the last row with default renditions and no
+    /// hyperlink. The scrolling region is ignored: the host's covers the
+    /// whole screen.
+    pub fn host_scrolled(&mut self, n: usize) {
+        self.ds.add_rendition(0);
+        self.ds.set_hyperlink(Hyperlink::default());
+        self.ds.cursor_visible = false;
+        let h = self.rows.len();
+        let n = n.min(h);
+        let blank = self.newrow();
+        self.rows.drain(..n);
+        self.rows.extend(std::iter::repeat_n(blank, n));
+        // Set directly: move_row honors origin mode, which is the remote's.
+        self.ds.cursor_row = self.ds.get_height() - 1;
+        self.ds.cursor_col = 0;
+        self.ds.next_print_will_wrap = false;
+    }
+
     /// mosh-rs scrollback (not upstream): starts (true) or stops (false)
     /// collecting the rows that scroll off the top; see `scrolled_rows`.
     pub fn set_scroll_capture(&mut self, on: bool) {

@@ -77,6 +77,7 @@ impl Display {
             has_title: true,
             smcup: None,
             rmcup: None,
+            host_history: false,
         };
 
         if use_environment {

@@ -98,6 +98,9 @@ fn usage(argv0: &str) -> String {
 
         --no-init            do not send terminal initialization string
 
+        --scrollback         keep the session's output in this terminal's
+                                scrollback (needs a mosh-rs server)
+
         --local              run mosh-server locally without using ssh
 
         --help               this message
@@ -406,6 +409,7 @@ pub fn main() -> ! {
     let mut version = false;
     let mut positional: Vec<String> = Vec::new();
     let mut fake_proxy_mode = false;
+    let mut scrollback = false;
 
     // Getopt::Long in its default (permute) mode: options may follow the
     // host; everything after "--" is positional.
@@ -436,10 +440,7 @@ pub fn main() -> ! {
                 Long("fake-proxy") => fake_proxy_mode = true,
                 Long("no-fake-proxy") | Long("nofake-proxy") => fake_proxy_mode = false,
                 Long("bind-server") => bind_ip = Some(os(parser.value()?)),
-                // Accepted and ignored until scrollback lands (PLAN phase 4).
-                Long("scrollback") => {
-                    parser.optional_value();
-                }
+                Long("scrollback") => scrollback = true,
                 Value(v) => positional.push(os(v)),
                 _ => return Err(arg.unexpected()),
             }
@@ -677,6 +678,10 @@ pub fn main() -> ! {
         .env("MOSH_PREDICTION_DISPLAY", &predict);
     if !term_init {
         client_cmd.env("MOSH_NO_TERM_INIT", "1");
+    }
+    /* mosh-rs scrollback (PLAN.md 6.4): the client asks the server for history */
+    if scrollback {
+        client_cmd.env("MOSH_SCROLLBACK", "1");
     }
     let err = process::exec(&mut client_cmd);
     die(&format!("{argv0}: Cannot exec {client}: {err}\n"), DIE);

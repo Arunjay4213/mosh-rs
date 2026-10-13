@@ -499,3 +499,23 @@ Spawn: agent S2 (Opus, medium effort, own worktree) builds the client half (PLAN
 
 `cargo test --release -p mosh-tests --test detached_warning` at 6e0ab0b: the C++ server, our glibc server and our static musl server each print "Mosh: You have a detached Mosh session on this server (mosh [PID])." for the same detached session, identical text. The static musl platform crate builds with 0 warnings. The login-record layout is 400 bytes per record on arm64 and 384 on x86_64 (agent P measured both; the orchestrator's brief had said 384 for both).
 Not a bug: when `mosh-server new`'s output goes to a file instead of a terminal, the C++ session child loses its banner in an unflushed buffer while ours prints it; in real use that output goes to the session's terminal, where both print it.
+
+## 2026-10-13 Scrollback, client side (agent S2)
+
+PLAN 6.4 and 6.5, opt-in with `mosh --scrollback` (the launcher starts the client with `MOSH_SCROLLBACK=1`); without it the client is unchanged.
+The server now announces scrollback: `Complete::scrollback_on` makes its first diff after the capability hold a `ScrolledLines` (no line when none is due), so the client tells an old server from a quiet one on the first frame.
+The client starts in the alternate screen as upstream; on the first frame it either leaves it (scrolling the host's screen down to the cursor into history) and draws on the main screen, injecting history lines at row 1 and scrolling them off with a line feed on the last row, or stays as upstream with a 5 s notice.
+History lines are re-drawn through a one-row emulator at the host's width before they reach the host; lost lines become one dim `[mosh: N lines of history were dropped]` line in place.
+In this mode `new_frame` has no scroll shortcut and repaints without `CSI H CSI 2J` (tmux 3.4 moves the screen into history on it); frames of another size than the window are held until the server applies the resize, then fully repainted.
+`mosh-server --scrollback` takes a `K` suffix for KiB.
+- Oracle 6, `tests/scrollback.sh` (tmux 80x24, history-limit 200000):
+  - clean, `mosh --scrollback localhost`, `seq 1 50000`, with the escape-key help bar up while history arrives: 50000 numbers, in order, no gap, no duplicate, no overlay text (9 s).
+  - loss30 (30% loss each way, 100 ms delay): the same (136 s, 165 s, 144 s).
+  - resize wider and narrower between `seq 1 3000` and `seq 3001 6000`: exact.
+  - oldserver (`--server=/usr/bin/mosh-server`): alternate screen, notice shown, nothing on the host's main screen after exit.
+  - dropped (`--scrollback 16K`, 8 s blackout during `seq 1 200000`): 1-1672, then `[mosh: 197079 lines of history were dropped]` (dim), then 198752-200000, exact.
+  - Not exact, and the script checks they are exactly this (PLAN 6.4 known limits): vim on the same command line after `seq 1 3000` erases the screen rows 2978-3000 without scrolling them, so they are missing (nothing from vim is in history); `seq 1 100; clear` loses 78-100 the same way. Height shrink 24 -> 18: tmux itself moves 2978-2983 into its history and they come again later (6 duplicates); the server cuts 2996-3000 and the prompt as upstream's emulator does, and 2995 is overwritten by the echoed command. Height growth 24 -> 30: tmux pulls 2972-2977 back from its history and the repaint overwrites them.
+  - Questions for the orchestrator, all server side: capture rows that the remote erases with ED 2 or covers on entering the alternate screen (would close the clear and vim gaps without changing the screen the program sees); make the emulator's resize keep the bottom like host terminals (would close the shrink and grow cases, but changes the screen the program sees after a resize, a deviation from upstream).
+- `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client all --server all`: 120 of 120. The same with the Rust client in scrollback mode (a wrapper that sets `MOSH_SCROLLBACK=1`, passed as `--client PATH`) against both servers: 60 of 60; the same wrapper shows `alternate_on=0` with our server and the notice with the C++ server.
+- `tests/upstream-check.sh --client rust --server rust`: 30 PASS, 2 XFAIL, 0 FAIL, 0 ERROR.
+- `cargo test --release --workspace`: all pass; `scrollback_server` still `digests_differing=0 capture_on_frame_mismatches=0`. fmt and clippy (native and Windows) clean; Windows `mosh` and `mosh-client` build.

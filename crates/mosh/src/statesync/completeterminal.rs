@@ -49,7 +49,10 @@
 //! bytes, so a client can print the lines first and then the new frame. On
 //! the client, `apply_string` hands received lines to a `ReceivedScrollback`
 //! shared by every copy, which drops by number the lines it already has
-//! (a retransmitted diff repeats them). Without the capability nothing here
+//! (a retransmitted diff repeats them). Both sides also carry
+//! `scrollback_on`, so the server's first diff after the capability holds a
+//! `ScrolledLines` (with no line if none is due): the client's announcement
+//! that this server keeps history. Without the capability nothing here
 //! is active and every diff is byte-identical to upstream's.
 
 use mosh_platform::errln;
@@ -337,6 +340,12 @@ pub struct Complete {
     scrolled_total: u64,
     /// mosh-rs scrollback, client: where `apply_string` puts received lines.
     received: Option<Rc<RefCell<ReceivedScrollback>>>,
+    /// mosh-rs scrollback: the session is in scrollback mode (server: the
+    /// client's capabilities turned capture on; client: a diff carried a
+    /// `ScrolledLines` instruction). A diff from a state without it to one
+    /// with it always carries at least one `ScrolledLines`, so a client can
+    /// tell a scrollback server from an old one by its first frame.
+    scrollback_on: bool,
 }
 
 impl Complete {
@@ -356,6 +365,7 @@ impl Complete {
             ring: None,
             scrolled_total: 0,
             received: None,
+            scrollback_on: false,
         }
     }
 
@@ -400,6 +410,12 @@ impl Complete {
     /// mosh-rs scrollback: lines that scrolled off up to this state.
     pub fn get_scrolled_total(&self) -> u64 {
         self.scrolled_total
+    }
+
+    /// mosh-rs scrollback: whether the session is in scrollback mode (see
+    /// `scrollback_on`). On the client: the server announced scrollback.
+    pub fn get_scrollback_on(&self) -> bool {
+        self.scrollback_on
     }
 
     /// Feeds host output bytes; returns the replies for the host.
@@ -447,6 +463,7 @@ impl Complete {
                         self.scrollback_limit,
                     ))));
                     self.terminal.get_fb_mut().set_scroll_capture(true);
+                    self.scrollback_on = true;
                 }
             }
         }
@@ -551,6 +568,18 @@ impl Complete {
                     ..Default::default()
                 });
             }
+        } else if self.scrollback_on && !existing.scrollback_on {
+            // mosh-rs scrollback (PLAN.md 6.3): announce scrollback mode with
+            // an instruction that covers no line, so the client's first frame
+            // tells it this server keeps history even before any line exists.
+            output.instruction.push(Instruction {
+                scrolledlines: Some(ScrolledLines {
+                    first_index: Some(self.scrolled_total + 1),
+                    line: Vec::new(),
+                    dropped: None,
+                }),
+                ..Default::default()
+            });
         }
 
         if !(existing.get_fb() == self.get_fb()) {
@@ -597,6 +626,7 @@ impl PartialEq for Complete {
         (self.terminal == x.terminal)
             && (self.echo_ack == x.echo_ack)
             && (self.scrolled_total == x.scrolled_total)
+            && (self.scrollback_on == x.scrollback_on)
     }
 }
 
@@ -681,6 +711,7 @@ impl State for Complete {
                     received.borrow_mut().receive(first_index, &sl.line);
                 }
                 self.scrolled_total = end - 1;
+                self.scrollback_on = true;
             }
         }
         Ok(())
@@ -733,12 +764,20 @@ impl State for Complete {
         }
         /* XXX should compare other terminal state too (mouse mode, bell. etc.) */
 
-        // mosh-rs scrollback: 0 on both sides unless the client asked for it.
+        // mosh-rs scrollback: 0 and off on both sides unless the client asked for it.
         if self.scrolled_total != other.scrolled_total {
             errln!(
                 "Scrolled line count mismatch: {} vs. {}.",
                 self.scrolled_total,
                 other.scrolled_total
+            );
+            ret = true;
+        }
+        if self.scrollback_on != other.scrollback_on {
+            errln!(
+                "Scrollback mode mismatch: {} vs. {}.",
+                self.scrollback_on,
+                other.scrollback_on
             );
             ret = true;
         }

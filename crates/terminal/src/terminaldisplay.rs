@@ -184,9 +184,31 @@ pub struct Display {
     /// enter and exit alternate screen mode
     pub(crate) smcup: Option<&'static [u8]>,
     pub(crate) rmcup: Option<&'static [u8]>,
+
+    /// mosh-rs scrollback (PLAN.md 6.4), not in upstream: the client draws
+    /// on the host terminal's main screen and only its own line injection
+    /// may scroll it, so `new_frame` must never move rows into the host's
+    /// history: no alternate screen, no scroll shortcut, and a full repaint
+    /// erases without "clear screen" (tmux 3.4 moves the screen into its
+    /// history on `CSI H CSI 2J` and on `CSI H CSI J`, but not on
+    /// `CSI 2;1H CSI J`).
+    pub(crate) host_history: bool,
 }
 
 impl Display {
+    /// mosh-rs scrollback: switches to drawing for host history (see
+    /// `host_history`). `open` and `close` then leave the alternate screen alone.
+    pub fn set_host_history(&mut self) {
+        self.host_history = true;
+        self.smcup = None;
+        self.rmcup = None;
+    }
+
+    /// mosh-rs scrollback: whether `set_host_history` was called.
+    pub fn host_history(&self) -> bool {
+        self.host_history
+    }
+
     /// Escape sequences to start using the terminal (alternate screen,
     /// application cursor keys). Bytes: terminfo strings may hold any byte.
     pub fn open(&self) -> Vec<u8> {
@@ -271,7 +293,12 @@ impl Display {
             frame.append("\x1b[r");
 
             /* clear screen */
-            frame.append("\x1b[0m\x1b[H\x1b[2J");
+            if self.host_history {
+                // mosh-rs scrollback: erase without moving rows into history.
+                frame.append("\x1b[0m\x1b[H\x1b[K\x1b[2;1H\x1b[J\x1b[H");
+            } else {
+                frame.append("\x1b[0m\x1b[H\x1b[2J");
+            }
             initialized = false;
             frame.cursor_x = 0;
             frame.cursor_y = 0;
@@ -315,7 +342,9 @@ impl Display {
         }
 
         /* shortcut -- has display moved up by a certain number of lines? */
-        if initialized {
+        // mosh-rs scrollback: not in host-history mode, where a full-screen
+        // scroll would move a row into the host's history.
+        if initialized && !self.host_history {
             let mut lines_scrolled: i32 = 0;
             let mut scroll_height: i32 = 0;
 
@@ -667,6 +696,7 @@ impl Display {
             has_title: false,
             smcup: None,
             rmcup: None,
+            host_history: false,
         };
         let f = Framebuffer::from_row(row.clone());
         let mut frame = FrameState::new(&f);
