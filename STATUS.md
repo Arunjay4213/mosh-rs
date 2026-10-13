@@ -77,3 +77,18 @@ Facts for later phases:
 - Full dumps of client and server differ by design (tabs, scroll region, saved cursor and the bell count are not transmitted).
 
 Re-run after the move of the dump code into `tests/src/dump.rs`: terminal_conformance passes; vt-fuzz 100,000 cases (seed 21) and 100,000 `--frames` pairs (seed 22), 0 mismatches.
+
+## 2026-10-13 Impaired transport driver
+
+`tests/transport-impaired.sh` runs `tests/tests/transport_sync.rs` through `udp-impair` (listen 60700, server 60701, control 60702, seed 7, 100 ms delay + 0-50 ms jitter, 10% reordering, each way), and `tests/run-all.sh` now runs it.
+It closes the review's "Oracle wiring" gap: before it, only the clean-loopback sync ran.
+
+Command: `tests/transport-impaired.sh` (exit 0).
+- 30% loss, rebind at 5 s: converged in 10.95 s; the server logged two different "Server now attached to client at" addresses (51475, then 33722 after the rebind).
+- 5% loss, no rebind: converged in 10.40 s.
+- 30% loss, `blackout 3000` at 4 s: converged in 10.62 s; the proxy dropped 48 client-to-server packets (15 in the 30% run without a blackout).
+
+Control actions are timed from the moment the test starts its session, and the driver runs the prebuilt test executable rather than `cargo test`.
+A first version timed them from script start; `cargo test` took about 7 s to start, so the rebind landed before any traffic and the server saw only one address.
+
+Checks that it can fail: with `MOSH_SYNC_SERVER_PORT` pointed at 60799 (proxy still targets 60701) all three runs time out at 60 s and the script exits 1; with the test executable replaced by `false` it exits 1 in 8 s, naming the unacknowledged control commands, instead of hanging.
