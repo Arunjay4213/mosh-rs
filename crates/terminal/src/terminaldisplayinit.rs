@@ -104,6 +104,19 @@ const TERMINFO: &[(&str, TermCaps)] = &[
     ("st-256color", caps(true, true, PLAIN_ALT.0, PLAIN_ALT.1)),
     ("putty", caps(true, true, PLAIN_ALT.0, PLAIN_ALT.1)),
     ("dumb", caps(false, false, NO_ALT.0, NO_ALT.1)),
+    ("iterm2", caps(false, true, XTERM_ALT.0, XTERM_ALT.1)),
+    ("kterm", caps(false, false, RXVT_ALT.0, RXVT_ALT.1)),
+    ("cygwin", caps(false, false, RXVT_ALT.0, RXVT_ALT.1)),
+    ("xterm-color", caps(false, false, RXVT_ALT.0, RXVT_ALT.1)),
+    ("eterm", caps(false, false, RXVT_ALT.0, RXVT_ALT.1)),
+    ("Eterm", caps(true, true, RXVT_ALT.0, RXVT_ALT.1)),
+    ("ansi", caps(true, false, NO_ALT.0, NO_ALT.1)),
+    (
+        "screen.xterm-256color",
+        caps(true, false, XTERM_ALT.0, XTERM_ALT.1),
+    ),
+    ("konsole", caps(true, true, RXVT_ALT.0, RXVT_ALT.1)),
+    ("gnome", caps(true, true, RXVT_ALT.0, RXVT_ALT.1)),
 ];
 
 /// The capabilities for `term_type`: an exact entry from `TERMINFO`, else the

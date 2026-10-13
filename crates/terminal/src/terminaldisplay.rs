@@ -101,10 +101,6 @@ impl<'a> FrameState<'a> {
     pub fn append(&mut self, s: &str) {
         self.str.push_str(s);
     }
-    /// Appends a string.
-    pub fn append_string(&mut self, append: &str) {
-        self.str.push_str(append);
-    }
 
     /// Appends a cell's grapheme (a space for an empty cell).
     pub fn append_cell(&mut self, cell: &Cell) {
@@ -156,7 +152,7 @@ impl<'a> FrameState<'a> {
         if force || !(self.current_rendition == *r) {
             /* print renditions */
             let s = r.sgr();
-            self.append_string(&s);
+            self.append(&s);
             self.current_rendition = *r;
         }
     }
@@ -166,7 +162,7 @@ impl<'a> FrameState<'a> {
         if force || self.current_hyperlink != *h {
             /* print hyperlink */
             let s = h.osc8();
-            self.append_string(&s);
+            self.append(&s);
             self.current_hyperlink = h.clone();
         }
     }

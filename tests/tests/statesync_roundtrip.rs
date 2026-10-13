@@ -84,10 +84,10 @@ fn screen(fb: &Framebuffer) -> String {
     let _ = writeln!(
         o,
         "size {} {} cursor {} {} visible {} rv {} paste {} mouse {} {} {} {}",
-        ds.width,
-        ds.height,
-        ds.cursor_row,
-        ds.cursor_col,
+        ds.get_width(),
+        ds.get_height(),
+        ds.get_cursor_row(),
+        ds.get_cursor_col(),
         ds.cursor_visible,
         ds.reverse_video,
         ds.bracketed_paste,
@@ -99,17 +99,23 @@ fn screen(fb: &Framebuffer) -> String {
     let _ = writeln!(
         o,
         "renditions {:?} hyperlink {:?}",
-        ds.renditions, ds.hyperlink
+        ds.get_renditions(),
+        ds.get_hyperlink()
     );
     // new_frame sends titles only when title_initialized and they differ, so
     // an empty title never marks the client's title as initialized; compare
     // the values, not the flag.
-    let _ = writeln!(o, "title {:x?} icon {:x?}", fb.window_title, fb.icon_name);
-    let _ = writeln!(o, "clipboard {:x?}", fb.clipboard);
+    let _ = writeln!(
+        o,
+        "title {:x?} icon {:x?}",
+        fb.get_window_title(),
+        fb.get_icon_name()
+    );
+    let _ = writeln!(o, "clipboard {:x?}", fb.get_clipboard());
     // Cells as upstream's Cell::compare judges them: the printed grapheme
     // (an empty cell prints as a space, which is how new_frame may draw it),
     // width, renditions and wrap; plus the hyperlink.
-    for (r, row) in fb.rows.iter().enumerate() {
+    for (r, row) in fb.get_rows().iter().enumerate() {
         for (c, cell) in row.cells.iter().enumerate() {
             let mut g = String::new();
             cell.print_grapheme(&mut g);
@@ -119,10 +125,10 @@ fn screen(fb: &Framebuffer) -> String {
                 r,
                 c,
                 hex(g.as_bytes()),
-                cell.wide,
-                cell.wrap,
-                cell.renditions,
-                cell.hyperlink
+                cell.get_wide(),
+                cell.get_wrap(),
+                cell.get_renditions(),
+                cell.get_hyperlink()
             );
         }
     }

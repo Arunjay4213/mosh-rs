@@ -101,26 +101,6 @@ impl Action {
         }
     }
 
-    /// Upstream's action class name, e.g. "Print".
-    pub fn name(&self) -> &'static str {
-        match self.kind {
-            ActionType::Ignore => "Ignore",
-            ActionType::Print => "Print",
-            ActionType::Execute => "Execute",
-            ActionType::Clear => "Clear",
-            ActionType::Collect => "Collect",
-            ActionType::Param => "Param",
-            ActionType::Esc_Dispatch => "Esc_Dispatch",
-            ActionType::CSI_Dispatch => "CSI_Dispatch",
-            ActionType::Hook => "Hook",
-            ActionType::Put => "Put",
-            ActionType::Unhook => "Unhook",
-            ActionType::OSC_Start => "OSC_Start",
-            ActionType::OSC_Put => "OSC_Put",
-            ActionType::OSC_End => "OSC_End",
-        }
-    }
-
     /// True for the Ignore action.
     pub fn ignore(&self) -> bool {
         self.kind == ActionType::Ignore
@@ -158,11 +138,6 @@ impl UserByte {
         UserByte { c: s_c }
     }
 
-    /// "UserByte".
-    pub fn name(&self) -> &'static str {
-        "UserByte"
-    }
-
     /// Translates the byte for the host (cursor-key mode) and queues it in `terminal_to_host`.
     pub fn act_on_terminal(&self, emu: &mut Emulator) {
         let s = emu.user.input(self, emu.fb.ds.application_mode_cursor_keys);
@@ -186,11 +161,6 @@ impl Resize {
             width: s_width,
             height: s_height,
         }
-    }
-
-    /// "Resize".
-    pub fn name(&self) -> &'static str {
-        "Resize"
     }
 
     /// Resizes the emulator's framebuffer.

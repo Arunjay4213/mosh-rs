@@ -71,11 +71,11 @@ pub enum attribute_type {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Renditions {
     /// 25-bit field
-    pub foreground_color: u32,
+    foreground_color: u32,
     /// 25-bit field
-    pub background_color: u32,
+    background_color: u32,
     /// 8-bit field
-    pub attributes: u8,
+    attributes: u8,
 }
 
 impl Renditions {
@@ -103,6 +103,17 @@ impl Renditions {
     /// The background color number.
     pub fn get_background_rendition(&self) -> u32 {
         self.background_color
+    }
+
+    /// Debug accessor (not upstream; upstream comments its getter out): the
+    /// raw 25-bit foreground field, for the ref-term/vt-check dump.
+    pub fn debug_foreground_color(&self) -> u32 {
+        self.foreground_color
+    }
+
+    /// Debug accessor (not upstream): the raw attribute bits, for the dump.
+    pub fn debug_attributes(&self) -> u8 {
+        self.attributes
     }
 
     /// Sets or clears one attribute bit.
@@ -262,11 +273,11 @@ impl Renditions {
 
 /// The contents of an OSC 8 hyperlink.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct HyperlinkRep {
+struct HyperlinkRep {
     /// OSC 8 parameters (e.g. "id=x").
-    pub params: String,
+    params: String,
     /// The URL.
-    pub url: String,
+    url: String,
 }
 
 /// OSC 8 hyperlink. `rep` is null (None) when the URL is empty.
@@ -274,7 +285,7 @@ pub struct HyperlinkRep {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Hyperlink {
     /// None when there is no link.
-    pub rep: Option<Rc<HyperlinkRep>>,
+    rep: Option<Rc<HyperlinkRep>>,
 }
 
 impl Hyperlink {
@@ -292,6 +303,13 @@ impl Hyperlink {
     /// Whether there is no link.
     pub fn empty(&self) -> bool {
         self.rep.is_none()
+    }
+
+    /// Debug accessor (not upstream): (params, url), or None for no link.
+    pub fn debug_parts(&self) -> Option<(&str, &str)> {
+        self.rep
+            .as_ref()
+            .map(|r| (r.params.as_str(), r.url.as_str()))
     }
 
     /// The OSC 8 sequence that selects this link (or ends any link).
@@ -317,17 +335,17 @@ impl Hyperlink {
 #[derive(Clone, Debug)]
 pub struct Cell {
     /// UTF-8 bytes of the grapheme (base character plus combining characters).
-    pub contents: String,
+    contents: String,
     /// The cell's renditions.
-    pub renditions: Renditions,
+    renditions: Renditions,
     /// The cell's hyperlink.
-    pub hyperlink: Hyperlink,
+    hyperlink: Hyperlink,
     /// 0 = narrow, 1 = wide
-    pub wide: bool,
+    wide: bool,
     /// first character is combining character
-    pub fallback: bool,
+    fallback: bool,
     /// Set on a row's last cell when the row wrapped into the next one.
-    pub wrap: bool,
+    wrap: bool,
 }
 
 impl PartialEq for Cell {
@@ -384,6 +402,11 @@ impl Cell {
     /// Removes the contents.
     pub fn clear(&mut self) {
         self.contents.clear();
+    }
+
+    /// Debug accessor (not upstream): the raw UTF-8 bytes of the contents.
+    pub fn debug_contents_bytes(&self) -> &[u8] {
+        self.contents.as_bytes()
     }
 
     /// Empty, a space or a no-break space.
@@ -561,6 +584,16 @@ impl Cell {
     }
 }
 
+/// Index for a row, column or tab position. Upstream indexes with `int`; the
+/// value is never negative here because the cursor, the scrolling region and
+/// every row/column argument are kept inside the screen (snap_cursor_to_border,
+/// set_scrolling_region, and callers passing cursor positions). A negative
+/// value would wrap to a huge index and panic on the bounds check, where
+/// upstream's `at()` throws.
+fn idx(i: i32) -> usize {
+    i as usize
+}
+
 /// Process-wide row generation counter (upstream: a function-local static).
 static GEN_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -593,14 +626,14 @@ impl Row {
 
     /// Inserts a blank cell at `col`, dropping the last cell.
     pub fn insert_cell(&mut self, col: i32, background_color: color_type) {
-        self.cells.insert(col as usize, Cell::new(background_color));
+        self.cells.insert(idx(col), Cell::new(background_color));
         self.cells.pop();
     }
 
     /// Deletes the cell at `col`, appending a blank cell.
     pub fn delete_cell(&mut self, col: i32, background_color: color_type) {
         self.cells.push(Cell::new(background_color));
-        self.cells.remove(col as usize);
+        self.cells.remove(idx(col));
     }
 
     /// Blanks every cell and takes a fresh generation number.
@@ -705,36 +738,36 @@ pub use MouseReportingMode::*;
 #[derive(Clone, Debug)]
 pub struct DrawState {
     /// Columns.
-    pub width: i32,
+    width: i32,
     /// Rows.
-    pub height: i32,
+    height: i32,
 
     /// Cursor column.
-    pub cursor_col: i32,
+    cursor_col: i32,
     /// Cursor row.
-    pub cursor_row: i32,
+    cursor_row: i32,
     /// Column of the cell a following combining character attaches to (-1 after a resize made it invalid).
-    pub combining_char_col: i32,
+    combining_char_col: i32,
     /// Row of that cell.
-    pub combining_char_row: i32,
+    combining_char_row: i32,
 
     /// Whether tab stops are still the default every-8-columns (cleared by TBC 3).
-    pub default_tabs: bool,
+    default_tabs: bool,
     /// Tab stop per column.
-    pub tabs: Vec<bool>,
+    tabs: Vec<bool>,
 
     /// Top row of the scrolling region.
-    pub scrolling_region_top_row: i32,
+    scrolling_region_top_row: i32,
     /// Bottom row of the scrolling region.
-    pub scrolling_region_bottom_row: i32,
+    scrolling_region_bottom_row: i32,
 
     /// Renditions for newly printed characters.
-    pub renditions: Renditions,
+    renditions: Renditions,
     /// Hyperlink for newly printed characters.
-    pub hyperlink: Hyperlink,
+    hyperlink: Hyperlink,
 
     /// DECSC state.
-    pub save: SavedCursor,
+    save: SavedCursor,
 
     /// The cursor is past the last column: the next printed character wraps first.
     pub next_print_will_wrap: bool,
@@ -788,6 +821,7 @@ impl PartialEq for DrawState {
 impl DrawState {
     fn reinitialize_tabs(&mut self, start: u32) {
         assert!(self.default_tabs);
+        // start is an old width (>= 1), so the u32 to usize cast is lossless.
         for i in start as usize..self.tabs.len() {
             self.tabs[i] = (i % 8) == 0;
         }
@@ -803,7 +837,7 @@ impl DrawState {
             combining_char_col: 0,
             combining_char_row: 0,
             default_tabs: true,
-            tabs: vec![false; s_width as usize],
+            tabs: vec![false; idx(s_width)],
             scrolling_region_top_row: 0,
             scrolling_region_bottom_row: s_height - 1,
             renditions: Renditions::new(0),
@@ -907,14 +941,29 @@ impl DrawState {
         self.height
     }
 
+    /// Debug accessor (not upstream): the tab stop flag of every column.
+    pub fn debug_tabs(&self) -> &[bool] {
+        &self.tabs
+    }
+
+    /// Debug accessor (not upstream): whether tab stops are still the defaults.
+    pub fn debug_default_tabs(&self) -> bool {
+        self.default_tabs
+    }
+
+    /// Debug accessor (not upstream): the DECSC state.
+    pub fn debug_saved_cursor(&self) -> &SavedCursor {
+        &self.save
+    }
+
     /// Sets a tab stop at the cursor column.
     pub fn set_tab(&mut self) {
-        self.tabs[self.cursor_col as usize] = true;
+        self.tabs[idx(self.cursor_col)] = true;
     }
 
     /// Clears the tab stop at `col`.
     pub fn clear_tab(&mut self, col: i32) {
-        self.tabs[col as usize] = false;
+        self.tabs[idx(col)] = false;
     }
 
     /// Marks tab stops as no longer the defaults.
@@ -928,7 +977,7 @@ impl DrawState {
         if count >= 0 {
             let mut i = self.cursor_col + 1;
             while i < self.width {
-                if self.tabs[i as usize] {
+                if self.tabs[idx(i)] {
                     count -= 1;
                     if count == 0 {
                         return i;
@@ -940,7 +989,7 @@ impl DrawState {
         }
         let mut i = self.cursor_col - 1;
         while i > 0 {
-            if self.tabs[i as usize] {
+            if self.tabs[idx(i)] {
                 count += 1;
                 if count == 0 {
                     return i;
@@ -1075,7 +1124,7 @@ impl DrawState {
             self.scrolling_region_bottom_row = s_height - 1;
         }
 
-        self.tabs.resize(s_width as usize, false);
+        self.tabs.resize(idx(s_width), false);
         if self.default_tabs {
             self.reinitialize_tabs(self.width as u32);
         }
@@ -1111,21 +1160,24 @@ pub type rows_type = Vec<row_pointer>;
 // To minimize copying of rows and cells, we use Rc to share unchanged rows
 // between multiple Framebuffers.  If we write to a row in a Framebuffer and
 // it is shared with other owners, we copy it first (Rc::make_mut).
+// Rc (not Arc) makes Framebuffer and Emulator !Send; upstream mosh is single
+// threaded and its shared_ptr copy-on-write relies on that too
+// (get_mutable_row: "only safe because mosh isn't multi-threaded").
 /// Upstream `Terminal::Framebuffer`: the screen contents plus `DrawState`.
 #[derive(Clone, Debug)]
 pub struct Framebuffer {
     /// The rows, shared with copies of this framebuffer until written.
-    pub rows: rows_type,
+    rows: rows_type,
     /// Icon name (OSC 0/1).
-    pub icon_name: title_type,
+    icon_name: title_type,
     /// Window title (OSC 0/2).
-    pub window_title: title_type,
+    window_title: title_type,
     /// Clipboard contents (OSC 52).
-    pub clipboard: title_type,
+    clipboard: title_type,
     /// Number of BELs received.
-    pub bell_count: u32,
+    bell_count: u32,
     /// true if the window title has been set via an OSC
-    pub title_initialized: bool,
+    title_initialized: bool,
 
     /// Cursor, modes and renditions.
     pub ds: DrawState,
@@ -1150,7 +1202,7 @@ impl PartialEq for Framebuffer {
 
 impl Framebuffer {
     fn newrow(&self) -> row_pointer {
-        let w = self.ds.get_width() as usize;
+        let w = idx(self.ds.get_width());
         let c = self.ds.get_background_rendition() as color_type;
         Rc::new(Row::new(w, c))
     }
@@ -1159,11 +1211,11 @@ impl Framebuffer {
     pub fn new(s_width: i32, s_height: i32) -> Framebuffer {
         assert!(s_height > 0);
         assert!(s_width > 0);
-        let w = s_width as usize;
+        let w = idx(s_width);
         let c: color_type = 0;
         let row = Rc::new(Row::new(w, c));
         Framebuffer {
-            rows: vec![row; s_height as usize],
+            rows: vec![row; idx(s_height)],
             icon_name: Vec::new(),
             window_title: Vec::new(),
             clipboard: Vec::new(),
@@ -1216,7 +1268,7 @@ impl Framebuffer {
             row = self.ds.get_cursor_row();
         }
 
-        &self.rows[row as usize]
+        &self.rows[idx(row)]
     }
 
     /// `row == -1` / `col == -1` mean the cursor position.
@@ -1228,7 +1280,7 @@ impl Framebuffer {
             col = self.ds.get_cursor_col();
         }
 
-        &self.rows[row as usize].cells[col as usize]
+        &self.rows[idx(row)].cells[idx(col)]
     }
 
     /// Row `row` (-1 = cursor row), copied first if shared.
@@ -1237,7 +1289,7 @@ impl Framebuffer {
             row = self.ds.get_cursor_row();
         }
         // If the row is shared, copy it.
-        Rc::make_mut(&mut self.rows[row as usize])
+        Rc::make_mut(&mut self.rows[idx(row)])
     }
 
     /// Cell at `row`, `col` (-1 = cursor), its row copied first if shared.
@@ -1249,7 +1301,7 @@ impl Framebuffer {
             col = self.ds.get_cursor_col();
         }
 
-        &mut self.get_mutable_row(row).cells[col as usize]
+        &mut self.get_mutable_row(row).cells[idx(col)]
     }
 
     /// Upstream returns the cell (or NULL); here its (row, col), after
@@ -1358,7 +1410,7 @@ impl Framebuffer {
         let height = self.ds.get_height();
         self.ds = DrawState::new(width, height);
         let row = self.newrow();
-        self.rows = vec![row; height as usize];
+        self.rows = vec![row; idx(height)];
         self.window_title.clear();
         self.clipboard.clear();
         /* do not reset bell_count */
@@ -1430,7 +1482,7 @@ impl Framebuffer {
 
         let blankrow = self.newrow();
         if oldheight != s_height {
-            self.rows.resize(s_height as usize, blankrow.clone());
+            self.rows.resize(idx(s_height), blankrow.clone());
         }
         if oldwidth == s_width {
             return;
@@ -1442,7 +1494,7 @@ impl Framebuffer {
             }
             let mut r = (**i).clone();
             r.set_wrap(false);
-            r.cells.resize(s_width as usize, Cell::new(bg));
+            r.cells.resize(idx(s_width), Cell::new(bg));
             *i = Rc::new(r);
         }
     }

@@ -53,16 +53,18 @@ fn wlist(v: &[u32]) -> String {
 }
 
 fn link(h: &Hyperlink) -> String {
-    match &h.rep {
+    match h.debug_parts() {
         None => "none".to_string(),
-        Some(rep) => format!("{}|{}", hex(rep.params.as_bytes()), hex(rep.url.as_bytes())),
+        Some((params, url)) => format!("{}|{}", hex(params.as_bytes()), hex(url.as_bytes())),
     }
 }
 
 fn rend(r: &Renditions) -> String {
     format!(
         "{} {} {}",
-        r.attributes, r.foreground_color, r.background_color
+        r.debug_attributes(),
+        r.debug_foreground_color(),
+        r.get_background_rendition()
     )
 }
 
@@ -73,19 +75,20 @@ fn rend(r: &Renditions) -> String {
 pub fn dump(fb: &Framebuffer, to_host: &[u8], with_gen: bool, o: &mut String) {
     let ds = &fb.ds;
     let b = |x: bool| x as i32;
-    let _ = writeln!(o, "size {} {}", ds.width, ds.height);
+    let _ = writeln!(o, "size {} {}", ds.get_width(), ds.get_height());
     let _ = writeln!(
         o,
         "cursor {} {} visible {} next_print_will_wrap {}",
-        ds.cursor_row,
-        ds.cursor_col,
+        ds.get_cursor_row(),
+        ds.get_cursor_col(),
         b(ds.cursor_visible),
         b(ds.next_print_will_wrap)
     );
     let _ = writeln!(
         o,
         "combining {} {}",
-        ds.combining_char_row, ds.combining_char_col
+        ds.get_combining_char_row(),
+        ds.get_combining_char_col()
     );
     let _ = writeln!(
         o,
@@ -108,10 +111,11 @@ pub fn dump(fb: &Framebuffer, to_host: &[u8], with_gen: bool, o: &mut String) {
     let _ = writeln!(
         o,
         "scroll_region {} {}",
-        ds.scrolling_region_top_row, ds.scrolling_region_bottom_row
+        ds.get_scrolling_region_top_row(),
+        ds.get_scrolling_region_bottom_row()
     );
     let tabs: Vec<String> = ds
-        .tabs
+        .debug_tabs()
         .iter()
         .enumerate()
         .filter(|(_, &t)| t)
@@ -120,27 +124,27 @@ pub fn dump(fb: &Framebuffer, to_host: &[u8], with_gen: bool, o: &mut String) {
     let _ = writeln!(
         o,
         "default_tabs {} tabs {}",
-        b(ds.default_tabs),
+        b(ds.debug_default_tabs()),
         tabs.join(",")
     );
-    let _ = writeln!(o, "renditions {}", rend(&ds.renditions));
-    let _ = writeln!(o, "hyperlink {}", link(&ds.hyperlink));
+    let _ = writeln!(o, "renditions {}", rend(ds.get_renditions()));
+    let _ = writeln!(o, "hyperlink {}", link(ds.get_hyperlink()));
     let _ = writeln!(
         o,
         "saved {} {} autowrap {} origin {} renditions {}",
-        ds.save.cursor_row,
-        ds.save.cursor_col,
-        b(ds.save.auto_wrap_mode),
-        b(ds.save.origin_mode),
-        rend(&ds.save.renditions)
+        ds.debug_saved_cursor().cursor_row,
+        ds.debug_saved_cursor().cursor_col,
+        b(ds.debug_saved_cursor().auto_wrap_mode),
+        b(ds.debug_saved_cursor().origin_mode),
+        rend(&ds.debug_saved_cursor().renditions)
     );
-    let _ = writeln!(o, "title_initialized {}", b(fb.title_initialized));
-    let _ = writeln!(o, "icon {}", wlist(&fb.icon_name));
-    let _ = writeln!(o, "title {}", wlist(&fb.window_title));
-    let _ = writeln!(o, "clipboard {}", wlist(&fb.clipboard));
-    let _ = writeln!(o, "bell_count {}", fb.bell_count);
+    let _ = writeln!(o, "title_initialized {}", b(fb.is_title_initialized()));
+    let _ = writeln!(o, "icon {}", wlist(fb.get_icon_name()));
+    let _ = writeln!(o, "title {}", wlist(fb.get_window_title()));
+    let _ = writeln!(o, "clipboard {}", wlist(fb.get_clipboard()));
+    let _ = writeln!(o, "bell_count {}", fb.get_bell_count());
     let _ = writeln!(o, "to_host {}", hex(to_host));
-    for (r, row) in fb.rows.iter().enumerate() {
+    for (r, row) in fb.get_rows().iter().enumerate() {
         if with_gen {
             let _ = writeln!(o, "row {} gen {} wrap {}", r, row.gen, b(row.get_wrap()));
         } else {
@@ -151,12 +155,12 @@ pub fn dump(fb: &Framebuffer, to_host: &[u8], with_gen: bool, o: &mut String) {
                 o,
                 "  cell {} contents={} wide {} fallback {} wrap {} renditions {} link={}",
                 c,
-                hex(cell.contents.as_bytes()),
-                b(cell.wide),
-                b(cell.fallback),
-                b(cell.wrap),
-                rend(&cell.renditions),
-                link(&cell.hyperlink)
+                hex(cell.debug_contents_bytes()),
+                b(cell.get_wide()),
+                b(cell.get_fallback()),
+                b(cell.get_wrap()),
+                rend(cell.get_renditions()),
+                link(cell.get_hyperlink())
             );
         }
     }
