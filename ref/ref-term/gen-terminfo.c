@@ -30,7 +30,7 @@
 
 struct caps
 {
-  int ech, bce;
+  int ech, bce, colors;
   const char *smcup, *rmcup; /* NULL = absent */
 };
 
@@ -39,6 +39,10 @@ static int nnames;
 static struct caps table[MAXCAPS];
 static int ncaps;
 static int name_cap[MAXNAMES];
+static char* hardcopy[MAXNAMES];
+static int nhardcopy;
+static char* generic[MAXNAMES];
+static int ngeneric;
 
 static void add_name( const char* n )
 {
@@ -97,13 +101,15 @@ static int has_high_byte( const char* s )
   return 0;
 }
 
-/* What upstream's Display(true) reads, for TERM=name. Returns -1 if
-   setupterm fails (upstream would throw). */
+/* What upstream reads for TERM=name: Display(true) (ech, bce, smcup, rmcup)
+   and mosh-client -c (tigetnum colors). Returns setupterm's errret (1 =
+   hardcopy, 0 = not found) if setupterm fails, where upstream throws or, for
+   -c, ncurses prints a message and exits; else 2. */
 static int lookup( const char* name, struct caps* out )
 {
   int errret = -2;
   if ( setupterm( (char*)name, 1, &errret ) != OK ) {
-    return -1;
+    return errret;
   }
   const char* ech = tigetstr( (char*)"ech" );
   int bce = tigetflag( (char*)"bce" );
@@ -113,12 +119,17 @@ static int lookup( const char* name, struct caps* out )
     fprintf( stderr, "invalid capability name\n" );
     exit( 1 );
   }
+  out->colors = tigetnum( (char*)"colors" );
+  if ( out->colors == -2 ) {
+    fprintf( stderr, "invalid capability name\n" );
+    exit( 1 );
+  }
   out->ech = ech != NULL;
   out->bce = bce;
   out->smcup = smcup ? strdup( smcup ) : NULL;
   out->rmcup = rmcup ? strdup( rmcup ) : NULL;
   del_curterm( cur_term );
-  return 0;
+  return 2;
 }
 
 int main( int argc, char** argv )
@@ -155,9 +166,17 @@ int main( int argc, char** argv )
   int kept = 0;
   for ( int i = 0; i < nnames; i++ ) {
     struct caps c;
-    if ( lookup( names[i], &c ) != 0 ) {
-      /* hardcopy or broken entries: upstream throws; the port falls back to xterm */
-      fprintf( stderr, "skipping %s: setupterm failed\n", names[i] );
+    int r = lookup( names[i], &c );
+    if ( r != 2 ) {
+      /* hardcopy or broken entries: Display(true) throws upstream and falls
+         back to xterm here; mosh-client -c reports hardcopy ones by name */
+      fprintf( stderr, "skipping %s: setupterm failed (errret %d)\n", names[i], r );
+      if ( r == 1 ) {
+        hardcopy[nhardcopy++] = names[i];
+      } else if ( r == 0 ) {
+        /* listed by toe, so it exists: setupterm refuses generic types */
+        generic[ngeneric++] = names[i];
+      }
       continue;
     }
     if ( has_high_byte( c.smcup ) || has_high_byte( c.rmcup ) ) {
@@ -165,7 +184,8 @@ int main( int argc, char** argv )
     }
     int j;
     for ( j = 0; j < ncaps; j++ ) {
-      if ( table[j].ech == c.ech && table[j].bce == c.bce && same_str( table[j].smcup, c.smcup )
+      if ( table[j].ech == c.ech && table[j].bce == c.bce && table[j].colors == c.colors
+           && same_str( table[j].smcup, c.smcup )
            && same_str( table[j].rmcup, c.rmcup ) ) {
         break;
       }
@@ -220,6 +240,8 @@ int main( int argc, char** argv )
           "    pub smcup: Option<&'static [u8]>,\n"
           "    /// `tigetstr(\"rmcup\")` bytes, None when absent\n"
           "    pub rmcup: Option<&'static [u8]>,\n"
+          "    /// `tigetnum(\"colors\")`, -1 when absent\n"
+          "    pub colors: i32,\n"
           "}\n"
           "\n"
           "/// The distinct capability tuples.\n"
@@ -233,7 +255,7 @@ int main( int argc, char** argv )
     print_str( table[j].smcup );
     printf( ",\n        rmcup: " );
     print_str( table[j].rmcup );
-    printf( ",\n    },\n" );
+    printf( ",\n        colors: %d,\n    },\n", table[j].colors );
   }
   printf( "];\n\n/// Terminal type name to index into `CAPS`, sorted by name (byte order).\n"
           "pub static NAMES: &[(&str, u16)] = &[\n" );
@@ -247,6 +269,37 @@ int main( int argc, char** argv )
           "        .binary_search_by(|(n, _)| (*n).cmp(name))\n"
           "        .ok()\n"
           "        .map(|i| &CAPS[NAMES[i].1 as usize])\n"
+          "}\n" );
+  printf( "\n/// Entries setupterm rejects as hardcopy (errret 1), sorted.\n"
+          "pub static HARDCOPY: &[&str] = &[\n" );
+  for ( int i = 0; i < nhardcopy; i++ ) {
+    printf( "    \"%s\",\n", hardcopy[i] );
+  }
+  printf( "];\n\n/// Generic entries setupterm refuses (errret 0 for a listed name), sorted.\n"
+          "pub static GENERIC: &[&str] = &[\n" );
+  for ( int i = 0; i < ngeneric; i++ ) {
+    printf( "    \"%s\",\n", generic[i] );
+  }
+  printf( "];\n\n"
+          "/// What `mosh-client -c` prints for `term` (the TERM value): the color\n"
+          "/// count (`tigetnum(\"colors\")`, -1 when absent), or the message ncurses'\n"
+          "/// `setupterm` prints before upstream exits with status 1. An unknown\n"
+          "/// name gets xterm's count, where upstream reports it (PLAN.md 9.6).\n"
+          "pub fn colors(term: Option<&str>) -> Result<i32, String> {\n"
+          "    let t = match term {\n"
+          "        None | Some(\"\") => return Err(\"TERM environment variable not set.\".to_string()),\n"
+          "        Some(t) => t,\n"
+          "    };\n"
+          "    if HARDCOPY.binary_search(&t).is_ok() {\n"
+          "        return Err(format!(\"'{t}': I can't handle hardcopy terminals.\"));\n"
+          "    }\n"
+          "    if GENERIC.binary_search(&t).is_ok() {\n"
+          "        return Err(format!(\"'{t}': I need something more specific.\"));\n"
+          "    }\n"
+          "    let caps = lookup(t)\n"
+          "        .or_else(|| lookup(\"xterm\"))\n"
+          "        .expect(\"the generated terminfo table has an xterm entry\");\n"
+          "    Ok(caps.colors)\n"
           "}\n" );
   fprintf( stderr, "%d names, %d tuples\n", kept, ncaps );
   return 0;

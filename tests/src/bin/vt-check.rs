@@ -175,16 +175,20 @@ fn do_caps() {
         }
         let name_str = String::from_utf8_lossy(name).into_owned();
         std::env::set_var("TERM", &name_str);
-        let (caps, title) = Display::new(true).debug_caps();
+        let caps = Display::new(true).debug_caps();
         let _ = writeln!(
             out,
-            "{} ech {} bce {} title {} smcup {} rmcup {}",
+            "{} ech {} bce {} title {} smcup {} rmcup {} colors {}",
             hex(name),
             caps.ech as u8,
             caps.bce as u8,
-            title as u8,
+            caps.title as u8,
             capstr(caps.smcup),
-            capstr(caps.rmcup)
+            capstr(caps.rmcup),
+            match mosh_terminal::terminfo::colors(Some(&name_str)) {
+                Ok(n) => n.to_string(),
+                Err(_) => "error".to_string(),
+            }
         );
     }
     let _ = out.flush();

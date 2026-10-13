@@ -28,6 +28,7 @@ terminfo: gen-terminfo
 	toe -a | awk '{print $$1}' | ./gen-terminfo \
 	  "ncurses $$(dpkg-query -W -f='$${Version}' ncurses-base) (ncurses-base, ncurses-term), kitty-terminfo $$(dpkg-query -W -f='$${Version}' kitty-terminfo)" \
 	  "$$(ldd --version | head -1)" > ../../crates/terminal/src/terminfo.rs
+	rustfmt --edition 2021 ../../crates/terminal/src/terminfo.rs
 
 clean:
 	rm -f ref-term gen-wcwidth gen-terminfo

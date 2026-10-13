@@ -52,6 +52,21 @@ fn term_caps(term_type: Option<&str>) -> &'static TermCaps {
         .expect("the generated terminfo table has an xterm entry")
 }
 
+/// The capability decisions a `Display` made (see `Display::debug_caps`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DisplayCaps {
+    /// has_ech
+    pub ech: bool,
+    /// has_bce
+    pub bce: bool,
+    /// has_title
+    pub title: bool,
+    /// smcup bytes, None when absent or MOSH_NO_TERM_INIT is set
+    pub smcup: Option<&'static [u8]>,
+    /// rmcup bytes, None when absent or MOSH_NO_TERM_INIT is set
+    pub rmcup: Option<&'static [u8]>,
+}
+
 impl Display {
     /// Terminal capabilities. With `use_environment`, from `TERM` (via the
     /// generated terminfo table) and `MOSH_NO_TERM_INIT`, as upstream.
@@ -109,15 +124,14 @@ impl Display {
     }
 
     /// Debug accessor (not upstream): the decisions upstream's
-    /// `Display(true)` makes (ech, bce, smcup, rmcup as a `TermCaps`, and
-    /// has_title), for comparing with ref-term's `caps` mode.
-    pub fn debug_caps(&self) -> (TermCaps, bool) {
-        let caps = TermCaps {
+    /// `Display(true)` makes, for comparing with ref-term's `caps` mode.
+    pub fn debug_caps(&self) -> DisplayCaps {
+        DisplayCaps {
             ech: self.has_ech,
             bce: self.has_bce,
+            title: self.has_title,
             smcup: self.smcup,
             rmcup: self.rmcup,
-        };
-        (caps, self.has_title)
+        }
     }
 }

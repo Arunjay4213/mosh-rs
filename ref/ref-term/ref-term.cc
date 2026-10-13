@@ -52,6 +52,11 @@
 #include "src/terminal/terminaldisplay.h"
 #include "src/terminal/terminalframebuffer.h"
 #undef private
+
+/* From ncurses <term.h>, which cannot be included here: its capability
+   macros clash with mosh's names (upstream keeps its terminfo calls in
+   terminaldisplayinit.cc for the same reason). */
+extern "C" int tigetnum( const char* capname );
 #undef protected
 
 using namespace Terminal;
@@ -341,6 +346,8 @@ static void do_caps( void )
       Display d( true );
       line += std::string( "ech " ) + ( d.has_ech ? "1" : "0" ) + " bce " + ( d.has_bce ? "1" : "0" ) + " title "
               + ( d.has_title ? "1" : "0" ) + " smcup " + capstr( d.smcup ) + " rmcup " + capstr( d.rmcup );
+      /* Display(true) ran setupterm for this TERM; mosh-client -c reads: */
+      line += " colors " + std::to_string( tigetnum( "colors" ) );
     } catch ( const std::exception& e ) {
       line += std::string( "error " ) + e.what();
     }

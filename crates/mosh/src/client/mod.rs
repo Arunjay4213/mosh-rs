@@ -87,29 +87,24 @@ fn print_usage(file: &mut dyn Write, argv0: &str) {
 
 /// `mosh-client -c`: the number of colors of the terminal named by TERM.
 ///
-/// INTERIM: upstream reads `tigetnum("colors")` from terminfo. The generated
-/// terminfo table (PLAN 9.6) does not hold `colors` yet, so until it does,
-/// this asks `tput colors`, which reads the same terminfo entry. Upstream's
-/// messages and exit status are kept for an unset or unknown TERM.
+/// Upstream calls `setupterm( (char*)0, 1, (int*)0 )` and prints
+/// `tigetnum( "colors" )`; with a null errret, ncurses itself prints the
+/// error and exits 1 for an unset TERM, a hardcopy or a generic type. Here
+/// the answers come from the generated terminfo table (PLAN 9.6), which
+/// reproduces those messages; an unknown TERM gets xterm's count where
+/// upstream reports "unknown terminal type".
 fn print_colorcount() -> ! {
     /* check colors */
-    let term = std::env::var("TERM").unwrap_or_default();
-    if term.is_empty() {
-        errln!("TERM environment variable not set.");
-        std::process::exit(1);
-    }
-    let out = std::process::Command::new("tput")
-        .arg("colors")
-        .stderr(std::process::Stdio::null())
-        .output();
-    match out {
-        Ok(out) if out.status.success() => {
-            let color_val = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    // getenv( "TERM" ): a value that is not UTF-8 cannot name a table entry.
+    let term = std::env::var_os("TERM");
+    let term = term.as_ref().map(|t| t.to_str().unwrap_or("\u{fffd}"));
+    match mosh_terminal::terminfo::colors(term) {
+        Ok(color_val) => {
             outln!("{color_val}");
             std::process::exit(0);
         }
-        _ => {
-            errln!("'{term}': unknown terminal type.");
+        Err(msg) => {
+            errln!("{msg}");
             std::process::exit(1);
         }
     }

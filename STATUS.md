@@ -274,3 +274,19 @@ Measured on devbox at origin/main ab9562e:
 - `INTEROP_FULL=1 tests/interop.sh --client rust --server cxx` (120 s blackouts): 30 cells, 30 passed, 0 failed, wall time 135s.
 - `tests/upstream-check.sh --client rust --server cxx`: total=32 pass=30 xfail=2 fail=0 error=0 xpass=0, 238 s.
 - About agent M's one rust x rust loss30 vim failure (no contact within 15 s, 8 client packets seen): before first contact both clients send few packets. Through `udp-impair` to a port with nothing behind it, `/usr/bin/mosh-client` sent 1, 2, 4, 5 packets by 2, 5, 10, 15 s and ours 1, 2, 4, 6. With 30% loss each way, a cold start can lose all of them, so that cell can fail now and then with any client; it does not point at a client bug.
+
+## 2026-10-13 mosh-client -c from the generated terminfo table (agent B)
+
+What changed: the generated terminfo table also holds `colors`, plus the entries `setupterm` refuses as hardcopy (34) or generic (2).
+`terminfo::colors(TERM)` reproduces upstream's `mosh-client -c`, including ncurses' messages and exit status 1 for an unset or empty TERM, a hardcopy type or a generic type. Upstream's `tigetnum("colors")` is -1 when the entry has no `colors`.
+The client's interim `tput colors` call is replaced, so `-c` works on Windows.
+PLAN 9.6 difference: an unknown TERM prints xterm's count (8) where upstream says "unknown terminal type".
+
+Measured:
+- `cargo test --release -p mosh-tests --test terminfo_table -- --nocapture`:
+  - `terms=2830 (toe -a 1830 plus aliases) compared=5660 upstream_errors_fell_back_to_xterm=74 mismatches=0` (the caps lines now include `colors`).
+  - `colors: cases=2832 unknown_name_fallbacks=1 mismatches=0`. That is every name plus an unknown, an empty and an unset TERM, each compared with upstream's built `mosh-client -c` on stdout, stderr and exit status.
+- Manual comparison with `/usr/bin/mosh-client -c`:
+  - identical for `xterm-256color` (256), `xterm` (8), `xterm-kitty` (256), `dumb` (-1), `xerox1720` (hardcopy message), `unknown` (generic message), and empty and unset TERM (message, exit 1)
+  - `no-such-term` gives 8, the PLAN 9.6 fallback
+- `client_e2e`: 7 passed. `launcher`: 4 passed. `cargo build -p mosh --bin mosh-client --target x86_64-pc-windows-gnu`: builds.

@@ -166,3 +166,79 @@ fn terminfo_table() {
     );
     assert_eq!(mismatches, 0, "terminfo table FAILED");
 }
+
+/// `mosh-client -c` for every terminal type name: upstream's built
+/// `mosh-client` (stdout, stderr, exit status) against what
+/// `terminfo::colors` makes the port print. The one allowed difference is
+/// PLAN.md 9.6: a name that is in no terminfo entry gets xterm's count where
+/// upstream reports "unknown terminal type".
+#[test]
+fn colors_match_upstream_mosh_client() {
+    let client = mosh_tests::oracle::root().join("upstream/src/frontend/mosh-client");
+    assert!(
+        client.exists(),
+        "built upstream mosh-client missing: {}",
+        client.display()
+    );
+    let toe = Command::new("toe").arg("-a").output().expect("run toe -a");
+    let mut known: Vec<String> = String::from_utf8_lossy(&toe.stdout)
+        .lines()
+        .filter_map(|l| l.split_whitespace().next().map(str::to_string))
+        .collect();
+    known.extend(
+        mosh_terminal::terminfo::NAMES
+            .iter()
+            .map(|(n, _)| n.to_string()),
+    );
+    known.sort();
+    known.dedup();
+    let mut cases: Vec<Option<String>> = known.iter().cloned().map(Some).collect();
+    cases.push(Some("no-such-term".to_string()));
+    cases.push(Some(String::new()));
+    cases.push(None);
+
+    let (mut fallbacks, mut mismatches) = (0usize, 0usize);
+    for term in &cases {
+        let mut cmd = Command::new(&client);
+        cmd.arg("-c");
+        match term {
+            Some(t) => cmd.env("TERM", t),
+            None => cmd.env_remove("TERM"),
+        };
+        let out = cmd.output().expect("run upstream mosh-client -c");
+        let upstream = (
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).into_owned(),
+            out.status.code(),
+        );
+        let ours = match mosh_terminal::terminfo::colors(term.as_deref()) {
+            Ok(n) => (format!("{n}\n"), String::new(), Some(0)),
+            Err(msg) => (String::new(), format!("{msg}\n"), Some(1)),
+        };
+        if upstream == ours {
+            continue;
+        }
+        let name = term.clone().unwrap_or_default();
+        let documented_fallback = !name.is_empty()
+            && known.binary_search(&name).is_err()
+            && upstream.1 == format!("'{name}': unknown terminal type.\n")
+            && ours.0
+                == format!(
+                    "{}\n",
+                    mosh_terminal::terminfo::colors(Some("xterm")).unwrap()
+                );
+        if documented_fallback {
+            fallbacks += 1;
+        } else {
+            mismatches += 1;
+            println!("MISMATCH TERM={term:?}: upstream {upstream:?}, port {ours:?}");
+        }
+    }
+    println!(
+        "colors: cases={} unknown_name_fallbacks={} mismatches={}",
+        cases.len(),
+        fallbacks,
+        mismatches
+    );
+    assert_eq!(mismatches, 0, "mosh-client -c differs from upstream");
+}

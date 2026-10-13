@@ -37,7 +37,7 @@ The emulator size is fixed; no resize is applied.
   Like `frame`, but after feeding old and copying `last`, a `Parser::Resize` action resizes the emulator to that size before new is fed, so `new_frame` compares framebuffers of different sizes.
   Output per triple is a big-endian `u32` length followed by the `new_frame` bytes.
 
-- `caps < names`: for each terminal type name on stdin (one per line), set `TERM` to it and print upstream's `Display(true)` decisions on one line: `<hex name> ech E bce B title T smcup <hex>|none rmcup <hex>|none`, or `<hex name> error <message>` when upstream's constructor throws (hardcopy or unknown types).
+- `caps < names`: for each terminal type name on stdin (one per line), set `TERM` to it and print upstream's `Display(true)` decisions on one line: `<hex name> ech E bce B title T smcup <hex>|none rmcup <hex>|none colors N` (N is `tigetnum("colors")`, what `mosh-client -c` prints), or `<hex name> error <message>` when upstream's constructor throws (hardcopy or unknown types).
   `MOSH_NO_TERM_INIT` is honored as upstream does. No W H arguments.
   vt-check prints the same line from the generated table (it never errors: unknown types fall back to xterm, PLAN.md 9.6).
 
@@ -98,6 +98,6 @@ On devbox (glibc 2.39) `C.UTF-8` and `en_US.UTF-8` give identical widths for eve
 
 ## gen-terminfo
 
-`make -C ref/ref-term terminfo` regenerates `crates/terminal/src/terminfo.rs`: for every name from `toe -a` and every alias in each entry's names line, the answers upstream reads after `setupterm` (`ech` present, `bce`, `smcup`, `rmcup`), deduplicated into a tuple table plus a sorted name index.
+`make -C ref/ref-term terminfo` regenerates `crates/terminal/src/terminfo.rs`: for every name from `toe -a` and every alias in each entry's names line, the answers upstream reads after `setupterm` (`ech` present, `bce`, `smcup`, `rmcup`, and `colors` for `mosh-client -c`), the entries `setupterm` rejects as hardcopy or generic (with ncurses' messages reproduced by `terminfo::colors`), deduplicated into a tuple table plus a sorted name index.
 The header records the package versions (ncurses-base/ncurses-term and kitty-terminfo) and glibc.
 `tests/tests/terminfo_table.rs` checks it against ref-term's `caps` for every name and refuses to run if the local packages differ from the recorded ones.
