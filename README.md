@@ -75,7 +75,7 @@ The work follows the order in [PLAN.md](PLAN.md) section 10.
 
 - [x] Benchmarks against C++ mosh 1.4.0, published under [Performance](#performance)
 - [x] v0.1.0 pre-release with static Linux (x86_64, arm64), macOS arm64, and Windows x86_64 binaries
-- [ ] macOS binary used for a real session on a Mac
+- [x] macOS binary used for a real session on a Mac (built from source after v0.1.0; the v0.1.0 macOS launcher cannot resolve addresses, see below)
 
 ## Why a rewrite
 
@@ -114,7 +114,10 @@ sudo install mosh-rs-$v-$t/mosh mosh-rs-$v-$t/mosh-client mosh-rs-$v-$t/mosh-ser
 ### macOS (Apple silicon)
 
 Download `mosh-rs-v0.1.0-aarch64-apple-darwin.tar.gz` and install it the same way, with `shasum -a 256 -c` in place of `sha256sum -c`.
-The macOS binaries are built and pass a `--version` smoke test in the release workflow, but have not been used for a real session on a Mac yet.
+The v0.1.0 macOS `mosh` launcher cannot connect: it finds no address for any host, so it stops with "Could not connect to HOST, last tried :" and "Did not find remote IP address".
+The cause was reading the address family at the Linux position of a C socket address; macOS puts a length byte first.
+It is fixed on main, and the fix was used for a real session from an Apple silicon Mac (macOS 15.8) to a Linux server over the network, typing a command and quitting with `[mosh is exiting.]` ([STATUS.md](STATUS.md)).
+Until the macOS release asset is rebuilt, build from source on the Mac (`cargo build --release -p mosh`). The v0.1.0 `mosh-server` was verified on macOS separately: a Linux client ran a full session against it ([INTERVENTIONS.md](INTERVENTIONS.md)).
 
 ### Windows (x86_64)
 
