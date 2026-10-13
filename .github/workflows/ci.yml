@@ -49,6 +49,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
       - run: cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log; exit ${PIPESTATUS[0]}
         shell: bash
       - uses: actions/upload-artifact@v4
@@ -57,13 +59,16 @@ jobs:
           name: log-clippy
           path: clippy.log
 
+  # tests/run-all.sh runs everything serially (about 15 minutes). CI splits the same tests into
+  # shards that run in parallel; the conformance shard fails if a tests/tests/*.rs file is in no shard.
   test:
-    name: test (${{ matrix.os }})
+    name: test (${{ matrix.shard }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, ubuntu-24.04-arm]
+        shard: [conformance, client, server, scrollback-sh]
     steps:
       - uses: actions/checkout@v4
       # mosh/tmux/ssh for tests/tests/launcher.rs; the rest builds upstream for the ref/ oracles.
@@ -92,12 +97,45 @@ jobs:
           ssh -o BatchMode=yes 127.0.0.1 true
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: tests/run-all.sh 2>&1 | tee test.log; exit ${PIPESTATUS[0]}
+        with:
+          cache-on-failure: true
+      - name: Run shard
+        env:
+          SHARD: ${{ matrix.shard }}
         shell: bash
+        run: |
+          conformance="crypto_conformance terminal_conformance terminfo_table statesync_roundtrip transport_roundtrip transport_sync udp_impair platform_tty launcher"
+          client="client_e2e prediction_e2e"
+          server="server_e2e detached_warning scrollback_server scrollback_hostile"
+          failed=()
+          run() { echo "== $*"; "$@" || failed+=("$*"); }
+          {
+            cargo build --release --workspace
+            case "$SHARD" in
+              conformance)
+                for t in tests/tests/*.rs; do
+                  n=$(basename "$t" .rs)
+                  case " $conformance $client $server " in *" $n "*) ;; *) failed+=("$n is in no CI shard (add it in ci.yml)") ;; esac
+                done
+                run cargo test --release --workspace --exclude mosh-tests --no-fail-fast
+                run cargo test --release -p mosh-tests --lib --bins --no-fail-fast
+                for n in $conformance; do run cargo test --release -p mosh-tests --test "$n"; done ;;
+              client) for n in $client; do run cargo test --release -p mosh-tests --test "$n"; done ;;
+              server) for n in $server; do run cargo test --release -p mosh-tests --test "$n"; done ;;
+              # The same shell drivers tests/run-all.sh runs: every executable tests/*.sh but itself.
+              scrollback-sh)
+                for t in tests/*.sh; do
+                  if [ -x "$t" ] && [ "$(basename "$t")" != run-all.sh ]; then run "$t"; fi
+                done ;;
+            esac
+            echo
+            if [ ${#failed[@]} -ne 0 ]; then echo "shard $SHARD: FAILED: ${failed[*]}"; exit 1; fi
+            echo "shard $SHARD: all passed"
+          } 2>&1 | tee test.log; exit "${PIPESTATUS[0]}"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: log-test-${{ matrix.os }}
+          name: log-test-${{ matrix.shard }}-${{ matrix.os }}
           path: test.log
 
   report:
@@ -142,7 +180,7 @@ jobs:
               n=$(basename "$d"); f=$(ls "$d" | head -1)
               echo; echo "## $n: failures"; echo '```'
               # grep exits 1 when a log has no failures; that is the passing case, not an error.
-              sed 's/\x1b\[[0-9;]*m//g' "$d/$f" | grep -E -A4 'FAILED|panicked at|^run-all:|^error(\[E[0-9]+\])?:|SKIPPED|FAIL:' | head -n 200 || true
+              sed 's/\x1b\[[0-9;]*m//g' "$d/$f" | grep -E -A4 'FAILED|panicked at|^run-all:|^shard .*: FAILED|^error(\[E[0-9]+\])?:|SKIPPED|FAIL:' | head -n 200 || true
               echo '```'
               echo; echo "## $n (last 80 lines)"; echo '```'
               tail -n 80 "$d/$f" | sed 's/\x1b\[[0-9;]*m//g'
