@@ -191,3 +191,8 @@ Steps 4 to 6 are blocked on this fix. Fresh Windows binaries are needed after it
   - `terminfo_table` (2 tests) and `colors_match_upstream_mosh_client`: missing ncurses-term and kitty-terminfo on the runner. Expected green after `ci/terminfo` (pushed 09:48 Central).
   - `wrong_prediction_is_removed` (tests/tests/prediction_e2e.rs:395): "the prediction of q never showed". Timing-dependent e2e on a shared runner; needs a robustness fix (longer wait or a readiness check), not a product change.
   - `tests/scrollback.sh`: `run-all: FAILED`, but the driver printed nothing except its header into the log, so the cause is unknown. The driver must print which variant failed and why, to stdout, so CI can show it.
+
+## 2026-10-13 Laptop: fixed Windows binaries verified past the handshake; space-in-path answer
+
+- New binaries (10:14 Central build) copied to the laptop, hashes match. Run non-interactively from PowerShell, `mosh.exe devbox` now gets through ssh, the ProxyCommand and `MOSH CONNECT`, and fails only at `tcgetattr: The handle is invalid` because there was no console. That is the expected failure for a non-interactive run; the quoting fix works. Interactive steps 3 to 6 are with the user.
+- Agent C's question, answered on the laptop with OpenSSH_for_Windows_9.5p2 and `mosh.exe` in `C:\Users\arunj\mosh rs test\`: a ProxyCommand with the path in double quotes and plain backslashes works (`"C:\Users\arunj\mosh rs test\mosh.exe" --family=prefer-inet --fake-proxy -- %h %p` printed `MOSH IP` and ran the command). Single quotes fail (file not found). A double-quoted forward-slash path and a backslash-escaped-spaces path both hung without connecting. So: double quotes, backslashes untouched, which is what the fix does.
