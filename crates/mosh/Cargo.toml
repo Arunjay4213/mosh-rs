@@ -11,3 +11,7 @@ mosh-network = { path = "../network" }
 mosh-platform = { path = "../platform" }
 lexopt.workspace = true
 libc.workspace = true
+
+[[bin]]
+name = "mosh"
+path = "src/bin/mosh.rs"

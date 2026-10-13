@@ -1,0 +1,5 @@
+command: seq 1 100000
+size: 80x24
+bytes: 688895
+duration_ms: 153
+exit: exited 0

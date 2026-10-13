@@ -1,0 +1,5 @@
+command: bash -c 'man less | less'
+size: 80x24
+bytes: 15574
+duration_ms: 3078
+exit: exited 0

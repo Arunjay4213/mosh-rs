@@ -29,3 +29,15 @@
 // also delete it here.
 //
 // Ported from: (none; crate root)
+
+//! Everything that differs between operating systems lives here: the local
+//! terminal (raw mode, size, reads and writes), the event loop's `Select`,
+//! the pseudoterminal (unix only), process spawning for the launcher, and
+//! locale checks.
+
+pub mod locale;
+pub mod process;
+#[cfg(unix)]
+pub mod pty;
+pub mod select;
+pub mod tty;

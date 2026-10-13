@@ -1,0 +1,18 @@
+# seq 1 100, resize 40x12, seq 1 50, resize 120x40, ls -la /etc | head -30
+expect $  5000
+send seq 1 100\n
+send echo M""ARK1\n
+expect MARK1 5000
+resize 40x12
+wait 500
+send seq 1 50\n
+send echo M""ARK2\n
+expect MARK2 5000
+resize 120x40
+wait 500
+send ls -la /etc | head -30\n
+send echo M""ARK3\n
+expect MARK3 5000
+wait 300
+send exit\n
+end

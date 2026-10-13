@@ -1,0 +1,26 @@
+[?2004hbash-5.2$ printf "CJK: 日本語テキスト 中文 繁體中文\n"
+[?2004lCJK: 日本語テキスト 中文 繁體中文
+[?2004hbash-5.2$ printf "Hangul: 한국어 텍스트 (precomposed) / \u1112\u1161\u11ab (conjoining jamo)\n"
+[?2004lHangul: 한국어 텍스트 (precomposed) / 한 (conjoining jamo)
+[?2004hbash-5.2$ printf "emoji plain: \U0001F600 \U0001F680 \U0001F44D\n"
+[?2004lemoji plain: 😀 🚀 👍
+[?2004hbash-5.2$ printf "VS16: [\u263a\ufe0f] [\u2764\ufe0f] [\u2702\ufe0f]  VS15: [\u263a\ufe0e] bare: [\u263a] [\u2764]\n"
+[?2004lVS16: [☺️] [❤️] [✂️]  VS15: [☺︎] bare: [☺] [❤]
+[?2004hbash-5.2$ printf "ZWJ family: [\U0001F468\u200d\U0001F469\u200d\U0001F467] flag JP: [\U0001F1EF\U0001F1F5] skin tone: [\U0001F44D\U0001F3FD]\n"
+[?2004lZWJ family: [👨‍👩‍👧] flag JP: [🇯🇵] skin tone: [👍🏽]
+[?2004hbash-5.2$ printf "combining: [e\u0301] [a\u0300\u0323] [n\u0303]  Devanagari: [नमस्ते] [क्षि]\n"
+[?2004lcombining: [é] [ạ̀] [ñ]  Devanagari: [नमस्ते] [क्षि]
+[?2004hbash-5.2$ printf "zero width space: [a\u200bb] ZWNJ: [a\u200cb]\n"
+[?2004lzero width space: [a​b] ZWNJ: [a‌b]
+[?2004hbash-5.2$ for i in $(seq 40); do printf "字"; done; printf "\n"
+[?2004l字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字
+[?2004hbash-5.2$ for i in $(seq 80); do printf "字"; done; printf "\n"
+[?2004l字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字字
+[?2004hbash-5.2$ printf "%079d字\n" 0
+[?2004l0000000000000000000000000000000000000000000000000000000000000000000000000000000字
+[?2004hbash-5.2$ printf "Arabic: مرحبا بالعالم  Hebrew: שלום עולם\n"
+[?2004lArabic: مرحبا بالعالم  Hebrew: שלום עולם
+[?2004hbash-5.2$ echo M""ARK1
+[?2004lMARK1
+[?2004hbash-5.2$ exit
+[?2004lexit

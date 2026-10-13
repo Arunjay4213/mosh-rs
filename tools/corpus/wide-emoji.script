@@ -1,0 +1,18 @@
+# CJK, Hangul, emoji with and without variation selectors, ZWJ, flags, combining marks, ZWSP, wrap, Arabic
+expect $  5000
+send printf "CJK: 日本語テキスト 中文 繁體中文\\n"\n
+send printf "Hangul: 한국어 텍스트 (precomposed) / \\u1112\\u1161\\u11ab (conjoining jamo)\\n"\n
+send printf "emoji plain: \\U0001F600 \\U0001F680 \\U0001F44D\\n"\n
+send printf "VS16: [\\u263a\\ufe0f] [\\u2764\\ufe0f] [\\u2702\\ufe0f]  VS15: [\\u263a\\ufe0e] bare: [\\u263a] [\\u2764]\\n"\n
+send printf "ZWJ family: [\\U0001F468\\u200d\\U0001F469\\u200d\\U0001F467] flag JP: [\\U0001F1EF\\U0001F1F5] skin tone: [\\U0001F44D\\U0001F3FD]\\n"\n
+send printf "combining: [e\\u0301] [a\\u0300\\u0323] [n\\u0303]  Devanagari: [नमस्ते] [क्षि]\\n"\n
+send printf "zero width space: [a\\u200bb] ZWNJ: [a\\u200cb]\\n"\n
+send for i in $(seq 40); do printf "字"; done; printf "\\n"\n
+send for i in $(seq 80); do printf "字"; done; printf "\\n"\n
+send printf "%079d字\\n" 0\n
+send printf "Arabic: مرحبا بالعالم  Hebrew: שלום עולם\\n"\n
+send echo M""ARK1\n
+expect MARK1 5000
+wait 300
+send exit\n
+end

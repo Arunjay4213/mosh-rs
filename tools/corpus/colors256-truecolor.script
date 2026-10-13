@@ -1,0 +1,15 @@
+# all 256 foreground and background colors, 24-bit gradients, SGR attribute combinations
+expect $  5000
+send for i in $(seq 0 255); do printf "\\e[38;5;%dm%4d" $i $i; [ $((i % 16)) = 15 ] && printf "\\e[0m\\n"; done; printf "\\e[0m\\n"\n
+send for i in $(seq 0 255); do printf "\\e[48;5;%dm%4d" $i $i; [ $((i % 16)) = 15 ] && printf "\\e[0m\\n"; done; printf "\\e[0m\\n"\n
+send for i in $(seq 0 79); do r=$((i * 255 / 79)); printf "\\e[38;2;%d;%d;%dm#" $r $((255 - r)) 128; done; printf "\\e[0m\\n"\n
+send for i in $(seq 0 79); do r=$((i * 255 / 79)); printf "\\e[48;2;%d;%d;%dm " $((255 - r)) 64 $r; done; printf "\\e[0m\\n"\n
+send for i in $(seq 0 79); do g=$((i * 255 / 79)); printf "\\e[38;2;255;%d;0;48;2;0;0;%dm*" $g $((255 - g)); done; printf "\\e[0m\\n"\n
+send for a in 1 2 3 4 5 7 8 9 21 53; do printf "\\e[%sm attr%s \\e[0m" $a $a; done; printf "\\n"\n
+send printf "\\e[1;3mbold-italic\\e[0m \\e[1;4mbold-underline\\e[0m \\e[2;9mfaint-strike\\e[0m \\e[4;5mul-blink\\e[0m \\e[1;7;31minv-bold-red\\e[0m \\e[3;4;9;38;5;208mital-ul-strike-orange\\e[0m \\e[8mhidden\\e[28m shown\\e[0m\\n"\n
+send printf "\\e[1mbold\\e[22mnormal \\e[3mital\\e[23mup \\e[4mul\\e[24mnoul \\e[5mblink\\e[25mnoblink \\e[7minv\\e[27mnoinv \\e[9mstrike\\e[29mnostrike\\e[0m\\n"\n
+send echo M""ARK1\n
+expect MARK1 5000
+wait 300
+send exit\n
+end

@@ -1,0 +1,313 @@
+[?1049h[22;0;0t[?1h=LESS(1)                     General Commands Manual                    LESS(1)
+
+NAME
+       less - opposite of more
+
+SYNOPSIS
+       less -?
+       less --help
+       less -V
+       less --version
+       less [-[+]aABcCdeEfFgGiIJKLmMnNqQrRsSuUVwWX~]
+            [-b space] [-h lines] [-j line] [-k keyfile]
+            [-{oO} logfile] [-p pattern] [-P prompt] [-t tag]
+            [-T tagsfile] [-x tab,...] [-y lines] [-[z] lines]
+            [-# shift] [+[+]cmd] [--] [filename]...
+       (See  the  OPTIONS section for alternate option syntax with long option
+       names.)
+
+DESCRIPTION
+       Less is a program similar to more(1), but it has  many  more  features.
+       Less  does  not  have to read the entire input file before starting, so
+       with large input files it starts  up  faster  than  text  editors  like
+       vi(1).   Less uses termcap (or terminfo on some systems), so it can run
+:[Ktroff:<standard input>:659: warning [p 9, 8.0i]: cannot adjust line
+troff:<standard input>:1157: warning [p 15, 2.8i]: cannot adjust line
+[K       on a variety of terminals.  There is even limited support for  hardcopy
+       terminals.   (On  a hardcopy terminal, lines which should be printed at
+       the top of the screen are prefixed with a caret.)
+
+       Commands are based on both more and vi.  Commands may be preceded by  a
+       decimal number, called N in the descriptions below.  The number is used
+       by some commands, as indicated.
+
+COMMANDS
+       In  the following descriptions, ^X means control-X.  ESC stands for the
+       ESCAPE key; for example ESC-v means the  two  character  sequence  "ES‐
+       CAPE", then "v".
+
+       h or H Help:  display  a  summary of these commands.  If you forget all
+              the other commands, remember this one.
+
+       SPACE or ^V or f or ^F
+              Scroll forward N lines, default one window (see  option  -z  be‐
+              low).  If N is more than the screen size, only the final screen‐
+              ful  is  displayed.   Warning:  some systems use ^V as a special
+              literalization character.
+
+       z      Like SPACE, but if N is specified, it  becomes  the  new  window
+:[K[K              size.
+
+       ESC-SPACE
+              Like  SPACE,  but  scrolls  a full screenful, even if it reaches
+              end-of-file in the process.
+
+       ENTER or RETURN or ^N or e or ^E or j or ^J
+              Scroll forward N lines, default 1.  The entire N lines are  dis‐
+              played, even if N is more than the screen size.
+
+       d or ^D
+              Scroll forward N lines, default one half of the screen size.  If
+              N  is specified, it becomes the new default for subsequent d and
+              u commands.
+
+       b or ^B or ESC-v
+              Scroll backward N lines, default one window (see option  -z  be‐
+              low).  If N is more than the screen size, only the final screen‐
+              ful is displayed.
+
+       w      Like  ESC-v,  but  if  N is specified, it becomes the new window
+              size.
+
+:[K[K       y or ^Y or ^P or k or ^K
+              Scroll backward N lines, default 1.  The entire N lines are dis‐
+              played, even if N is more than the screen size.   Warning:  some
+              systems use ^Y as a special job control character.
+
+       u or ^U
+              Scroll  backward  N  lines, default one half of the screen size.
+              If N is specified, it becomes the new default for  subsequent  d
+              and u commands.
+
+       J      Like j, but continues to scroll beyond the end of the file.
+
+       K or Y Like  k,  but  continues  to  scroll beyond the beginning of the
+              file.
+
+       ESC-) or RIGHTARROW
+              Scroll horizontally right N characters, default half the  screen
+              width  (see  the -# option).  If a number N is specified, it be‐
+              comes the default for future RIGHTARROW and LEFTARROW  commands.
+              While  the  text  is  scrolled,  it acts as though the -S option
+              (chop lines) were in effect.
+
+       ESC-( or LEFTARROW
+:[K[K              Scroll horizontally left N characters, default half  the  screen
+              width  (see  the -# option).  If a number N is specified, it be‐
+              comes the default for future RIGHTARROW and LEFTARROW commands.
+
+       ESC-} or ^RIGHTARROW
+              Scroll horizontally right to show the end of  the  longest  dis‐
+              played line.
+
+       ESC-{ or ^LEFTARROW
+              Scroll horizontally left back to the first column.
+
+       r or ^R or ^L
+              Repaint the screen.
+
+       R      Repaint the screen, discarding any buffered input.  That is, re‐
+              load  the current file.  Useful if the file is changing while it
+              is being viewed.
+
+       F      Scroll forward, and keep trying to read when the end of file  is
+              reached.   Normally  this  command would be used when already at
+              the end of the file.  It is a way to monitor the tail of a  file
+              which  is  growing  while  it is being viewed.  (The behavior is
+              similar to the "tail -f" command.)  To  stop  waiting  for  more
+:[K[K              data,  enter the interrupt character (usually ^C).  On some sys‐
+              tems you can also use ^X.
+
+       ESC-F  Like F, but as soon as a line is found which  matches  the  last
+              search  pattern, the terminal bell is rung and forward scrolling
+              stops.
+
+       g or < or ESC-<
+              Go to line N in the file, default 1 (beginning of file).  (Warn‐
+              ing: this may be slow if N is large.)
+
+       G or > or ESC->
+              Go to line N in the file, default the end of the  file.   (Warn‐
+              ing:  this  may  be slow if N is large, or if N is not specified
+              and standard input, rather than a file, is being read.)
+
+       ESC-G  Same as G, except if no number N is specified and the  input  is
+              standard  input,  goes  to  the  last  line  which  is currently
+              buffered.
+
+       p or % Go to a position N percent into the file.  N should be between 0
+              and 100, and may contain a decimal point.
+
+:[K[K       P      Go to the line containing byte offset N in the file.
+
+       {      If a left curly bracket appears in the top line displayed on the
+              screen, the { command  will  go  to  the  matching  right  curly
+              bracket.   The matching right curly bracket is positioned on the
+              bottom line of the screen.  If there is more than one left curly
+              bracket on the top line, a number N may be used to  specify  the
+              N-th bracket on the line.
+
+       }      If a right curly bracket appears in the bottom line displayed on
+              the  screen,  the  }  command will go to the matching left curly
+              bracket.  The matching left curly bracket is positioned  on  the
+              top  line  of the screen.  If there is more than one right curly
+              bracket on the top line, a number N may be used to  specify  the
+              N-th bracket on the line.
+
+       (      Like {, but applies to parentheses rather than curly brackets.
+
+       )      Like }, but applies to parentheses rather than curly brackets.
+
+       [      Like  {, but applies to square brackets rather than curly brack‐
+              ets.
+
+:[K[K       ]      Like }, but applies to square brackets rather than curly  brack‐
+              ets.
+
+       ESC-^F Followed  by two characters, acts like {, but uses the two char‐
+              acters as open and close brackets, respectively.   For  example,
+              "ESC  ^F < >" could be used to go forward to the > which matches
+              the < in the top displayed line.
+
+       ESC-^B Followed by two characters, acts like }, but uses the two  char‐
+              acters  as  open and close brackets, respectively.  For example,
+              "ESC ^B < >" could be used to go backward to the < which matches
+              the > in the bottom displayed line.
+
+       m      Followed by any lowercase or uppercase letter, marks  the  first
+              displayed  line  with  that letter.  If the status column is en‐
+              abled via the -J option, the  status  column  shows  the  marked
+              line.
+
+       M      Acts  like  m,  except  the last displayed line is marked rather
+              than the first displayed line.
+
+       '      (Single quote.)  Followed by any lowercase or uppercase  letter,
+              returns  to  the  position which was previously marked with that
+:[K[K              letter.  Followed by another single quote, returns to the  posi‐
+              tion  at  which  the last "large" movement command was executed.
+              Followed by a ^ or $, jumps to the beginning or end of the  file
+              respectively.   Marks are preserved when a new file is examined,
+              so the ' command can be used to switch between input files.
+
+       ^X^X   Same as single quote.
+
+       ESC-m  Followed by any lowercase or uppercase letter, clears  the  mark
+              identified by that letter.
+
+       /pattern
+              Search forward in the file for the N-th line containing the pat‐
+              tern.  N defaults to 1.  The pattern is a regular expression, as
+              recognized  by  the  regular expression library supplied by your
+              system.  The search starts at the first line displayed (but  see
+              the -a and -j options, which change this).
+
+              Certain  characters  are  special if entered at the beginning of
+              the pattern; they modify the type of search rather  than  become
+              part of the pattern:
+
+              ^N or !
+:[K[K                     Search for lines which do NOT match the pattern.
+
+              ^E or *
+                     Search  multiple  files.   That is, if the search reaches
+                     the END of the current file without finding a match,  the
+                     search  continues  in  the  next file in the command line
+                     list.
+
+              ^F or @
+                     Begin the search at the first line of the FIRST  file  in
+                     the  command  line  list, regardless of what is currently
+                     displayed on the screen or the settings of the -a  or  -j
+                     options.
+
+              ^K     Highlight  any text which matches the pattern on the cur‐
+                     rent screen, but don't move to the first match (KEEP cur‐
+                     rent position).
+
+              ^R     Don't interpret regular expression  metacharacters;  that
+                     is, do a simple textual comparison.
+
+              ^W     WRAP  around  the  current  file.  That is, if the search
+                     reaches the end of the current  file  without  finding  a
+:[K[K                     match,  the  search  continues from the first line of the
+                     current file up to the line where it started.
+
+       ?pattern
+              Search backward in the file for the  N-th  line  containing  the
+              pattern.   The search starts at the last line displayed (but see
+              the -a and -j options, which change this).
+
+              Certain characters are special as in the / command:
+
+              ^N or !
+                     Search for lines which do NOT match the pattern.
+
+              ^E or *
+                     Search multiple files.  That is, if  the  search  reaches
+                     the  beginning  of  the  current  file  without finding a
+                     match, the search continues in the previous file  in  the
+                     command line list.
+
+              ^F or @
+                     Begin the search at the last line of the last file in the
+                     command  line  list, regardless of what is currently dis‐
+                     played on the screen or the settings of the -a or -j  op‐
+:[K[K/[Kpp[Kaa[Ktt[Ktt[Kee[Krr[Knn[K[1;1H                     match,  the  search  continues from the first line of the
+[2;1H                     current file up to the line where it started.
+[3;1H
+[4;1H       ?pattern
+[5;1H              Search backward in the file for the  N-th  line  containing  the
+[6;1H              pattern.   The search starts at the last line displayed (but see
+[7;1H              the -a and -j options, which change this).
+[8;1H
+[9;1H              Certain characters are special as in the / command:
+[10;1H
+[11;1H              ^N or !
+[12;1H                     Search for lines which do NOT match the pattern.
+[13;1H
+[14;1H              ^E or *
+[15;1H                     Search multiple files.  That is, if  the  search  reaches
+[16;1H                     the  beginning  of  the  current  file  without finding a
+[17;1H                     match, the search continues in the previous file  in  the
+[18;1H                     command line list.
+[19;1H
+[20;1H              ^F or @
+[21;1H                     Begin the search at the last line of the last file in the
+[22;1H                     command  line  list, regardless of what is currently dis‐
+[23;1H                     played on the screen or the settings of the -a or -j  op‐
+[24;1H[1;1H                     match,  the  search  continues from the first line of the
+[2;1H                     current file up to the line where it started.
+[3;1H
+[4;1H       ?[7mpattern[27m
+[5;1H              Search backward in the file for the  N-th  line  containing  the
+[6;1H              [7mpattern[27m.   The search starts at the last line displayed (but see
+[7;1H              the -a and -j options, which change this).
+[8;1H
+[9;1H              Certain characters are special as in the / command:
+[10;1H
+[11;1H              ^N or !
+[12;1H                     Search for lines which do NOT match the [7mpattern[27m.
+[13;1H
+[14;1H              ^E or *
+[15;1H                     Search multiple files.  That is, if  the  search  reaches
+[16;1H                     the  beginning  of  the  current  file  without finding a
+[17;1H                     match, the search continues in the previous file  in  the
+[18;1H                     command line list.
+[19;1H
+[20;1H              ^F or @
+[21;1H                     Begin the search at the last line of the last file in the
+[22;1H                     command  line  list, regardless of what is currently dis‐
+[23;1H                     played on the screen or the settings of the -a or -j  op‐
+[24;1H                     tions.
+
+              ^K     As in forward searches.
+:[K[K/[K
+              ^R     As in forward searches.
+:[K[K/[K
+              ^W     WRAP  around  the  current  file.  That is, if the search
+                     reaches the beginning of the current file without finding
+                     a match, the search continues from the last line  of  the
+                     current file up to the line where it started.
+
+:[K[K[?1l>[?1049l[23;0;0t

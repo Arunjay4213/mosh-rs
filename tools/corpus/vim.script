@@ -1,0 +1,56 @@
+# vim -u NONE -N FILE: insert 30 lines with tabs and UTF-8, move, :set number, scroll, :q!
+wait 1500
+send i
+send line 01\tplain ASCII text with a tab\r
+send line 02\t\tdouble tab\r
+send line 03 UTF-8: café naïve résumé Ünïcödé\r
+send line 04 Greek: αβγδε ΑΒΓΔΕ\r
+send line 05 Cyrillic: Привет мир\r
+send line 06 CJK wide: 日本語テキスト 中文\r
+send line 07 Hangul: 한국어\r
+send line 08 emoji: 😀 🚀 ✨\r
+send line 09 box: ┌──┬──┐ │a │b │ └──┴──┘\r
+send line 10\tcol1\tcol2\tcol3\r
+send line 11 the quick brown fox jumps over the lazy dog\r
+send line 12 THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG\r
+send line 13 0123456789 !@#$%^&*()_+-=[]{};:'",.<>/?\r
+send line 14 a long line that goes past the eightieth column so that vim has to wrap it onto the next screen row\r
+send line 15 math: ∑ ∫ √ ≤ ≥ ≠ ∞ π\r
+send line 16\tindented\r
+send line 17 arrows: ← ↑ → ↓ ⇒\r
+send line 18 mixed: abc日本def中ghi\r
+send line 19 accents: àáâãäå èéêë\r
+send line 20 currency: € £ ¥ ₹ ₩\r
+send line 21\ttrailing tab\t\r
+send line 22 quotes: “double” ‘single’ «guillemets»\r
+send line 23 Thai: สวัสดี\r
+send line 24 Hebrew: שלום\r
+send line 25 dingbats: ✓ ✗ ★ ☆ ♠ ♥\r
+send line 26 fullwidth: ＡＢＣ１２３\r
+send line 27\t\t\tthree tabs\r
+send line 28 keyboard: ⌘ ⌥ ⇧ ⌃\r
+send line 29 last but one\r
+send line 30 the end\x1b
+wait 500
+send gg
+wait 200
+send :set number\r
+wait 300
+send 5j$
+wait 200
+send 3w
+wait 200
+send G
+wait 300
+send \x15
+wait 300
+send \x04
+wait 300
+send \x05\x05\x05
+wait 300
+send \x19\x19
+wait 300
+send 14G
+wait 300
+send :q!\r
+end

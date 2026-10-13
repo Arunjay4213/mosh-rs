@@ -1,0 +1,5 @@
+command: vim -u NONE -N /tmp/tmp.s7AJt2kfjx/vim-corpus.txt
+size: 80x24
+bytes: 9100
+duration_ms: 4752
+exit: exited 0

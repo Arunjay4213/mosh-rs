@@ -1,0 +1,5 @@
+[H[J]8;;http://example.com[This is a link]8;;[
+]8;id=foo;http://example.com[link]8;;[
+]8;foo=bar:bar=baz;http://example.com[link]8;;[
+]8;;vscode://file/home/achin/test:1:1\x5c[0m[35mtest[0m]8;;\x5c:[0m[1m[31mtest[0m
+[mend

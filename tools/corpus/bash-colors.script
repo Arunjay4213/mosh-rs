@@ -1,0 +1,15 @@
+# bash --norc -i: colored ls, 16 colors with echo -e, grep --color, exit.
+expect $  5000
+send ls --color=always -la /usr/bin | head -40\n
+send echo M""ARK1\n
+expect MARK1 5000
+send for c in 30 31 32 33 34 35 36 37 90 91 92 93 94 95 96 97; do echo -ne "\\e[${c}m fg$c \\e[0m"; done; echo\n
+send for c in 40 41 42 43 44 45 46 47 100 101 102 103 104 105 106 107; do echo -ne "\\e[${c}m bg$c \\e[0m"; done; echo\n
+send echo -e "\\e[1;31mbold red\\e[0m \\e[4;32munderline green\\e[0m \\e[7;34minverse blue\\e[0m"\n
+send grep --color=always -n -E 'mosh|Keith|terminal' /etc/services /etc/passwd /etc/os-release | head -20\n
+send grep --color=always -i -E 'ubuntu|version' /etc/os-release\n
+send echo M""ARK2\n
+expect MARK2 5000
+wait 300
+send exit\n
+end

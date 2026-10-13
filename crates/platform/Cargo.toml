@@ -12,4 +12,4 @@ libc.workspace = true
 nix.workspace = true
 
 [target.'cfg(windows)'.dependencies]
-windows-sys.workspace = true
+windows-sys = { workspace = true, features = ["Win32_Networking_WinSock", "Win32_Storage_FileSystem", "Win32_System_IO"] }

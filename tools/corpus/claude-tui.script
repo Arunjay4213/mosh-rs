@@ -1,0 +1,15 @@
+# claude --version, then the claude TUI for 8 seconds, Ctrl-C twice, exit the shell
+expect $  5000
+send claude --version\n
+send echo M""ARK1\n
+expect MARK1 15000
+send claude\n
+wait 8000
+send \x03
+wait 400
+send \x03
+wait 2000
+send echo M""ARK2\n
+expect MARK2 10000
+send exit\n
+end

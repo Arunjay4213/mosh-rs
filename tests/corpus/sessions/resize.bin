@@ -1,0 +1,192 @@
+[?2004hbash-5.2$ seq 1 100
+[?2004l1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+51
+52
+53
+54
+55
+56
+57
+58
+59
+60
+61
+62
+63
+64
+65
+66
+67
+68
+69
+70
+71
+72
+73
+74
+75
+76
+77
+78
+79
+80
+81
+82
+83
+84
+85
+86
+87
+88
+89
+90
+91
+92
+93
+94
+95
+96
+97
+98
+99
+100
+[?2004hbash-5.2$ echo M""ARK1
+[?2004lMARK1
+[?2004hbash-5.2$ seq 1 50
+[?2004l1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23
+24
+25
+26
+27
+28
+29
+30
+31
+32
+33
+34
+35
+36
+37
+38
+39
+40
+41
+42
+43
+44
+45
+46
+47
+48
+49
+50
+[?2004hbash-5.2$ echo M""ARK2
+[?2004lMARK2
+[?2004hbash-5.2$ ls -la /etc | head -30
+[?2004ltotal 1168
+drwxr-xr-x 146 root   root      12288 Oct 13 05:10 .
+drwxr-xr-x  22 root   root       4096 Oct  9 18:01 ..
+-rw-------   1 root   root          0 Jul 14 10:18 .pwd.lock
+-rw-r--r--   1 root   root        789 Jul 14 10:18 .resolv.conf.systemd-resolved.bak
+-rw-r--r--   1 root   root        208 Jul 14 10:18 .updated
+drwxr-xr-x   4 root   root       4096 Jul 14 10:24 ModemManager
+drwxr-xr-x   8 root   root       4096 Aug  7 17:37 NetworkManager
+drwxr-xr-x   2 root   root       4096 Jul 14 10:24 PackageKit
+drwxr-xr-x   2 root   root       4096 Aug  7 17:37 UPower
+drwxr-xr-x  12 root   root       4096 Aug  7 17:37 X11
+drwxr-xr-x   4 root   root       4096 Jul 14 10:30 acpi
+-rw-r--r--   1 root   root       3444 Jul  5  2023 adduser.conf
+drwxr-xr-x   3 root   root       4096 Aug  7 17:36 alsa
+drwxr-xr-x   2 root   root      12288 Oct 13 05:38 alternatives
+drwxr-xr-x   3 root   root       4096 Aug  7 18:13 apache2
+-rw-r--r--   1 root   root        433 Apr  8  2024 apg.conf
+drwxr-xr-x   2 root   root       4096 Jul 14 10:24 apparmor
+drwxr-xr-x   9 root   root       4096 Sep 22 06:13 apparmor.d
+drwxr-xr-x   4 root   root       4096 Aug  7 17:36 apport
+drwxr-xr-x   8 root   root       4096 Jul 14 10:31 apt
+drwxr-xr-x   3 root   root       4096 Aug  7 17:37 avahi
+-rw-r--r--   1 root   root       2319 Mar 31  2024 bash.bashrc
+-rw-r--r--   1 root   root         45 Jan 24  2020 bash_completion
+drwxr-xr-x   2 root   root       4096 Jul 14 10:24 bash_completion.d
+-rw-r--r--   1 root   root        367 Aug  2  2022 bindresvport.blacklist
+drwxr-xr-x   2 root   root       4096 Apr 19  2024 binfmt.d
+drwxr-xr-x   2 root   root       4096 Oct 10 06:58 bluetooth
+drwxr-xr-x   2 root   root       4096 Jul 14 10:24 byobu
+drwxr-xr-x   3 root   root       4096 Jul 14 10:18 ca-certificates
+ls: write error: Broken pipe
+[?2004hbash-5.2$ echo M""ARK3
+[?2004lMARK3
+[?2004hbash-5.2$ exit
+[?2004lexit

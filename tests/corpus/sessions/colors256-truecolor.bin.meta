@@ -1,0 +1,5 @@
+command: bash --norc --noprofile -i
+size: 80x24
+bytes: 14896
+duration_ms: 369
+exit: exited 0

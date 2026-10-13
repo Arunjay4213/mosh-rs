@@ -1,0 +1,31 @@
+# man less | less: page down 10 times, search /pattern, q
+expect LESS(1) 10000
+wait 300
+send \x20
+wait 150
+send \x20
+wait 150
+send \x20
+wait 150
+send \x20
+wait 150
+send \x20
+wait 150
+send \x20
+wait 150
+send \x20
+wait 150
+send \x20
+wait 150
+send \x20
+wait 150
+send \x20
+wait 300
+send /pattern\r
+wait 500
+send n
+wait 300
+send n
+wait 300
+send q
+end

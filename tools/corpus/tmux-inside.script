@@ -1,0 +1,11 @@
+# tmux -f /dev/null -L corpus new-session: seq 1 200, split pane, ls, kill-server
+wait 1500
+send seq 1 200\r
+expect 200 5000
+wait 500
+send \x02"
+wait 1000
+send ls\r
+wait 1000
+send tmux kill-server\r
+end

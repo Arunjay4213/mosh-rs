@@ -1,0 +1,68 @@
+[?2004hbash-5.2$ ls --color=always -la /usr/bin | head -40
+[?2004ltotal 910424
+drwxr-xr-x  2 root root        57344 Oct 13 05:38 [0m[01;34m.[0m
+drwxr-xr-x 13 root root         4096 Oct 13 05:38 [01;34m..[0m
+-rwxr-xr-x  1 root root           38 Apr 11  2024 [01;32m7z[0m
+-rwxr-xr-x  1 root root           39 Apr 11  2024 [01;32m7za[0m
+-rwxr-xr-x  1 root root           39 Apr 11  2024 [01;32m7zr[0m
+lrwxrwxrwx  1 root root           11 May 22 15:41 [01;36mGET[0m -> [01;32mlwp-request[0m
+lrwxrwxrwx  1 root root           11 May 22 15:41 [01;36mHEAD[0m -> [01;32mlwp-request[0m
+lrwxrwxrwx  1 root root            4 Feb 10  2024 [01;36mNF[0m -> [01;32mcol1[0m
+lrwxrwxrwx  1 root root           11 May 22 15:41 [01;36mPOST[0m -> [01;32mlwp-request[0m
+lrwxrwxrwx  1 root root            6 Mar 31  2024 [01;36mThunar[0m -> [01;32mthunar[0m
+-rwxr-xr-x  1 root root       133416 Mar 25  2026 [01;32mVGAuthService[0m
+lrwxrwxrwx  1 root root            4 Jun 29 17:33 [01;36mX[0m -> [01;32mXorg[0m
+lrwxrwxrwx  1 root root            1 Apr  8  2024 [01;36mX11[0m -> [01;34m.[0m
+-rwxr-xr-x  1 root root          274 Jun 29 17:33 [01;32mXorg[0m
+-rwxr-xr-x  1 root root      2199384 Jun 29 17:33 [01;32mXvfb[0m
+-rwxr-xr-x  1 root root        67760 Aug 25 15:09 [01;32m[[0m
+-rwxr-xr-x  1 root root        67672 Apr 13 22:29 [01;32maa-enabled[0m
+-rwxr-xr-x  1 root root        67872 Apr 13 22:29 [01;32maa-exec[0m
+-rwxr-xr-x  1 root root        67896 Apr 13 22:29 [01;32maa-features-abi[0m
+-rwxr-xr-x  1 root root        68072 Feb  9  2026 [01;32maarch64-linux-gnu-addr2line[0m
+-rwxr-xr-x  1 root root        67824 Feb  9  2026 [01;32maarch64-linux-gnu-ar[0m
+-rwxr-xr-x  1 root root       464304 Feb  9  2026 [01;32maarch64-linux-gnu-as[0m
+-rwxr-xr-x  1 root root        67632 Feb  9  2026 [01;32maarch64-linux-gnu-c++filt[0m
+lrwxrwxrwx  1 root root           24 Jan 31  2024 [01;36maarch64-linux-gnu-cpp[0m -> [01;32maarch64-linux-gnu-cpp-13[0m
+-rwxr-xr-x  1 root root       990040 Dec 18  2025 [01;32maarch64-linux-gnu-cpp-13[0m
+-rwxr-xr-x  1 root root      2035056 Feb  9  2026 [01;32maarch64-linux-gnu-dwp[0m
+-rwxr-xr-x  1 root root        68088 Feb  9  2026 [01;32maarch64-linux-gnu-elfedit[0m
+lrwxrwxrwx  1 root root           24 Jan 31  2024 [01;36maarch64-linux-gnu-g++[0m -> [01;32maarch64-linux-gnu-g++-13[0m
+-rwxr-xr-x  1 root root       990040 Dec 18  2025 [01;32maarch64-linux-gnu-g++-13[0m
+lrwxrwxrwx  1 root root           24 Jan 31  2024 [01;36maarch64-linux-gnu-gcc[0m -> [01;32maarch64-linux-gnu-gcc-13[0m
+-rwxr-xr-x  1 root root       990040 Dec 18  2025 [01;32maarch64-linux-gnu-gcc-13[0m
+lrwxrwxrwx  1 root root           27 Jan 31  2024 [01;36maarch64-linux-gnu-gcc-ar[0m -> [01;32maarch64-linux-gnu-gcc-ar-13[0m
+-rwxr-xr-x  1 root root        68048 Dec 18  2025 [01;32maarch64-linux-gnu-gcc-ar-13[0m
+lrwxrwxrwx  1 root root           27 Jan 31  2024 [01;36maarch64-linux-gnu-gcc-nm[0m -> [01;32maarch64-linux-gnu-gcc-nm-13[0m
+-rwxr-xr-x  1 root root        68048 Dec 18  2025 [01;32maarch64-linux-gnu-gcc-nm-13[0m
+lrwxrwxrwx  1 root root           31 Jan 31  2024 [01;36maarch64-linux-gnu-gcc-ranlib[0m -> [01;32maarch64-linux-gnu-gcc-ranlib-13[0m[K
+-rwxr-xr-x  1 root root        68048 Dec 18  2025 [01;32maarch64-linux-gnu-gcc-ranlib-13[0m
+lrwxrwxrwx  1 root root           25 Jan 31  2024 [01;36maarch64-linux-gnu-gcov[0m -> [01;32maarch64-linux-gnu-gcov-13[0m
+-rwxr-xr-x  1 root root       462800 Dec 18  2025 [01;32maarch64-linux-gnu-gcov-13[0m
+ls: write error
+[?2004hbash-5.2$ echo M""ARK1
+[?2004lMARK1
+[?2004hbash-5.2$ for c in 30 31 32 33 34 35 36 37 90 91 92 93 94 95 96 97; do echo -ne "\e[${c}m fg$c \e[0m"; done; echo
+[?2004l[30m fg30 [0m[31m fg31 [0m[32m fg32 [0m[33m fg33 [0m[34m fg34 [0m[35m fg35 [0m[36m fg36 [0m[37m fg37 [0m[90m fg90 [0m[91m fg91 [0m[92m fg92 [0m[93m fg93 [0m[94m fg94 [0m[95m fg95 [0m[96m fg96 [0m[97m fg97 [0m
+[?2004hbash-5.2$ for c in 40 41 42 43 44 45 46 47 100 101 102 103 104 105 106 107; do echo -ne "\e[${c}m bg$c \e[0m"; done; echo
+[?2004l[40m bg40 [0m[41m bg41 [0m[42m bg42 [0m[43m bg43 [0m[44m bg44 [0m[45m bg45 [0m[46m bg46 [0m[47m bg47 [0m[100m bg100 [0m[101m bg101 [0m[102m bg102 [0m[103m bg103 [0m[104m bg104 [0m[105m bg105 [0m[106m bg106 [0m[107m bg107 [0m
+[?2004hbash-5.2$ echo -e "\e[1;31mbold red\e[0m \e[4;32munderline green\e[0m \e[7;34minverse blue\e[0m"
+[?2004l[1;31mbold red[0m [4;32munderline green[0m [7;34minverse blue[0m
+[?2004hbash-5.2$ grep --color=always -n -E 'mosh|Keith|terminal' /etc/services /etc/passwd /etc/os-release | head -20
+[?2004l[?2004hbash-5.2$ grep --color=always -i -E 'ubuntu|version' /etc/os-release
+[?2004lPRETTY_NAME="[01;31m[KUbuntu[m[K 24.04.4 LTS"
+NAME="[01;31m[KUbuntu[m[K"
+[01;31m[KVERSION[m[K_ID="24.04"
+[01;31m[KVERSION[m[K="24.04.4 LTS (Noble Numbat)"
+[01;31m[KVERSION[m[K_CODENAME=noble
+ID=[01;31m[Kubuntu[m[K
+HOME_URL="https://www.[01;31m[Kubuntu[m[K.com/"
+SUPPORT_URL="https://help.[01;31m[Kubuntu[m[K.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/[01;31m[Kubuntu[m[K/"
+PRIVACY_POLICY_URL="https://www.[01;31m[Kubuntu[m[K.com/legal/terms-and-policies/privacy-policy"
+[01;31m[KUBUNTU[m[K_CODENAME=noble
+LOGO=[01;31m[Kubuntu[m[K-logo
+[?2004hbash-5.2$ echo M""ARK2
+[?2004lMARK2
+[?2004hbash-5.2$ exit
+[?2004lexit

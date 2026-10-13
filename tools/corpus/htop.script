@@ -1,0 +1,4 @@
+# htop for 5 seconds, then F10 to quit
+wait 5000
+send \x1b[21~
+end

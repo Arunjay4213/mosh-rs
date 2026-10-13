@@ -1,0 +1,5 @@
+command: tmux -f /dev/null -L corpus new-session
+size: 80x24
+bytes: 4713
+duration_ms: 4015
+exit: exited 1

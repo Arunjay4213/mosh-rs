@@ -27,5 +27,33 @@
 // so, delete this exception statement from your version. If you delete
 // this exception statement from all source files in the program, then
 // also delete it here.
-//
-// Ported from: (none; crate root)
+
+//! Terminal emulator and display: a port of upstream mosh's `src/terminal`.
+//!
+//! Upstream namespaces map to modules: `Parser::*` lives in `parser`,
+//! `parserstate`, `parseraction`, `parsertransition`; `Terminal::*` lives in
+//! the `terminal*` modules. The character width table in `wcwidth` is
+//! generated from glibc so widths match upstream exactly.
+
+#![allow(non_snake_case)]
+#![allow(non_camel_case_types)]
+#![allow(non_upper_case_globals)]
+
+pub mod parser;
+pub mod parseraction;
+pub mod parserstate;
+pub mod parsertransition;
+pub mod terminal;
+pub mod terminaldispatcher;
+pub mod terminaldisplay;
+pub mod terminaldisplayinit;
+pub mod terminalframebuffer;
+pub mod terminalfunctions;
+pub mod terminaluserinput;
+pub mod wcwidth;
+
+pub use parser::UTF8Parser;
+pub use parseraction::{Action, ActionType, Actions, Resize, UserByte};
+pub use terminal::Emulator;
+pub use terminaldisplay::{Display, FrameState};
+pub use terminalframebuffer::{Cell, DrawState, Framebuffer, Hyperlink, Renditions, Row};
