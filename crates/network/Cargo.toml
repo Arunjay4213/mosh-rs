@@ -5,6 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+description = "State Synchronization Protocol, AES-128-OCB crypto and UDP transport of mosh-rs, a Rust port of mosh (the mobile shell)"
+keywords = ["mosh", "ssp", "udp", "ocb", "protocol"]
+categories = ["network-programming", "cryptography"]
+include = ["src/**/*.rs", "LICENSE"]
 
 [dependencies]
 # zeroize: wipe the AES key schedule on drop, as upstream's ae_clear() does
@@ -13,6 +19,6 @@ ocb3.workspace = true
 rand.workspace = true
 prost.workspace = true
 flate2.workspace = true
-mosh-platform = { path = "../platform" }
+mosh-platform.workspace = true
 # already in the build through aes; used directly to wipe Session's key copy without unsafe
 zeroize = "1"

@@ -1,0 +1,84 @@
+name: Publish to crates.io
+
+on:
+  # Runs after the Release workflow finishes for a pushed v* tag, and only
+  # publishes when that run succeeded, so a tag whose release build failed
+  # never reaches crates.io.
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  # Manual run: publishes the checked-out ref (pick the tag in the UI).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       startsWith(github.event.workflow_run.head_branch, 'v'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for the crates.io token
+        id: token
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "$CARGO_REGISTRY_TOKEN" ]; then
+            echo "::notice::CARGO_REGISTRY_TOKEN is not set, so nothing is published. Add the secret (crates.io API token with publish-new and publish-update scopes) and re-run."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.token.outputs.present == 'true'
+        with:
+          # workflow_run starts on the default branch; publish the tagged commit instead.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.token.outputs.present == 'true'
+
+      - name: Check the tag matches the crate version
+        if: steps.token.outputs.present == 'true' && github.event_name == 'workflow_run'
+        env:
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "mosh-terminal") | .version')
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::tag $TAG does not match the workspace version $version"
+            exit 1
+          fi
+
+      - name: Publish in dependency order
+        if: steps.token.outputs.present == 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          # mosh-network depends on mosh-platform; mosh depends on the other three.
+          crates="mosh-terminal mosh-platform mosh-network mosh"
+          first=1
+          for c in $crates; do
+            version=$(cargo metadata --no-deps --format-version 1 | jq -r --arg c "$c" '.packages[] | select(.name == $c) | .version')
+            # A re-run skips versions that are already on crates.io (publishing them again is an error).
+            status=$(curl -s -o /dev/null -w '%{http_code}' -A "mosh-rs publish workflow (github.com/${GITHUB_REPOSITORY})" \
+              "https://crates.io/api/v1/crates/$c/$version")
+            if [ "$status" = "200" ]; then
+              echo "$c $version is already on crates.io, skipping"
+              continue
+            fi
+            # cargo publish waits for each crate to appear in the index; the extra pause
+            # gives the index CDN time to serve it before the next crate resolves it.
+            if [ "$first" = 0 ]; then sleep 30; fi
+            first=0
+            echo "== publishing $c $version"
+            cargo publish --locked -p "$c" --token "$CARGO_REGISTRY_TOKEN"
+          done

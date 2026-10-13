@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [0.1.1] - unreleased
 
+### Added
+
+- crates.io packaging: `cargo install mosh` builds and installs `mosh`, `mosh-client`, and `mosh-server` from source (Rust 1.89 or later). The four crates (`mosh-terminal`, `mosh-platform`, `mosh-network`, `mosh`) carry crates.io metadata, and a publish workflow uploads them in dependency order after a successful tagged release.
+
 ### Fixed
 
 - macOS: `mosh` could not connect to any host ("Could not connect to HOST, last tried :", then "Did not find remote IP address"), because it read the address family at the Linux position of a socket address. It now connects; verified with a real session from an Apple silicon Mac to a Linux server.

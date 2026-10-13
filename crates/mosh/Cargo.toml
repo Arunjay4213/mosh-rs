@@ -1,16 +1,29 @@
 [package]
+# Published crate name: `cargo install mosh`. To publish under another name, change it here
+# and in `package` of the `mosh` entry in the workspace Cargo.toml. The library stays
+# `mosh` and the three binaries keep their names, as both are pinned below.
 name = "mosh"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+description = "The mobile shell (mosh) in Rust: wire-compatible with mosh 1.4, with a native Windows client and real scrollback. Installs mosh, mosh-client and mosh-server."
+keywords = ["mosh", "ssh", "terminal", "remote-shell", "udp"]
+categories = ["command-line-utilities", "network-programming"]
+include = ["src/**/*.rs", "LICENSE"]
 
 [dependencies]
-mosh-terminal = { path = "../terminal" }
-mosh-network = { path = "../network" }
-mosh-platform = { path = "../platform" }
+mosh-terminal.workspace = true
+mosh-network.workspace = true
+mosh-platform.workspace = true
 libc.workspace = true
+
+[lib]
+name = "mosh"
+path = "src/lib.rs"
 
 [[bin]]
 name = "mosh"

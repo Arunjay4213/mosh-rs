@@ -5,6 +5,12 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+description = "Platform layer of mosh-rs (tty, pty, process spawning, UDP sockets, select loop) for Unix and Windows"
+keywords = ["mosh", "pty", "tty", "udp", "terminal"]
+categories = ["os::unix-apis", "os::windows-apis", "network-programming"]
+include = ["src/**/*.rs", "LICENSE"]
 
 [dependencies]
 libc.workspace = true
