@@ -1,7 +1,7 @@
 result: failure
-commit: 6e1699a6ff2852d55fa7144d7d4c43be0da6b6a8
-subject: review T-1, T-2 resolved; STATUS and INTERVENTIONS: generated terminfo table, kitty-terminfo on devbox
-run: https://github.com/Arunjay4213/mosh-rs/actions/runs/38361005210
+commit: 53c8860c363249b95964362df30cb7f42dcac4ea
+subject: launcher: module doc comment
+run: https://github.com/Arunjay4213/mosh-rs/actions/runs/38361662671
 fmt: success
 clippy: success
 test: failure
@@ -15,7 +15,7 @@ test: failure
     Checking mosh-tools v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tools)
     Checking mosh v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/mosh)
     Checking mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.55s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 12.17s
 ```
 
 ## log-fmt (last 80 lines)
@@ -80,26 +80,26 @@ error: 1 target failed:
     Finished `release` profile [optimized] target(s) in 0.01s
     Finished `release` profile [optimized] target(s) in 0.02s
 --- loss30-rebind: proxy --loss 0.30 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
-control at 5s: rebind -> ok rebind port=52218
-Server now attached to client at 127.0.0.1:38495
-Server now attached to client at 127.0.0.1:52218
-elapsed 10.41s; client: status=done elapsed_ms=10403 packets_received=20 acked_ts_advance=10015; server: packets_received=49 acked_ts_advance=9837 remote_addr=127.0.0.1:52218; state 5981 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.41s
-proxy stats: c2s forwarded=49 dropped=12 reordered=4 s2c forwarded=20 dropped=9 reordered=2
-PASS loss30-rebind: converged in 10.41s, 2 client address(es)
+control at 5s: rebind -> ok rebind port=60887
+Server now attached to client at 127.0.0.1:41226
+Server now attached to client at 127.0.0.1:60887
+elapsed 10.46s; client: status=done elapsed_ms=10462 packets_received=16 acked_ts_advance=10382; server: packets_received=50 acked_ts_advance=9472 remote_addr=127.0.0.1:60887; state 6109 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.47s
+proxy stats: c2s forwarded=50 dropped=14 reordered=4 s2c forwarded=16 dropped=7 reordered=2
+PASS loss30-rebind: converged in 10.46s, 2 client address(es)
 --- loss5: proxy --loss 0.05 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
-Server now attached to client at 127.0.0.1:51417
-elapsed 10.37s; client: status=done elapsed_ms=10368 packets_received=42 acked_ts_advance=10026; server: packets_received=71 acked_ts_advance=9866 remote_addr=127.0.0.1:51417; state 5973 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.37s
-proxy stats: c2s forwarded=71 dropped=7 reordered=7 s2c forwarded=42 dropped=1 reordered=2
-PASS loss5: converged in 10.37s, 1 client address(es)
+Server now attached to client at 127.0.0.1:48494
+elapsed 10.42s; client: status=done elapsed_ms=10417 packets_received=43 acked_ts_advance=10037; server: packets_received=71 acked_ts_advance=9887 remote_addr=127.0.0.1:48494; state 6388 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.42s
+proxy stats: c2s forwarded=71 dropped=7 reordered=7 s2c forwarded=43 dropped=1 reordered=2
+PASS loss5: converged in 10.42s, 1 client address(es)
 --- loss30-blackout: proxy --loss 0.30 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
 control at 4s: blackout 3000 -> ok
-Server now attached to client at 127.0.0.1:41569
-elapsed 10.32s; client: status=done elapsed_ms=10322 packets_received=13 acked_ts_advance=9977; server: packets_received=40 acked_ts_advance=9749 remote_addr=127.0.0.1:41569; state 6523 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.32s
-proxy stats: c2s forwarded=40 dropped=47 reordered=4 s2c forwarded=13 dropped=7 reordered=2
-PASS loss30-blackout: converged in 10.32s, 1 client address(es)
+Server now attached to client at 127.0.0.1:59834
+elapsed 10.79s; client: status=done elapsed_ms=10786 packets_received=7 acked_ts_advance=10648; server: packets_received=39 acked_ts_advance=9366 remote_addr=127.0.0.1:59834; state 6273 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.79s
+proxy stats: c2s forwarded=39 dropped=45 reordered=5 s2c forwarded=7 dropped=6 reordered=1
+PASS loss30-blackout: converged in 10.79s, 1 client address(es)
 transport-impaired: all 3 runs passed
 
 run-all: cargo test plus 1 shell driver(s)
@@ -126,7 +126,7 @@ test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fini
 
 running 0 tests
 
-test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 
    Doc-tests mosh_network
 
@@ -162,28 +162,28 @@ error: 1 target failed:
     `-p mosh-tests --test terminfo_table`
 == transport-impaired.sh
     Finished `release` profile [optimized] target(s) in 0.01s
-    Finished `release` profile [optimized] target(s) in 0.02s
+    Finished `release` profile [optimized] target(s) in 0.03s
 --- loss30-rebind: proxy --loss 0.30 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
-control at 5s: rebind -> ok rebind port=45348
-Server now attached to client at 127.0.0.1:33138
-Server now attached to client at 127.0.0.1:45348
-elapsed 12.28s; client: status=done elapsed_ms=12281 packets_received=21 acked_ts_advance=11835; server: packets_received=51 acked_ts_advance=10102 remote_addr=127.0.0.1:45348; state 5874 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.28s
-proxy stats: c2s forwarded=51 dropped=19 reordered=4 s2c forwarded=21 dropped=6 reordered=3
-PASS loss30-rebind: converged in 12.28s, 2 client address(es)
+control at 5s: rebind -> ok rebind port=39080
+Server now attached to client at 127.0.0.1:56721
+Server now attached to client at 127.0.0.1:39080
+elapsed 10.63s; client: status=done elapsed_ms=10624 packets_received=15 acked_ts_advance=10574; server: packets_received=50 acked_ts_advance=9697 remote_addr=127.0.0.1:39080; state 5923 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.63s
+proxy stats: c2s forwarded=50 dropped=15 reordered=5 s2c forwarded=15 dropped=6 reordered=1
+PASS loss30-rebind: converged in 10.63s, 2 client address(es)
 --- loss5: proxy --loss 0.05 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
-Server now attached to client at 127.0.0.1:56524
-elapsed 10.40s; client: status=done elapsed_ms=10398 packets_received=44 acked_ts_advance=10027; server: packets_received=71 acked_ts_advance=9876 remote_addr=127.0.0.1:56524; state 6064 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.40s
-proxy stats: c2s forwarded=71 dropped=7 reordered=7 s2c forwarded=44 dropped=1 reordered=2
-PASS loss5: converged in 10.40s, 1 client address(es)
+Server now attached to client at 127.0.0.1:59298
+elapsed 10.42s; client: status=done elapsed_ms=10416 packets_received=43 acked_ts_advance=10036; server: packets_received=71 acked_ts_advance=9886 remote_addr=127.0.0.1:59298; state 5518 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.42s
+proxy stats: c2s forwarded=71 dropped=7 reordered=7 s2c forwarded=43 dropped=1 reordered=2
+PASS loss5: converged in 10.42s, 1 client address(es)
 --- loss30-blackout: proxy --loss 0.30 --delay-ms 100 --jitter-ms 50 --reorder 0.10 --seed 7
 control at 4s: blackout 3000 -> ok
-Server now attached to client at 127.0.0.1:56330
-elapsed 10.73s; client: status=done elapsed_ms=10732 packets_received=7 acked_ts_advance=10592; server: packets_received=39 acked_ts_advance=9320 remote_addr=127.0.0.1:56330; state 6174 bytes
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.73s
-proxy stats: c2s forwarded=39 dropped=49 reordered=5 s2c forwarded=7 dropped=6 reordered=1
-PASS loss30-blackout: converged in 10.73s, 1 client address(es)
+Server now attached to client at 127.0.0.1:60257
+elapsed 10.45s; client: status=done elapsed_ms=10447 packets_received=10 acked_ts_advance=10428; server: packets_received=43 acked_ts_advance=9516 remote_addr=127.0.0.1:60257; state 6268 bytes
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.45s
+proxy stats: c2s forwarded=43 dropped=50 reordered=5 s2c forwarded=10 dropped=6 reordered=1
+PASS loss30-blackout: converged in 10.45s, 1 client address(es)
 transport-impaired: all 3 runs passed
 
 run-all: cargo test plus 1 shell driver(s)
