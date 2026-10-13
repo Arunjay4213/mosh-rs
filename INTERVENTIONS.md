@@ -194,7 +194,7 @@ The lid-close test (sleep the laptop, wake it, the session is still live) is the
 
 - An independent review of commit 451b2ce arrived from the user's other machine (`reviews/2026-10-13-phase1-terminal-network.md`, 26 findings). Blocking items F1, F4, F5, F8 and F17 were already fixed in d9c8289. The remaining network items went to agent A, terminal items to agent B, and the missing impaired-transport driver to agent H.
 - PLAN.md section 9 gained items 7-10 (clock base offset, errors instead of aborts on malformed authenticated input, two iterator-UB repairs, `compare` omitted from the `State` trait). Reason: the review found these deliberate differences documented only in code comments, and section 9 is the one place deviations may live.
-- CI was red on d9c8289 because the GitHub runner has no upstream C++ tree. One agent is making CI build mosh 1.4.0 from source.
+- CI was red on d9c8289 because the GitHub runner has no upstream C++ tree. One agent is making CI build mosh 1.4.0 from source. (Correction: CI builds upstream master at decd9b7, not the 1.4.0 tag; see the entry "CI push blocked and upstream version corrected".)
 
 ## 2026-10-13 Phase 0
 

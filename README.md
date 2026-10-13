@@ -61,7 +61,7 @@ A box is checked only when its gate has passed and the result is recorded in [ST
 
 ### Phase 3: Windows
 
-- [ ] `mosh.exe` runs in Windows Terminal against a Linux server and survives sleep and wake
+- [x] `mosh.exe` runs in Windows Terminal against a Linux server and survives losing the network (Wi-Fi off and on, accepted by the user in place of sleep and wake)
 
 ### Phase 4: scrollback
 
@@ -222,7 +222,8 @@ The escape key is Ctrl-^, as in upstream; in Windows Terminal you type it as Ctr
 So Ctrl+6 then `.` quits the session.
 
 Tested by hand on a Windows laptop in Windows Terminal against a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)): connecting, typing, `ls --color`, vim, UTF-8 output, Ctrl-C, resizing and quitting all worked, and a session survived turning Wi-Fi off and on.
-Not tested yet: the laptop sleeping and waking during a session, Ctrl-^ Ctrl-Z, and idle CPU on Windows.
+The user accepted the Wi-Fi off-and-on test as the Phase 3 pass in place of a sleep-and-wake test, because both cut the network under a live session and mosh recovers from either the same way; sleeping and waking the laptop itself has not been run.
+Not tested yet: Ctrl-^ Ctrl-Z and idle CPU on Windows.
 
 ## How correctness is checked
 

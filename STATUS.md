@@ -54,7 +54,7 @@ What passed:
 - Code quality bar: `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` clean at commit d9c8289.
 
 What failed:
-- CI on d9c8289: the GitHub runner has no upstream C++ tree, so `ref-crypto` cannot build. Not a code failure. One agent is making CI build mosh 1.4.0 from source and install mosh, tmux and ssh on the runner so the same oracles run there.
+- CI on d9c8289: the GitHub runner has no upstream C++ tree, so `ref-crypto` cannot build. Not a code failure. One agent is making CI build mosh 1.4.0 from source and install mosh, tmux and ssh on the runner so the same oracles run there. (Correction: CI builds upstream master at decd9b7, the tree the oracles use, not the 1.4.0 tag; see INTERVENTIONS.md "CI push blocked and upstream version corrected".)
 
 Gate not yet declared: waiting on the Fable line-by-line review of the terminal and transport ports (`reviews/phase1-*.md`) and on green CI, as CLAUDE.md requires.
 
@@ -674,3 +674,12 @@ Green CI at 157a55a (PR #12; fmt, clippy and every test shard on x86_64 and arm6
 ## 2026-10-13 udp_impair blackout test made race-free (agent H)
 
 - `tests/tests/udp_impair.rs` `blackout_silences_then_resumes` now drains in-flight replies before the blackout and judges packets by send time; see INTERVENTIONS. `cargo test --release --workspace --test udp_impair`: 6 passed. Blackout test 30 of 30 under `stress-ng --cpu 8`; fails (155 of 155 answered) with the proxy's blackout disabled.
+
+## 2026-10-13 Phase 3 gate: PASSED (user decision)
+
+- The user accepted the Wi-Fi off-and-on roaming test as the Phase 3 pass condition, in place of the sleep-and-wake step in PLAN section 3 item 8 (decision recorded by the laptop, commit 1e53737 "Phase 3 gate accepted by the user on the roaming result"). Sleep and wake itself was not run.
+- Evidence (INTERVENTIONS.md, laptop entries): in Windows Terminal with OpenSSH_for_Windows 9.5p2, `mosh.exe devbox` connects after the ProxyCommand quoting fix (8a32d96); connecting, typing, `ls --color`, vim, UTF-8 output, Ctrl-C, resizing, and quitting with Ctrl+6 then `.` all worked; `mosh.exe --server=<our mosh-server> devbox` (Rust client on Windows, Rust server on devbox over Tailscale) kept `top` updating while Wi-Fi was turned off and on, with no reconnect and no error. A folder path with a space works with the double-quoted ProxyCommand.
+- Built on devbox: `mosh.exe` and `mosh-client.exe` cross-compiled for x86_64-pc-windows-gnu, importing only system DLLs; the MSVC target passes `cargo check`.
+- Not tested on Windows: Ctrl-^ Ctrl-Z, idle CPU in Task Manager, sleep and wake. The Fable review of `crates/platform` (the Windows console path) is running from the laptop; its findings will be handled as they land, and a blocking one reopens this gate.
+
+Also in this commit: the unused `unicode-width` and `lexopt` declarations are removed (PLAN section 2 updated), the workspace `repository` URL is the GitHub repository, and the two old entries that said CI builds mosh 1.4.0 carry a correction (it builds decd9b7). Checked: release build, `cargo clippy --workspace --all-targets -- -D warnings` on stable and on 1.89.0, Windows build of `mosh`, `cargo fmt --all --check`.

@@ -74,8 +74,8 @@ One Cargo workspace, four crates, plus tooling that is not shipped.
 - `tests/`: the end-to-end and conformance tests described in section 3, run with `cargo test --release` plus shell drivers.
 
 Dependencies: `aes` (with its `zeroize` feature), `ocb3`, `rand`, `prost`, `flate2` (with the `zlib-rs` backend), `nix` (unix only), `libc`, `windows-sys` (Windows only), and `zeroize` (wipes the session key copy without `unsafe`, review F23).
-`unicode-width` was replaced by a width table generated from glibc `wcwidth` (INTERVENTIONS.md, Phase 0); it is still declared in the workspace `Cargo.toml` but no crate uses it.
-`lexopt` is still declared by `crates/mosh` but unused: the launcher ports mosh.pl's Getopt::Long parsing by hand (section 8), and `mosh-client` and `mosh-server` port upstream's `getopt`.
+`unicode-width` was replaced by a width table generated from glibc `wcwidth` (INTERVENTIONS.md, Phase 0) and is no longer declared.
+`lexopt` is not used and no longer declared: the launcher ports mosh.pl's Getopt::Long parsing by hand (section 8), and `mosh-client` and `mosh-server` port upstream's `getopt`.
 Nothing else without a reason written in the PR.
 
 ## 3. Correctness strategy (the oracles)

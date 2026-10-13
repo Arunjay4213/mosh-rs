@@ -10,7 +10,6 @@ repository.workspace = true
 mosh-terminal = { path = "../terminal" }
 mosh-network = { path = "../network" }
 mosh-platform = { path = "../platform" }
-lexopt.workspace = true
 libc.workspace = true
 
 [[bin]]

@@ -15,7 +15,7 @@ edition = "2021"
 # Minimum supported Rust, verified: 1.88 is refused by the aes crate (0.9.3 needs 1.89).
 rust-version = "1.89"
 license = "GPL-3.0-or-later"
-repository = "https://example.invalid/mosh-rs"
+repository = "https://github.com/Arunjay4213/mosh-rs"
 
 [workspace.dependencies]
 aes = "^0.9.3"
@@ -26,8 +26,6 @@ flate2 = { version = "^1.1.10", default-features = false, features = ["zlib-rs"]
 nix = { version = "^0.31.3", features = ["term", "process", "poll", "signal", "fs", "ioctl", "socket", "net"] }
 libc = "^0.2.190"
 windows-sys = { version = "^0.61.2", features = ["Win32_System_Console", "Win32_Foundation", "Win32_System_Threading"] }
-unicode-width = "^0.2.2"
-lexopt = "^0.3.2"
 
 [profile.release]
 opt-level = 3
