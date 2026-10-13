@@ -32,6 +32,9 @@
 // whose stdout and stderr both go into the pipe, the `while ( <$pipe> )` line
 // loop, `close $pipe; waitpid`, and `exec` of the client).
 
+//! Child processes for the launcher, ported from upstream `scripts/mosh.pl`:
+//! ssh with stdout and stderr merged into one pipe read by lines, and exec.
+
 use std::io::{self, BufRead, BufReader, PipeReader};
 use std::process::{Child, Command, ExitStatus, Stdio};
 
@@ -44,6 +47,7 @@ pub struct LineProcess {
     reader: BufReader<PipeReader>,
 }
 
+/// Spawn `cmd` with stdout and stderr into one pipe and stdin inherited.
 pub fn spawn_merged(cmd: &mut Command) -> io::Result<LineProcess> {
     let (reader, writer) = io::pipe()?;
     cmd.stdin(Stdio::inherit())

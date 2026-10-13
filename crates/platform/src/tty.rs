@@ -33,6 +33,10 @@
 // process_resize), upstream/src/util/swrite.cc (swrite).
 // The Windows half is new (no upstream equivalent), following PLAN section 7.
 
+//! The local terminal, ported from upstream `src/frontend/stmclient.cc` and
+//! `src/util/swrite.cc`: raw mode on and off, window size, stdin reads and
+//! complete stdout writes. Windows uses console modes (PLAN section 7).
+
 #[cfg(unix)]
 pub use self::unix::*;
 #[cfg(windows)]
@@ -46,6 +50,7 @@ mod unix {
     /// What `Select` and `read_stdin` use for the local terminal input.
     pub type Fd = std::os::fd::RawFd;
 
+    /// The fd to watch in `Select` for terminal input.
     pub fn stdin_fd() -> Fd {
         libc::STDIN_FILENO
     }
@@ -271,12 +276,14 @@ mod windows {
     }
 
     impl RawModeGuard {
+        /// Restore the saved console modes and code pages.
         pub fn restore_saved(&self) -> io::Result<()> {
             set_console_mode(self.input, self.saved_input_mode)?;
             set_console_mode(self.output, self.saved_output_mode)?;
             set_code_pages(self.saved_input_cp, self.saved_output_cp)
         }
 
+        /// Apply the raw console modes and UTF-8 code pages again.
         pub fn apply_raw(&self) -> io::Result<()> {
             set_console_mode(self.input, raw_input_mode(self.saved_input_mode))?;
             set_console_mode(self.output, raw_output_mode(self.saved_output_mode))?;
@@ -284,6 +291,7 @@ mod windows {
         }
     }
 
+    /// Restore the saved console state.
     pub fn raw_mode_off(mut guard: RawModeGuard) -> io::Result<()> {
         guard.restored = true;
         guard.restore_saved()
@@ -400,6 +408,7 @@ mod windows {
         Ok(written)
     }
 
+    /// The socket to watch in `Select` for console input.
     pub fn stdin_fd() -> Fd {
         stdin_socket().as_raw_socket()
     }

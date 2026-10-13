@@ -32,6 +32,10 @@
 // child setenv + execvp) and upstream/src/util/pty_compat.cc (forkpty).
 // Unix only. The utmp code in mosh-server.cc is not ported (PLAN 9.2).
 
+//! Pseudoterminal for mosh-server, ported from upstream
+//! `src/frontend/mosh-server.cc` and `src/util/pty_compat.cc`: forkpty,
+//! window size, exec in the child, and waiting for the child. Unix only.
+
 use std::ffi::CString;
 use std::io;
 use std::os::fd::{AsRawFd, OwnedFd};
@@ -42,7 +46,14 @@ use std::process::ExitStatus;
 /// the child pid; the child gets the slave side as stdin, stdout and stderr,
 /// is a session leader, and has the pty as its controlling terminal.
 pub enum Fork {
-    Parent { master: OwnedFd, child: libc::pid_t },
+    /// In the parent.
+    Parent {
+        /// Master side of the pty.
+        master: OwnedFd,
+        /// Process id of the child.
+        child: libc::pid_t,
+    },
+    /// In the child.
     Child,
 }
 

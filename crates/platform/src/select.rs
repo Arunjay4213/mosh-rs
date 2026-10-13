@@ -65,12 +65,19 @@ pub use libc::{SIGCONT, SIGHUP, SIGINT, SIGPIPE, SIGTERM, SIGUSR1, SIGWINCH};
 /// console size), and Ctrl-C arrives as byte 0x03 instead of SIGINT.
 #[cfg(windows)]
 mod winsig {
+    /// Hangup.
     pub const SIGHUP: i32 = 1;
+    /// Interrupt.
     pub const SIGINT: i32 = 2;
+    /// User signal 1.
     pub const SIGUSR1: i32 = 10;
+    /// Broken pipe.
     pub const SIGPIPE: i32 = 13;
+    /// Terminate.
     pub const SIGTERM: i32 = 15;
+    /// Continue after stop.
     pub const SIGCONT: i32 = 18;
+    /// Window size changed.
     pub const SIGWINCH: i32 = 28;
 }
 #[cfg(windows)]
@@ -97,6 +104,7 @@ extern "C" fn handle_signal(signum: libc::c_int) {
     }
 }
 
+/// Waits for readable fds and signals with a timeout, as upstream `Select`.
 pub struct Select {
     #[cfg(unix)]
     max_fd: Fd,
@@ -124,6 +132,7 @@ impl Default for Select {
 }
 
 impl Select {
+    /// Set the verbosity for poll diagnostics.
     pub fn set_verbose(s_verbose: u32) {
         VERBOSE.store(s_verbose, Ordering::Relaxed);
     }
@@ -170,6 +179,7 @@ impl Select {
 
 #[cfg(unix)]
 impl Select {
+    /// No fds, no signals registered.
     pub fn new() -> Select {
         // SAFETY: fd_set and sigset_t are plain data; FD_ZERO and
         // sigemptyset initialize them.
@@ -190,6 +200,7 @@ impl Select {
         }
     }
 
+    /// Watch `fd` for reading in the next `select`.
     pub fn add_fd(&mut self, fd: Fd) {
         assert!((0..libc::FD_SETSIZE as Fd).contains(&fd));
         if fd > self.max_fd {
@@ -199,6 +210,7 @@ impl Select {
         unsafe { libc::FD_SET(fd, &mut self.all_fds) };
     }
 
+    /// Stop watching every fd.
     pub fn clear_fds(&mut self) {
         // SAFETY: all_fds is a valid fd_set.
         unsafe { libc::FD_ZERO(&mut self.all_fds) };
@@ -280,6 +292,7 @@ impl Select {
         Ok(ret)
     }
 
+    /// Whether `fd` was readable after the last `select`.
     pub fn read(&self, fd: Fd) -> bool {
         // SAFETY: fd sets are valid; fd was range-checked in add_fd.
         unsafe {
@@ -291,6 +304,7 @@ impl Select {
 
 #[cfg(windows)]
 impl Select {
+    /// No fds, no signals registered.
     pub fn new() -> Select {
         Select {
             all_fds: Vec::new(),
@@ -300,12 +314,14 @@ impl Select {
         }
     }
 
+    /// Watch socket `fd` for reading in the next `select`.
     pub fn add_fd(&mut self, fd: Fd) {
         if !self.all_fds.contains(&fd) {
             self.all_fds.push(fd);
         }
     }
 
+    /// Stop watching every socket.
     pub fn clear_fds(&mut self) {
         self.all_fds.clear();
     }
@@ -376,6 +392,7 @@ impl Select {
         Ok(ret)
     }
 
+    /// Whether `fd` was readable after the last `select`.
     pub fn read(&self, fd: Fd) -> bool {
         debug_assert!(self.all_fds.contains(&fd));
         self.read_fds.contains(&fd)

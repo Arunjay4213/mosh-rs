@@ -3,6 +3,13 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 Launcher CI failures fixed; PLAN 9.1 withdrawn (agent C)
+
+- CI failure 1, `missing_server_is_reported`: the GitHub runner has no TERM, so `mosh-client -c` (the launcher's color count) printed "TERM environment variable not set" and the launcher exited 255. Real mosh fails the same way, so the behavior is right; the test now sets `TERM=xterm-256color` on the process, and the tmux sessions `export TERM=xterm-256color` (tmux would otherwise give the pane `tmux-256color`).
+- CI failure 2, `launches_session_on_localhost_with_command`: a real bug on dual-stack hosts, reproduced on devbox. ssh connected over `::1`, mosh-server bound `[::1]:60001` (from SSH_CONNECTION), and our launcher, having resolved the name itself (PLAN 9.1, `ssh -G`), started the client at `127.0.0.1:60001`, which never heard from the server. `/usr/bin/mosh` worked against the same name in both `/etc/hosts` orders.
+- Devbox change for the reproduction and the new test: `sudo sh -c 'grep -q mosh-dualstack /etc/hosts || printf "::1 mosh-dualstack\n127.0.0.1 mosh-dualstack\n" >> /etc/hosts'`, plus `ssh-keyscan mosh-dualstack` (and `-p 2222` for an experiment) appended to `~/.ssh/known_hosts`. Currently the entries are in the order 127.0.0.1 then ::1 (both orders were tested).
+- Fix: PLAN 9.1 withdrawn. The launcher ports mosh.pl's `--fake-proxy` (it is ssh's ProxyCommand, connects to the first address that accepts TCP, reports `MOSH IP`, relays), so client and server always use the same address. `-o HostName=<ip> -o HostKeyAlias=<name>` was tried first and rejected: for a non-default port plain ssh checks `[host]:port` in known_hosts and then falls back to `host`, while any one HostKeyAlias value checks only one of the two forms, and a command-line HostKeyAlias overrides one set in `~/.ssh/config`. PLAN sections 8 and 9.1, docs/ARCHITECTURE.md and README updated.
+
 ## 2026-10-13 NEEDS THE USER: push branch ci/run-all
 
 - NEEDS THE USER: push branch ci/run-all (commit a36d03d, one line in `.github/workflows/ci.yml`). The test job runs `tests/run-all.sh` instead of `cargo build && cargo test`, so shell drivers such as `tests/transport-impaired.sh` run in CI too. `run-all.sh` itself now passes `--no-fail-fast` (on main, 8636f95), so one failing test binary no longer hides the rest. This replaces the "low priority" note in the entry below.

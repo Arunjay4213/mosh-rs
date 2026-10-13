@@ -33,6 +33,8 @@
 // On Windows the console is switched to the UTF-8 code page by
 // `tty::raw_mode_on`, so the charset is always UTF-8 there.
 
+//! Locale checks, ported from upstream `src/util/locale_utils.cc`.
+
 /// The locale variables, in upstream order. mosh.pl forwards the ones that
 /// are set to the server (`-l NAME=VALUE`); `clear_locale_variables` unsets
 /// all of them.
@@ -54,12 +56,16 @@ pub const LOCALE_VARS: [&str; 15] = [
     "LC_ALL",
 ];
 
+/// A locale variable and its value, as upstream `LocaleVar`.
 pub struct LocaleVar {
+    /// Variable name, empty when none is set.
     pub name: String,
+    /// Its value.
     pub value: String,
 }
 
 impl LocaleVar {
+    /// `NAME=value`, or `[no charset variables]`.
     pub fn str(&self) -> String {
         if self.name.is_empty() {
             return "[no charset variables]".to_string();
@@ -84,6 +90,8 @@ pub fn get_ctype() -> LocaleVar {
     }
 }
 
+/// The charset of the current locale (`nl_langinfo(CODESET)`), with
+/// `ANSI_X3.4-1968` shown as `US-ASCII`.
 #[cfg(unix)]
 pub fn locale_charset() -> String {
     // SAFETY: nl_langinfo returns a pointer to a static NUL-terminated string.
@@ -96,11 +104,13 @@ pub fn locale_charset() -> String {
     ret
 }
 
+/// Always `UTF-8`: the console code page is set to UTF-8 in raw mode.
 #[cfg(windows)]
 pub fn locale_charset() -> String {
     "UTF-8".to_string()
 }
 
+/// Whether the locale's charset is UTF-8.
 pub fn is_utf8_locale() -> bool {
     /* Verify locale calls for UTF-8 */
     let charset = locale_charset();
@@ -128,9 +138,11 @@ pub fn set_native_locale() {
     }
 }
 
+/// Nothing to adopt on Windows.
 #[cfg(windows)]
 pub fn set_native_locale() {}
 
+/// Unset every variable in `LOCALE_VARS`.
 pub fn clear_locale_variables() {
     for name in LOCALE_VARS {
         std::env::remove_var(name);

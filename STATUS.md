@@ -127,3 +127,15 @@ Measured (devbox, worktree at origin/main):
 - `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings`: clean.
 
 Open: CI is red only in `tests/tests/launcher.rs` (agent C, real apt mosh on the runner: `TERM environment variable not set`); the network tests pass in CI.
+
+## 2026-10-13 Launcher: CI failures fixed, dual-stack bug fixed (agent C)
+
+What changed:
+- The `mosh` launcher no longer resolves the server name on its own (`ssh -G`). Like mosh.pl, it is ssh's ProxyCommand (`--fake-proxy`): it connects to the first address that accepts TCP, reports it as `MOSH IP`, and relays the ssh session, so mosh-server and mosh-client always use the same address. PLAN 9.1 withdrawn, section 8 rewritten.
+- `tests/tests/launcher.rs` sets `TERM=xterm-256color` for every process it starts, and has a new dual-stack case (`mosh-dualstack` resolving to `::1` and `127.0.0.1`, run with no flag, `-4` and `-6`; skipped with a printed reason where that /etc/hosts entry is absent, e.g. CI, where `localhost` covers it).
+
+Measured on devbox:
+- Before the fix, `mosh mosh-dualstack -- true` with real 1.4.0 binaries: "mosh did not make a successful connection to 127.0.0.1:60001" (server bound `[::1]:60001`), in both /etc/hosts orders; `/usr/bin/mosh` succeeded. After: exit 0 for no flag, `-4`, `-6`, both orders; client argv `127.0.0.1 60001` and `ss -ulnp` shows the server on `127.0.0.1:60001`.
+- `cargo test --release -p mosh-tests --test launcher`, 5 runs in a row: 4 passed, 0 failed each time (4.1-8.4 s).
+- The dual-stack test fails against the previous launcher (timed out waiting for LAUNCH_OK).
+- `--local`, `--ssh='ssh -p 2222'` and an unreachable ssh port behave as `/usr/bin/mosh` (same messages, exit 10 on the last).

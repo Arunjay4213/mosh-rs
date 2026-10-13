@@ -32,8 +32,14 @@
 //
 // End-to-end tests of the `mosh` launcher against the real mosh 1.4.0
 // `mosh-client` and `mosh-server` from apt, over `ssh localhost`. A pass
-// proves: `ssh -G` parsing, name resolution, the `mosh-server new` command
+// proves: the proxy's name resolution, the `mosh-server new` command
 // line, `MOSH CONNECT` parsing, and the exec of the client with MOSH_KEY.
+// Since the launcher is its own ssh ProxyCommand (`--fake-proxy`, as
+// mosh.pl), a pass also proves that path.
+//
+// Every process gets TERM=xterm-256color explicitly: `mosh-client -c` (the
+// color count) fails without TERM, and tmux would otherwise give the pane
+// `tmux-256color`, so the result would depend on the runner.
 //
 // Needs `ssh -o BatchMode=yes localhost true` to succeed.
 
@@ -137,7 +143,7 @@ impl Drop for Tmux {
 /// final screen can be read.
 fn session(mosh_args: &str) -> String {
     format!(
-        "{} {mosh_args}; echo MOSH_EXIT=$?; sleep 60",
+        "export TERM=xterm-256color; {} {mosh_args}; echo MOSH_EXIT=$?; sleep 60",
         mosh_binary().display()
     )
 }
@@ -196,6 +202,7 @@ fn missing_server_is_reported() {
             "--server=/bin/false",
             "localhost",
         ])
+        .env("TERM", "xterm-256color")
         .stdin(Stdio::null())
         .output()
         .expect("run mosh");
@@ -210,4 +217,46 @@ fn missing_server_is_reported() {
     );
     // Real mosh 1.4.0 exits with 10 here (ECHILD left in $! by waitpid).
     assert_eq!(out.status.code(), Some(10));
+}
+
+/// A name with both an IPv6 and an IPv4 address. ssh may connect over
+/// either; mosh-server binds the address from SSH_CONNECTION, so the client
+/// must be started with the same one or it never hears from the server.
+/// Needs `::1 mosh-dualstack` and `127.0.0.1 mosh-dualstack` in /etc/hosts
+/// (set up on devbox; on CI `localhost` resolves to both families and the
+/// first test covers this).
+#[test]
+fn launches_session_on_dual_stack_name() {
+    let addrs = Command::new("getent")
+        .args(["ahosts", "mosh-dualstack"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).into_owned())
+        .unwrap_or_default();
+    if !(addrs.contains("::1") && addrs.contains("127.0.0.1")) {
+        println!("SKIPPED: /etc/hosts has no ::1 and 127.0.0.1 entries for mosh-dualstack");
+        return;
+    }
+    require_ssh_localhost();
+    for family in ["", "-4", "-6"] {
+        let tmux = Tmux::start(
+            &format!("dualstack{family}"),
+            &session(&format!(
+                "{family} --client=/usr/bin/mosh-client --server=/usr/bin/mosh-server mosh-dualstack -- sh -c 'echo LAUNCH_OK; sleep 1'"
+            )),
+        );
+        tmux.wait_for("LAUNCH_OK", Duration::from_secs(30));
+        let done = tmux.wait_for("MOSH_EXIT=", Duration::from_secs(30));
+        println!(
+            "mosh {family} mosh-dualstack, final screen:\n{}",
+            done.trim_end()
+        );
+        assert!(
+            done.contains("[mosh is exiting.]"),
+            "no exit message:\n{done}"
+        );
+        assert!(
+            done.contains("MOSH_EXIT=0"),
+            "mosh exited non-zero:\n{done}"
+        );
+    }
 }

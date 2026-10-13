@@ -176,13 +176,16 @@ Design, all gated on negotiation so old peers see byte-identical behavior:
 
 ## 8. Launcher
 
-Upstream's Perl launcher finds the server IP by acting as its own ProxyCommand (`--fake-proxy`) so it sees the hostname ssh resolved from `~/.ssh/config`.
-We replace that with `ssh -G <host>`, which prints the resolved `hostname`, `port`, and `user`, then resolve the name with the system resolver (MagicDNS names like `devbox` resolve to the Tailscale address).
+The launcher ports mosh.pl, including its address discovery: it runs ssh with `-S none -o ProxyCommand='<own exe>' '--family=<family>' --fake-proxy -- %h %p`.
+In that mode the launcher resolves `%h` (the hostname after `~/.ssh/config`) with the system resolver (MagicDNS names like `devbox` resolve to the Tailscale address), orders or filters the addresses by `--family`, opens a TCP connection to the first one that accepts it on `%p`, prints `MOSH IP <address>` on stderr and relays the ssh session over that connection.
+So mosh-server sees that address in `SSH_CONNECTION` and binds it, and the client is started with the same address; on hosts with both IPv4 and IPv6 addresses the two cannot disagree.
+Host key checking is untouched because ssh still connects to the name the user typed.
+An earlier design (`ssh -G`, then resolving the name separately) was dropped: on dual-stack hosts ssh and the client could pick different address families (INTERVENTIONS.md, 2026-10-13), and `-o HostName=<ip> -o HostKeyAlias=...` cannot reproduce ssh's known_hosts lookup for non-default ports (`[host]:port` with fallback to `host`).
 Supported flags for v0.1: `--server`, `--ssh`, `--port`, `--predict`, `--no-init`, `--local`, `-4`/`-6`, `--scrollback`, and the `user@host` and trailing command forms.
 
 ## 9. Deviations from upstream (the only allowed ones)
 
-1. Launcher uses `ssh -G` instead of `--fake-proxy`.
+1. Withdrawn (was: launcher uses `ssh -G` instead of `--fake-proxy`). The launcher ports `--fake-proxy` as mosh.pl does (section 8). The number is kept so references to items 2-10 stay valid.
 2. utmp/wtmp records are not written.
 3. `--bind-server` supports `ssh` and `any` only.
 4. Scrollback extension (section 6), alternate-screen flag in `DrawState`.
@@ -212,7 +215,7 @@ A reviewer agent reads the port against upstream for the three hard modules (ter
 
 - A. `crates/network`, medium effort. First builds `ref-crypto`. Gate: RFC 7253 vectors, random differential encrypt/decrypt both ways against `ref-crypto`, fragment and instruction round trips, two Rust endpoints syncing a toy state over `udp-impair` with 30% loss and an address change.
 - B. `crates/terminal`, medium effort. First builds `ref-term` and `vt-check`. Gate: cell-exact on every upstream `emulation-*.test` input and every corpus file, byte-exact `new_frame` on all corpus state pairs, one million differential fuzz cases with zero mismatches.
-- C. `crates/platform` and the launcher in `crates/mosh/src/launcher`, medium effort. Gate: raw mode on and off on a real pty, resize detected, `ssh -G` parsing, `MOSH CONNECT` parsing against real `mosh-server new` output, Windows crate compiles for the gnu target.
+- C. `crates/platform` and the launcher in `crates/mosh/src/launcher`, medium effort. Gate: raw mode on and off on a real pty, resize detected, the `--fake-proxy` address discovery, `MOSH CONNECT` parsing against real `mosh-server new` output, Windows crate compiles for the gnu target.
 - H. `tools/`, medium effort. Gate: `udp-impair` demonstrably drops, delays, reorders, and rebinds; corpus recorded; `make check` in `upstream/` runs green with upstream's own binaries so the harness is known good.
 
 ### Phase 2: state sync, server, client

@@ -183,9 +183,9 @@ cargo build --release -p mosh --bin mosh --bin mosh-client
 
 ## Launcher (PLAN.md section 8)
 
-Upstream's Perl launcher finds the server's IP address by acting as its own ssh `ProxyCommand` (`--fake-proxy`), so it sees the hostname ssh resolved from `~/.ssh/config`.
-mosh-rs replaces that with `ssh -G <host>`, which prints the resolved `hostname`, `port`, and `user`.
-The launcher then resolves the hostname with the system resolver, so names like Tailscale MagicDNS names resolve the same way they do for ssh.
+Like upstream's Perl launcher, `mosh` finds the server's IP address by acting as its own ssh `ProxyCommand` (`mosh --fake-proxy -- %h %p`).
+ssh hands it the hostname resolved from `~/.ssh/config`; the launcher resolves that with the system resolver (so Tailscale MagicDNS names work as they do for ssh), connects to the first address that accepts a TCP connection, reports it as `MOSH IP`, and relays the ssh session over that connection.
+mosh-server binds the address it sees in `SSH_CONNECTION`, which is the same one the client is given, so both agree even on hosts with IPv4 and IPv6 addresses.
 
 Flags supported for v0.1:
 

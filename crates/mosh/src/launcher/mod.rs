@@ -30,16 +30,17 @@
 //
 // Ported from: upstream/scripts/mosh.pl
 //
-// Deviation (PLAN 9.1): instead of acting as its own ProxyCommand
-// (`--fake-proxy`) to learn which address ssh connected to, the launcher asks
-// `ssh -G` for the resolved hostname and resolves it with the system
-// resolver before starting ssh. Everything else follows mosh.pl: the same
-// options, the same `mosh-server new` command line, the same output parsing
-// and the same messages.
+// Like mosh.pl, the launcher runs ssh with itself as the ProxyCommand
+// (`mosh --fake-proxy -- %h %p`). The proxy resolves the host ssh would have
+// connected to, opens the TCP connection to the first address that accepts
+// it, reports that address as `MOSH IP` on stderr and relays the ssh session
+// over it. So mosh-server sees that address in SSH_CONNECTION, binds it, and
+// the client is started with the same address: both always agree, also on
+// hosts with IPv4 and IPv6 addresses.
 
 use std::ffi::OsString;
-use std::io::Write;
-use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
+use std::io::{Read, Write};
+use std::net::{Shutdown, SocketAddr, TcpStream, ToSocketAddrs};
 use std::process::{exit, Command, Stdio};
 
 use mosh_platform::locale::LOCALE_VARS;
@@ -236,45 +237,9 @@ fn check_port_request(argv0: &str, port_request: &str) {
     }
 }
 
-/// Deviation 9.1, first half: the hostname ssh would connect to, after
-/// `~/.ssh/config` (HostName, aliases), from `ssh [opts] -G [user@]host`.
-fn ssh_resolved_hostname(argv0: &str, ssh: &[String], userhost: &str) -> String {
-    let output = Command::new(&ssh[0])
-        .args(&ssh[1..])
-        .arg("-G")
-        .arg(userhost)
-        .stdin(Stdio::null())
-        .output()
-        .unwrap_or_else(|e| die(&format!("Cannot exec ssh: {e}\n"), DIE));
-    if !output.status.success() {
-        let _ = std::io::stderr().write_all(&output.stderr);
-        die(
-            &format!(
-                "{argv0}: `{} -G {userhost}` failed ({}).\n",
-                ssh.join(" "),
-                output.status
-            ),
-            DIE,
-        );
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    for line in stdout.lines() {
-        if let Some(hostname) = line.strip_prefix("hostname ") {
-            return hostname.trim().to_string();
-        }
-    }
-    // ssh -G always prints hostname; fall back to what the user typed.
-    userhost
-        .rsplit_once('@')
-        .map_or(userhost, |(_, host)| host)
-        .to_string()
-}
-
-/// Deviation 9.1, second half: `sub resolvename` (mosh.pl lines 484-538)
-/// with the system resolver, then the first address, as the proxy would
-/// have connected to first.
-fn resolvename(argv0: &str, host: &str, family: &str) -> String {
-    let mut res: Vec<SocketAddr> = match (host, 22).to_socket_addrs() {
+/// `sub resolvename` (mosh.pl lines 484-538) with the system resolver.
+fn resolvename(argv0: &str, host: &str, port: u16, family: &str) -> Vec<SocketAddr> {
+    let mut res: Vec<SocketAddr> = match (host, port).to_socket_addrs() {
         Ok(res) => res.collect(),
         Err(err) => die(
             &format!("{argv0}: could not get canonical name for {host}: {err}\n"),
@@ -306,14 +271,76 @@ fn resolvename(argv0: &str, host: &str, family: &str) -> String {
             die(&format!("{argv0}: host has both IPv4 and IPv6 addresses, use --family to specify behavior\n"), DIE);
         }
     }
-    match res.first() {
-        None => die(
-            &format!("{argv0}: could not find address for {host}\n"),
-            DIE,
-        ),
-        Some(SocketAddr::V6(a)) if a.scope_id() != 0 => format!("{}%{}", a.ip(), a.scope_id()),
-        Some(a) => IpAddr::to_string(&a.ip()),
+    res
+}
+
+/// `getnameinfo( $ai->{addr}, NI_NUMERICHOST )`: the numeric address, with
+/// the scope of a link-local IPv6 address.
+fn numeric_host(addr: &SocketAddr) -> String {
+    match addr {
+        SocketAddr::V6(a) if a.scope_id() != 0 => format!("{}%{}", a.ip(), a.scope_id()),
+        a => a.ip().to_string(),
     }
+}
+
+/// `--fake-proxy -- HOST PORT` (mosh.pl lines 259-311): ssh runs this as its
+/// ProxyCommand. Connect to the first address of HOST that accepts a TCP
+/// connection on PORT, report it on stderr as `MOSH IP <addr>` (stderr goes
+/// into the launcher's pipe; stdout is the ssh protocol stream), then act
+/// like netcat between stdin/stdout and the socket.
+fn fake_proxy(argv0: &str, family: &str, host: &str, port: &str) -> ! {
+    let Ok(port_n) = port.parse::<u16>() else {
+        die(&format!("{argv0}: Bad port {port}\n"), DIE);
+    };
+    let res = resolvename(argv0, host, port_n, family);
+
+    /* Now try and connect to something. */
+    let mut err = String::new();
+    let mut addr_string = String::new();
+    let mut sock = None;
+    for ai in &res {
+        addr_string = numeric_host(ai);
+        match TcpStream::connect(ai) {
+            Ok(s) => {
+                eprintln!("MOSH IP {addr_string}");
+                sock = Some(s);
+                break;
+            }
+            Err(e) => {
+                // Perl's message has no " (os error N)" suffix.
+                let e = e.to_string();
+                err = e.split(" (os error").next().unwrap_or(&e).to_string();
+            }
+        }
+    }
+    let Some(sock) = sock else {
+        die(
+            &format!("{argv0}: Could not connect to {host}, last tried {addr_string}: {err}\n"),
+            DIE,
+        );
+    };
+
+    /* Act like netcat */
+    fn cat(from: &mut impl Read, to: &mut impl Write) {
+        let mut buf = [0u8; 4096];
+        while let Ok(n) = from.read(&mut buf) {
+            if n == 0 || to.write_all(&buf[..n]).is_err() || to.flush().is_err() {
+                break;
+            }
+        }
+    }
+    let socket_to_stdout = match sock.try_clone() {
+        Ok(mut from) => std::thread::spawn(move || {
+            cat(&mut from, &mut std::io::stdout().lock());
+            let _ = from.shutdown(Shutdown::Read);
+        }),
+        Err(e) => die(&format!("{argv0}: {e}\n"), DIE),
+    };
+    let mut to = &sock;
+    cat(&mut std::io::stdin().lock(), &mut to);
+    let _ = sock.shutdown(Shutdown::Write);
+    let _ = socket_to_stdout.join();
+    exit(0)
 }
 
 /// `m{^MOSH CONNECT (\d+?) ([A-Za-z0-9/+]{22})\s*$}`
@@ -354,6 +381,7 @@ fn os(v: OsString) -> String {
     v.to_string_lossy().into_owned()
 }
 
+/// Run the launcher with the process arguments; never returns.
 pub fn main() -> ! {
     let mut args = std::env::args_os();
     let argv0 = args.next().map(os).unwrap_or_else(|| "mosh".to_string());
@@ -373,6 +401,7 @@ pub fn main() -> ! {
     let mut help = false;
     let mut version = false;
     let mut positional: Vec<String> = Vec::new();
+    let mut fake_proxy_mode = false;
 
     // Getopt::Long in its default (permute) mode: options may follow the
     // host; everything after "--" is positional.
@@ -400,6 +429,8 @@ pub fn main() -> ! {
                 Long("local") => localhost = true,
                 Long("help") => help = true,
                 Long("version") => version = true,
+                Long("fake-proxy") => fake_proxy_mode = true,
+                Long("no-fake-proxy") | Long("nofake-proxy") => fake_proxy_mode = false,
                 Long("bind-server") => bind_ip = Some(os(parser.value()?)),
                 // Accepted and ignored until scrollback lands (PLAN phase 4).
                 Long("scrollback") => {
@@ -458,6 +489,13 @@ pub fn main() -> ! {
 
     std::env::remove_var("MOSH_PREDICTION_DISPLAY");
 
+    if fake_proxy_mode {
+        let [host, port] = positional.as_slice() else {
+            die(&usage(&argv0), DIE);
+        };
+        fake_proxy(&argv0, &family, host, port);
+    }
+
     if positional.is_empty() || ssh.is_empty() {
         die(&usage(&argv0), DIE);
     }
@@ -511,12 +549,7 @@ pub fn main() -> ! {
 
     std::env::set_var("MOSH_CLIENT_PID", std::process::id().to_string()); /* We don't support this, but it's useful for test and debug. */
 
-    /* Deviation 9.1: resolve the server address before starting ssh. */
     let mut ip: Option<String> = None;
-    if !localhost {
-        let hostname = ssh_resolved_hostname(&argv0, &ssh, &userhost);
-        ip = Some(resolvename(&argv0, &hostname, &family));
-    }
 
     let mut server_args = vec!["new".to_string(), "-c".to_string(), colors];
     server_args.extend(bind_arguments);
@@ -549,6 +582,15 @@ pub fn main() -> ! {
         if ssh_pty {
             cmd.arg("-tt");
         }
+        /* Non-standard shells and broken shrc files cause the ssh
+        proxy to break mysteriously. */
+        cmd.env("SHELL", "/bin/sh");
+        let me =
+            std::env::current_exe().map_or(argv0.clone(), |p| p.to_string_lossy().into_owned());
+        let quoted_proxy_command = shell_quote(&[me, format!("--family={family}")]);
+        cmd.args(["-S", "none", "-o"]).arg(format!(
+            "ProxyCommand={quoted_proxy_command} --fake-proxy -- %h %p"
+        ));
         cmd.arg(&userhost).arg("--").arg(&server_command);
     }
 
