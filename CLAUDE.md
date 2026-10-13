@@ -53,3 +53,11 @@ Rust reimplementation of mosh 1.4.0. Read `PLAN.md` first. Section numbers below
 - CI runs on every push to main and writes its result, including the last 80 lines of each job's log, to the `ci-status` branch.
 - After every push, run `scripts/ci-status.sh --wait 15` to get the result for HEAD (exit 0 pass, 1 fail, 2 no result yet). Read the log excerpts on failure.
 - Red CI is fixed before any new work starts, and no gate is declared passed while CI is red. Record each CI failure and its fix in INTERVENTIONS.md.
+
+## Keeping the markdown current (stale information is the main agent failure)
+
+- Before starting any task, every agent runs `git pull --rebase --autostash`, then reads: CLAUDE.md, the PLAN.md sections named in its brief, the newest two entries of STATUS.md, all of INTERVENTIONS.md, and every `reviews/*.md` that names its crate. Briefs must list these reads as the first step.
+- Every commit that changes behavior updates the matching markdown in the same commit: STATUS.md (what changed, with the measured result), INTERVENTIONS.md (any deviation or outside help), the module `//!` doc, and the README status checkbox when a gate passes.
+- A gate is not passed until STATUS.md has a "gate: PASSED" entry with the exact commands run and their numbers (fuzz cases and mismatches, interop cells, test counts). A commit message claiming a pass without that entry is reverted to WIP.
+- PLAN.md is the design of record. When reality differs (a dependency replaced, a module split, a constant found wrong), the agent edits PLAN.md in the same commit and logs the change in INTERVENTIONS.md, so the next agent reads the truth.
+- The orchestrator re-reads CLAUDE.md, STATUS.md and INTERVENTIONS.md before spawning each agent and includes their current state in the brief.
