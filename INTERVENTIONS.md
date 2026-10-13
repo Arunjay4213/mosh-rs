@@ -277,3 +277,10 @@ Note: with the no-cancel rule, every queued commit now runs to completion, so on
 
 - 12:40 Central. Windows Terminal, `mosh.exe --server=/home/ubuntu/mosh-rs/target/release/mosh-server devbox` (Rust client on Windows, Rust server on devbox over Tailscale), `top` running. The user turned Wi-Fi off, waited, turned it on: `top` kept updating and the session stayed live. No reconnect, no error text.
 - Still to run by the user: the sleep/wake variant (PLAN section 3 item 8) and, optionally, a hotspot switch (IP address change).
+
+## 2026-10-13 Repository made public (user decision "public if it's ready")
+
+- 1:50 PM Central: github.com/Arunjay4213/mosh-rs is public. Readiness checked first: no secrets or key material in any commit (the only `MOSH_KEY=` in history is the all-A test key), README states pre-alpha, license and security policy present, docs audit (PR #16) merged, tests green on main (only the ci-status report job had failed on the last run).
+- Actions minutes were nearing the private-repo limit. A devbox self-hosted runner was registered as a stopgap and three shards were tried on it; they failed for environment reasons (no cargo on the service PATH, three runners contending for /tmp/mosh-rs-interop.lock). With the repo public, hosted minutes are unlimited, so CI stays on GitHub's runners with the full matrix; the self-hosted change (PR #22) was closed unmerged. One devbox runner stays registered but idle as a spare; runners devbox-2 and devbox-3 are stopped.
+- The Release workflow dry run (workflow_dispatch, run 38447825710) completed successfully: all four targets built, smoke-tested and packaged as artifacts.
+- Pending user decision: tag v0.1.0 (publishes the binaries through the release workflow). Not done yet.
