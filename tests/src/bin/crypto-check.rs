@@ -105,7 +105,11 @@ fn do_enc(args: &[String]) -> ExitCode {
     let mut session = Session::new(key);
     let p = Packet {
         seq,
-        direction: if dir == 1 { Direction::ToClient } else { Direction::ToServer },
+        direction: if dir == 1 {
+            Direction::ToClient
+        } else {
+            Direction::ToServer
+        },
         timestamp: ts as u16,
         timestamp_reply: tsr as u16,
         payload,
@@ -138,7 +142,11 @@ fn do_dec(args: &[String]) -> ExitCode {
         Ok(p) => {
             println!(
                 "dir={} seq={} ts={} tsr={} payload={}",
-                if p.direction == Direction::ToClient { 1 } else { 0 },
+                if p.direction == Direction::ToClient {
+                    1
+                } else {
+                    0
+                },
                 p.seq,
                 p.timestamp,
                 p.timestamp_reply,
@@ -159,8 +167,13 @@ fn do_dec(args: &[String]) -> ExitCode {
 /// Path of upstream's OCB test program, whose TEST_VECTOR() calls are
 /// read at run time so the vectors are exactly upstream's.
 fn ocb_aes_source() -> String {
-    std::env::var("MOSH_OCB_AES_CC")
-        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/../upstream/src/tests/ocb-aes.cc").to_string())
+    std::env::var("MOSH_OCB_AES_CC").unwrap_or_else(|_| {
+        concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../upstream/src/tests/ocb-aes.cc"
+        )
+        .to_string()
+    })
 }
 
 /// Parses one C expression made of adjacent string literals (with
@@ -259,7 +272,9 @@ fn load_vectors() -> Result<Vec<Vector>, String> {
         .find("static void test_all_vectors( void )")
         .ok_or("test_all_vectors not found")?;
     let body = &src[body_start..];
-    let body = &body[..body.find("\n}\n").ok_or("end of test_all_vectors not found")?];
+    let body = &body[..body
+        .find("\n}\n")
+        .ok_or("end of test_all_vectors not found")?];
 
     let named = |name: &str| -> Result<Vec<u8>, String> {
         let decl = format!("const char {name}[] = ");
@@ -274,7 +289,10 @@ fn load_vectors() -> Result<Vec<Vector>, String> {
     let mut rest = body;
     while let Some(at) = rest.find("TEST_VECTOR(") {
         let args_start = at + "TEST_VECTOR(".len();
-        let end = rest[args_start..].find(");").ok_or("unterminated TEST_VECTOR")? + args_start;
+        let end = rest[args_start..]
+            .find(");")
+            .ok_or("unterminated TEST_VECTOR")?
+            + args_start;
         let args = split_args(&rest[args_start..end]);
         if args.len() != 5 {
             return Err(format!("TEST_VECTOR with {} arguments", args.len()));
@@ -307,7 +325,11 @@ fn test_vector(v: &Vector, prng: &mut Prng) -> Result<(), String> {
 
     let observed_ct = ae_encrypt(&ctx, &nonce, &v.pt, &v.assoc);
     if observed_ct != v.ct {
-        return Err(format!("encrypt mismatch: {} != {}", to_hex(&observed_ct), to_hex(&v.ct)));
+        return Err(format!(
+            "encrypt mismatch: {} != {}",
+            to_hex(&observed_ct),
+            to_hex(&v.ct)
+        ));
     }
     match ae_decrypt(&ctx, &nonce, &v.ct, &v.assoc) {
         Some(pt) if pt == v.pt => {}
@@ -358,7 +380,8 @@ fn test_iterative() -> Result<(), String> {
 
     /* Check this final tag against the known value */
     let correct = [
-        0xB2, 0xB4, 0x1C, 0xBF, 0x9B, 0x05, 0x03, 0x7D, 0xA7, 0xF1, 0x6C, 0x24, 0xA3, 0x5C, 0x1C, 0x94,
+        0xB2, 0xB4, 0x1C, 0xBF, 0x9B, 0x05, 0x03, 0x7D, 0xA7, 0xF1, 0x6C, 0x24, 0xA3, 0x5C, 0x1C,
+        0x94,
     ];
     if out != correct {
         return Err("iterative tag mismatch".to_string());

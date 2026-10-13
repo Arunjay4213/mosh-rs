@@ -42,7 +42,10 @@ const SIZES: [(usize, usize); 2] = [(80, 24), (132, 43)];
 const PREFIXES: usize = 40;
 
 fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).parent().expect("workspace root").to_path_buf()
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root")
+        .to_path_buf()
 }
 
 fn run(prog: &Path, args: &[String], stdin: &[u8]) -> Vec<u8> {
@@ -60,7 +63,13 @@ fn run(prog: &Path, args: &[String], stdin: &[u8]) -> Vec<u8> {
     });
     let out = child.wait_with_output().expect("wait");
     writer.join().expect("stdin writer");
-    assert!(out.status.success(), "{} {:?} exited with {}", prog.display(), args, out.status);
+    assert!(
+        out.status.success(),
+        "{} {:?} exited with {}",
+        prog.display(),
+        args,
+        out.status
+    );
     out.stdout
 }
 
@@ -68,7 +77,9 @@ fn corpus_files() -> Vec<PathBuf> {
     let mut files = Vec::new();
     for dir in ["tests/corpus/emulation", "tests/corpus/sessions"] {
         let dir = root().join(dir);
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for e in entries {
             let p = e.expect("dir entry").path();
             if p.extension().is_some_and(|x| x == "bin") {
@@ -108,7 +119,10 @@ impl Rng {
 }
 
 fn first_difference(a: &[u8], b: &[u8]) -> String {
-    let (la, lb): (Vec<&[u8]>, Vec<&[u8]>) = (a.split(|&c| c == b'\n').collect(), b.split(|&c| c == b'\n').collect());
+    let (la, lb): (Vec<&[u8]>, Vec<&[u8]>) = (
+        a.split(|&c| c == b'\n').collect(),
+        b.split(|&c| c == b'\n').collect(),
+    );
     for i in 0..la.len().max(lb.len()) {
         let x = la.get(i).copied().unwrap_or(b"<eof>");
         let y = lb.get(i).copied().unwrap_or(b"<eof>");
@@ -126,7 +140,11 @@ fn first_difference(a: &[u8], b: &[u8]) -> String {
 
 #[test]
 fn terminal_conformance() {
-    let status = Command::new("make").arg("-C").arg(root().join("ref/ref-term")).status().expect("run make");
+    let status = Command::new("make")
+        .arg("-C")
+        .arg(root().join("ref/ref-term"))
+        .status()
+        .expect("run make");
     assert!(status.success(), "make -C ref/ref-term FAILED");
     let ref_term = root().join("ref/ref-term/ref-term");
     let vt_check = PathBuf::from(env!("CARGO_BIN_EXE_vt-check"));
@@ -138,13 +156,21 @@ fn terminal_conformance() {
     let mut frames = 0usize;
 
     for file in &files {
-        let name = file.strip_prefix(root()).unwrap_or(file).display().to_string();
+        let name = file
+            .strip_prefix(root())
+            .unwrap_or(file)
+            .display()
+            .to_string();
         let data = std::fs::read(file).expect("read corpus file");
 
         // Cumulative prefixes at seeded random offsets, plus the whole file.
-        let seed = data.iter().fold(0xcbf29ce484222325u64, |h, &b| (h ^ b as u64).wrapping_mul(0x100000001b3));
+        let seed = data.iter().fold(0xcbf29ce484222325u64, |h, &b| {
+            (h ^ b as u64).wrapping_mul(0x100000001b3)
+        });
         let mut rng = Rng(seed);
-        let mut offsets: Vec<usize> = (0..PREFIXES).map(|_| (rng.next() % (data.len() as u64 + 1)) as usize).collect();
+        let mut offsets: Vec<usize> = (0..PREFIXES)
+            .map(|_| (rng.next() % (data.len() as u64 + 1)) as usize)
+            .collect();
         offsets.sort();
         offsets.push(data.len());
 
@@ -164,7 +190,7 @@ fn terminal_conformance() {
         record(&mut uninit, &data[..mid]);
 
         for (w, h) in SIZES {
-            let size = vec![w.to_string(), h.to_string()];
+            let size = [w.to_string(), h.to_string()];
             let args = |mode: &str, extra: &[&str]| {
                 let mut a = vec![mode.to_string()];
                 a.extend(size.iter().cloned());
@@ -177,7 +203,13 @@ fn terminal_conformance() {
             dumps += 1;
             if a != b {
                 failures += 1;
-                println!("DUMP MISMATCH {} {}x{}: {}", name, w, h, first_difference(&a, &b));
+                println!(
+                    "DUMP MISMATCH {} {}x{}: {}",
+                    name,
+                    w,
+                    h,
+                    first_difference(&a, &b)
+                );
             }
 
             for (input, init, count) in [(&pairs, "1", npairs), (&uninit, "0", 1)] {
@@ -190,7 +222,11 @@ fn terminal_conformance() {
                 for (i, (x, y)) in ra.iter().zip(rb.iter()).enumerate() {
                     if x != y {
                         failures += 1;
-                        let p = x.iter().zip(y.iter()).position(|(p, q)| p != q).unwrap_or(x.len().min(y.len()));
+                        let p = x
+                            .iter()
+                            .zip(y.iter())
+                            .position(|(p, q)| p != q)
+                            .unwrap_or(x.len().min(y.len()));
                         println!(
                             "FRAME MISMATCH {} {}x{} pair {} initialized={}: first difference at byte {}\n    ref-term: {}\n    vt-check: {}",
                             name,

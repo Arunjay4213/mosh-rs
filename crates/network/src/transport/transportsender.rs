@@ -147,7 +147,9 @@ impl<MyState: State> TransportSender<MyState> {
                     self.mindelay_clock.wrapping_add(self.send_mindelay as u64),
                 );
             }
-        } else if self.current_state != self.sent_states[0].state && self.last_heard + ACTIVE_RETRY_TIMEOUT > now {
+        } else if self.current_state != self.sent_states[0].state
+            && self.last_heard + ACTIVE_RETRY_TIMEOUT > now
+        {
             self.next_send_time = back.timestamp + connection.timeout() + ACK_DELAY;
         } else {
             self.next_send_time = u64::MAX;
@@ -257,14 +259,15 @@ impl<MyState: State> TransportSender<MyState> {
     }
 
     fn add_sent_state(&mut self, the_timestamp: u64, num: u64, state: MyState) {
-        self.sent_states.push(TimestampedState::new(the_timestamp, num, state));
+        self.sent_states
+            .push(TimestampedState::new(the_timestamp, num, state));
         if self.sent_states.len() > 32 {
             /* limit on state queue */
             let last = self.sent_states.len() - 16;
             self.sent_states.remove(last); /* erase state from middle of queue */
             /* upstream's list iterator keeps pointing at the same element;
-               keep the index on it too (a dangling iterator upstream if it was
-               the erased element; here it moves to the previous one) */
+            keep the index on it too (a dangling iterator upstream if it was
+            the erased element; here it moves to the previous one) */
             if self.assumed_receiver_state >= last && self.assumed_receiver_state > 0 {
                 self.assumed_receiver_state -= 1;
             }
@@ -287,7 +290,10 @@ impl<MyState: State> TransportSender<MyState> {
         }
 
         if new_num == back.num {
-            self.sent_states.last_mut().expect("sent_states not empty").timestamp = timestamp();
+            self.sent_states
+                .last_mut()
+                .expect("sent_states not empty")
+                .timestamp = timestamp();
         } else {
             let state = self.current_state.clone();
             self.add_sent_state(timestamp(), new_num, state);
@@ -307,7 +313,7 @@ impl<MyState: State> TransportSender<MyState> {
         let now = timestamp();
 
         /* start from what is known and give benefit of the doubt to unacknowledged states
-           transmitted recently enough ago */
+        transmitted recently enough ago */
         self.assumed_receiver_state = 0;
 
         for i in 1..self.sent_states.len() {
@@ -340,7 +346,12 @@ impl<MyState: State> TransportSender<MyState> {
         Ok(chaff)
     }
 
-    fn send_in_fragments(&mut self, connection: &mut Connection, diff: &[u8], new_num: u64) -> Result<(), Error> {
+    fn send_in_fragments(
+        &mut self,
+        connection: &mut Connection,
+        diff: &[u8],
+        new_num: u64,
+    ) -> Result<(), Error> {
         let inst = Instruction {
             protocol_version: Some(MOSH_PROTOCOL_VERSION),
             old_num: Some(self.sent_states[self.assumed_receiver_state].num),
@@ -390,7 +401,10 @@ impl<MyState: State> TransportSender<MyState> {
 
         if self.sent_states.iter().any(|i| i.num == ack_num) {
             let mut erased_before_assumed = 0;
-            for (idx, s) in std::mem::take(&mut self.sent_states).into_iter().enumerate() {
+            for (idx, s) in std::mem::take(&mut self.sent_states)
+                .into_iter()
+                .enumerate()
+            {
                 if s.num < ack_num {
                     if idx < self.assumed_receiver_state {
                         erased_before_assumed += 1;
@@ -400,8 +414,10 @@ impl<MyState: State> TransportSender<MyState> {
                 }
             }
             /* keep the index on the same element, as upstream's list iterator
-               does (it is recomputed by calculate_timers() before its next use) */
-            self.assumed_receiver_state = self.assumed_receiver_state.saturating_sub(erased_before_assumed);
+            does (it is recomputed by calculate_timers() before its next use) */
+            self.assumed_receiver_state = self
+                .assumed_receiver_state
+                .saturating_sub(erased_before_assumed);
         }
 
         assert!(!self.sent_states.is_empty());
@@ -429,11 +445,12 @@ impl<MyState: State> TransportSender<MyState> {
         let resend_diff = self.current_state.diff_from(&self.sent_states[0].state);
 
         /* We do a prophylactic resend if it would make the diff shorter,
-           or if it would lengthen it by no more than 100 bytes and still be
-           less than 1000 bytes. */
+        or if it would lengthen it by no more than 100 bytes and still be
+        less than 1000 bytes. */
 
         if (resend_diff.len() <= proposed_diff.len())
-            || ((resend_diff.len() < 1000) && (resend_diff.len().wrapping_sub(proposed_diff.len()) < 100))
+            || ((resend_diff.len() < 1000)
+                && (resend_diff.len().wrapping_sub(proposed_diff.len()) < 100))
         {
             self.assumed_receiver_state = 0;
             *proposed_diff = resend_diff;
@@ -464,10 +481,10 @@ impl<MyState: State> TransportSender<MyState> {
         &mut self.current_state
     }
 
-    /// Upstream also calls `current_state.reset_input()` here; State has no reset_input().
     pub fn set_current_state(&mut self, x: &MyState) {
         assert!(!self.shutdown_in_progress);
         self.current_state = x.clone();
+        self.current_state.reset_input();
     }
 
     pub fn set_verbose(&mut self, s_verbose: u32) {

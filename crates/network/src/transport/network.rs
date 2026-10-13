@@ -139,7 +139,10 @@ impl Packet {
     /// Read in packet
     pub fn from_message(message: &Message) -> Result<Packet, CryptoError> {
         if message.text.len() < 2 * 2 {
-            return Err(dos_detected("message.text.size() >= 2 * sizeof( uint16_t )", "Packet"));
+            return Err(dos_detected(
+                "message.text.size() >= 2 * sizeof( uint16_t )",
+                "Packet",
+            ));
         }
         let seq = message.nonce.val() & SEQUENCE_MASK;
         let direction = if message.nonce.val() & DIRECTION_MASK != 0 {
@@ -159,7 +162,8 @@ impl Packet {
 
     /// Output from packet
     pub fn to_message(&self) -> Message {
-        let direction_seq = (((self.direction == Direction::ToClient) as u64) << 63) | (self.seq & SEQUENCE_MASK);
+        let direction_seq =
+            (((self.direction == Direction::ToClient) as u64) << 63) | (self.seq & SEQUENCE_MASK);
         let mut text = Vec::with_capacity(4 + self.payload.len());
         text.extend_from_slice(&self.timestamp.to_be_bytes());
         text.extend_from_slice(&self.timestamp_reply.to_be_bytes());
@@ -278,7 +282,11 @@ impl Connection {
             mtu: Connection::DEFAULT_SEND_MTU,
             key,
             session: Session::new(key),
-            direction: if server { Direction::ToClient } else { Direction::ToServer },
+            direction: if server {
+                Direction::ToClient
+            } else {
+                Direction::ToServer
+            },
             saved_timestamp: u16::MAX,
             saved_timestamp_received_at: 0,
             expected_receiver_seq: 0,
@@ -293,22 +301,29 @@ impl Connection {
     }
 
     /// Server constructor.
-    pub fn new_server(desired_ip: Option<&str>, desired_port: Option<&str>) -> Result<Connection, Error> {
+    pub fn new_server(
+        desired_ip: Option<&str>,
+        desired_port: Option<&str>,
+    ) -> Result<Connection, Error> {
         let mut c = Connection::blank(true, Base64Key::new()?);
         c.setup();
 
         /* The mosh wrapper always gives an IP request, in order
-           to deal with multihomed servers. The port is optional. */
+        to deal with multihomed servers. The port is optional. */
 
         /* If an IP request is given, we try to bind to that IP, but we also
-           try INADDR_ANY. If a port request is given, we bind only to that port. */
+        try INADDR_ANY. If a port request is given, we bind only to that port. */
 
         /* convert port numbers */
         let mut desired_port_low = -1;
         let mut desired_port_high = -1;
 
         if let Some(desired_port) = desired_port {
-            if !Connection::parse_portrange(desired_port, &mut desired_port_low, &mut desired_port_high) {
+            if !Connection::parse_portrange(
+                desired_port,
+                &mut desired_port_low,
+                &mut desired_port_high,
+            ) {
                 return Err(NetworkError::new("Invalid port range", 0).into());
             }
         }
@@ -335,7 +350,12 @@ impl Connection {
         Err(NetworkError::new("Could not bind", last_errno()).into())
     }
 
-    fn try_bind(&mut self, addr: Option<&str>, port_low: i32, port_high: i32) -> Result<bool, NetworkError> {
+    fn try_bind(
+        &mut self,
+        addr: Option<&str>,
+        port_low: i32,
+        port_high: i32,
+    ) -> Result<bool, NetworkError> {
         let mut local_addr = sys::resolve(addr, "0", true)?;
 
         let mut search_low = Connection::PORT_RANGE_LOW;
@@ -369,7 +389,11 @@ impl Connection {
         #[cfg(unix)]
         self.socks.pop_back();
 
-        eprintln!("Failed binding to {}:{}", local_addr.ip(), local_addr.port());
+        eprintln!(
+            "Failed binding to {}:{}",
+            local_addr.ip(),
+            local_addr.port()
+        );
         Err(NetworkError::new("bind", saved_errno))
     }
 
@@ -421,7 +445,12 @@ impl Connection {
             self.saved_timestamp_received_at = 0;
         }
 
-        Packet::new(self.direction, timestamp16(), outgoing_timestamp_reply, s_payload)
+        Packet::new(
+            self.direction,
+            timestamp16(),
+            outgoing_timestamp_reply,
+            s_payload,
+        )
     }
 
     fn hop_port(&mut self) -> Result<(), NetworkError> {
@@ -430,7 +459,8 @@ impl Connection {
         self.setup();
         let remote_addr = self.remote_addr.expect("remote_addr_len != 0");
 
-        self.socks.push_back(sys::new_socket(remote_addr.is_ipv6())?);
+        self.socks
+            .push_back(sys::new_socket(remote_addr.is_ipv6())?);
 
         self.prune_sockets();
         Ok(())
@@ -530,7 +560,11 @@ impl Connection {
             Direction::ToClient
         };
         if p.direction != expected_direction {
-            return Err(dos_detected("p.direction == ( server ? TO_SERVER : TO_CLIENT )", "recv_one").into());
+            return Err(dos_detected(
+                "p.direction == ( server ? TO_SERVER : TO_CLIENT )",
+                "recv_one",
+            )
+            .into());
         }
 
         if p.seq < self.expected_receiver_seq {
@@ -548,7 +582,9 @@ impl Connection {
             if congestion_experienced {
                 /* signal counterparty to slow down */
                 /* this will gradually slow the counterparty down to the minimum frame rate */
-                self.saved_timestamp = self.saved_timestamp.wrapping_sub(Connection::CONGESTION_TIMESTAMP_PENALTY);
+                self.saved_timestamp = self
+                    .saved_timestamp
+                    .wrapping_sub(Connection::CONGESTION_TIMESTAMP_PENALTY);
                 if self.server {
                     eprintln!("Received explicit congestion notification.");
                 }
@@ -602,7 +638,10 @@ impl Connection {
     pub fn port(&self) -> Result<String, NetworkError> {
         match self.sock().sock.local_addr() {
             Ok(a) => Ok(a.port().to_string()),
-            Err(e) => Err(NetworkError::new("getsockname", e.raw_os_error().unwrap_or(0))),
+            Err(e) => Err(NetworkError::new(
+                "getsockname",
+                e.raw_os_error().unwrap_or(0),
+            )),
         }
     }
 
@@ -637,7 +676,11 @@ impl Connection {
         self.last_roundtrip_success = s_success;
     }
 
-    pub fn parse_portrange(desired_port: &str, desired_port_low: &mut i32, desired_port_high: &mut i32) -> bool {
+    pub fn parse_portrange(
+        desired_port: &str,
+        desired_port_low: &mut i32,
+        desired_port_high: &mut i32,
+    ) -> bool {
         /* parse "port" or "portlow:porthigh" */
         *desired_port_low = 0;
         *desired_port_high = 0;
@@ -705,7 +748,12 @@ mod sys {
 
     pub const EMSGSIZE: i32 = libc::EMSGSIZE;
 
-    fn setsockopt_int(fd: libc::c_int, level: libc::c_int, name: libc::c_int, value: libc::c_int) -> libc::c_int {
+    fn setsockopt_int(
+        fd: libc::c_int,
+        level: libc::c_int,
+        name: libc::c_int,
+        value: libc::c_int,
+    ) -> libc::c_int {
         // SAFETY: passes a pointer to a local c_int with its size.
         unsafe {
             libc::setsockopt(
@@ -753,9 +801,14 @@ mod sys {
         ))]
         {
             let tosflag = 1;
-            if setsockopt_int(fd, libc::IPPROTO_IP, libc::IP_RECVTOS, tosflag) < 0 && family == libc::IPPROTO_IP {
+            if setsockopt_int(fd, libc::IPPROTO_IP, libc::IP_RECVTOS, tosflag) < 0
+                && family == libc::IPPROTO_IP
+            {
                 /* FreeBSD disallows this option on IPv6 sockets. */
-                eprintln!("setsockopt( IP_RECVTOS ): {}", std::io::Error::last_os_error());
+                eprintln!(
+                    "setsockopt( IP_RECVTOS ): {}",
+                    std::io::Error::last_os_error()
+                );
             }
         }
 
@@ -773,7 +826,9 @@ mod sys {
         let len = match addr {
             SocketAddr::V4(a) => {
                 // SAFETY: sockaddr_storage is large enough and aligned for sockaddr_in.
-                let sin = unsafe { &mut *(&mut ss as *mut libc::sockaddr_storage as *mut libc::sockaddr_in) };
+                let sin = unsafe {
+                    &mut *(&mut ss as *mut libc::sockaddr_storage as *mut libc::sockaddr_in)
+                };
                 sin.sin_family = libc::AF_INET as libc::sa_family_t;
                 sin.sin_port = a.port().to_be();
                 sin.sin_addr = libc::in_addr {
@@ -793,7 +848,9 @@ mod sys {
             }
             SocketAddr::V6(a) => {
                 // SAFETY: sockaddr_storage is large enough and aligned for sockaddr_in6.
-                let sin6 = unsafe { &mut *(&mut ss as *mut libc::sockaddr_storage as *mut libc::sockaddr_in6) };
+                let sin6 = unsafe {
+                    &mut *(&mut ss as *mut libc::sockaddr_storage as *mut libc::sockaddr_in6)
+                };
                 sin6.sin6_family = libc::AF_INET6 as libc::sa_family_t;
                 sin6.sin6_port = a.port().to_be();
                 sin6.sin6_flowinfo = a.flowinfo();
@@ -846,7 +903,11 @@ mod sys {
 
     /// `AddrInfo( node, service, hints )` with upstream's hints, first result.
     /// `passive` selects the server hints (AI_PASSIVE).
-    pub fn resolve(node: Option<&str>, service: &str, passive: bool) -> Result<SocketAddr, NetworkError> {
+    pub fn resolve(
+        node: Option<&str>,
+        service: &str,
+        passive: bool,
+    ) -> Result<SocketAddr, NetworkError> {
         let bad = |msg: String| {
             NetworkError::new(
                 format!("Bad IP address ({}): {}", node.unwrap_or("(null)"), msg),
@@ -898,18 +959,32 @@ mod sys {
     /// Binds the newest socket (pushed by `try_bind`) to `local_addr`.
     /// Returns errno on failure.
     pub fn bind(socks: &mut VecDeque<Socket>, local_addr: &SocketAddr) -> Result<(), i32> {
-        let fd = socks.back().expect("socket pushed by try_bind").sock.as_raw_fd();
+        let fd = socks
+            .back()
+            .expect("socket pushed by try_bind")
+            .sock
+            .as_raw_fd();
         if let SocketAddr::V6(a) = local_addr {
             if a.ip().is_unspecified() {
                 let off = 0;
                 if setsockopt_int(fd, libc::IPPROTO_IPV6, libc::IPV6_V6ONLY, off) != 0 {
-                    eprintln!("setsockopt( IPV6_V6ONLY, off ): {}", std::io::Error::last_os_error());
+                    eprintln!(
+                        "setsockopt( IPV6_V6ONLY, off ): {}",
+                        std::io::Error::last_os_error()
+                    );
                 }
             }
         }
         let (ss, len) = to_sockaddr(local_addr);
         // SAFETY: ss holds a valid sockaddr of length len.
-        if unsafe { libc::bind(fd, &ss as *const libc::sockaddr_storage as *const libc::sockaddr, len) } == 0 {
+        if unsafe {
+            libc::bind(
+                fd,
+                &ss as *const libc::sockaddr_storage as *const libc::sockaddr,
+                len,
+            )
+        } == 0
+        {
             Ok(())
         } else {
             Err(last_errno())
@@ -932,7 +1007,8 @@ mod sys {
         };
 
         /* receive source address */
-        header.msg_name = &mut packet_remote_addr as *mut libc::sockaddr_storage as *mut libc::c_void;
+        header.msg_name =
+            &mut packet_remote_addr as *mut libc::sockaddr_storage as *mut libc::c_void;
         header.msg_namelen = size_of::<libc::sockaddr_storage>() as libc::socklen_t;
 
         /* receive payload */
@@ -947,7 +1023,8 @@ mod sys {
         header.msg_flags = 0;
 
         // SAFETY: header points at live buffers declared above.
-        let received_len = unsafe { libc::recvmsg(sock.as_raw_fd(), &mut header, libc::MSG_DONTWAIT) };
+        let received_len =
+            unsafe { libc::recvmsg(sock.as_raw_fd(), &mut header, libc::MSG_DONTWAIT) };
 
         if received_len < 0 {
             let errno = last_errno();
@@ -958,7 +1035,10 @@ mod sys {
         }
 
         if header.msg_flags & libc::MSG_TRUNC != 0 {
-            return Err(NetworkError::new("Received oversize datagram", last_errno()));
+            return Err(NetworkError::new(
+                "Received oversize datagram",
+                last_errno(),
+            ));
         }
 
         /* receive ECN */
@@ -967,7 +1047,10 @@ mod sys {
         // SAFETY: header was filled in by recvmsg; CMSG_FIRSTHDR/CMSG_DATA stay within msg_control.
         unsafe {
             let ecn_hdr = libc::CMSG_FIRSTHDR(&header);
-            if !ecn_hdr.is_null() && (*ecn_hdr).cmsg_level == libc::IPPROTO_IP && is_tos_type((*ecn_hdr).cmsg_type) {
+            if !ecn_hdr.is_null()
+                && (*ecn_hdr).cmsg_level == libc::IPPROTO_IP
+                && is_tos_type((*ecn_hdr).cmsg_type)
+            {
                 /* got one */
                 let ecn_octet_p = libc::CMSG_DATA(ecn_hdr);
                 assert!(!ecn_octet_p.is_null());
@@ -984,7 +1067,11 @@ mod sys {
         };
         let addr = addr.ok_or_else(|| NetworkError::new("recv_one: unknown address family", 0))?;
 
-        Ok(Some((msg_payload[..received_len as usize].to_vec(), addr, congestion_experienced)))
+        Ok(Some((
+            msg_payload[..received_len as usize].to_vec(),
+            addr,
+            congestion_experienced,
+        )))
     }
 
     fn is_tos_type(t: libc::c_int) -> bool {
@@ -1042,10 +1129,17 @@ mod sys {
     }
 
     /// Numeric host and port only, as upstream's AI_NUMERICHOST | AI_NUMERICSERV.
-    pub fn resolve(node: Option<&str>, service: &str, _passive: bool) -> Result<SocketAddr, NetworkError> {
+    pub fn resolve(
+        node: Option<&str>,
+        service: &str,
+        _passive: bool,
+    ) -> Result<SocketAddr, NetworkError> {
         let bad = || {
             NetworkError::new(
-                format!("Bad IP address ({}): Name or service not known", node.unwrap_or("(null)")),
+                format!(
+                    "Bad IP address ({}): Name or service not known",
+                    node.unwrap_or("(null)")
+                ),
                 0,
             )
         };
@@ -1070,7 +1164,9 @@ mod sys {
         match sock.recv_from(&mut msg_payload) {
             Ok((n, addr)) => Ok(Some((msg_payload[..n].to_vec(), addr, false))),
             Err(e) if errno(&e) == WSAEWOULDBLOCK => Ok(None),
-            Err(e) if errno(&e) == WSAEMSGSIZE => Err(NetworkError::new("Received oversize datagram", errno(&e))),
+            Err(e) if errno(&e) == WSAEMSGSIZE => {
+                Err(NetworkError::new("Received oversize datagram", errno(&e)))
+            }
             Err(e) => Err(NetworkError::new("recvmsg", errno(&e))),
         }
     }

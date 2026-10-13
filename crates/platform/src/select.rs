@@ -180,7 +180,13 @@ impl Select {
             libc::FD_ZERO(&mut read_fds);
             let mut empty_sigset: libc::sigset_t = std::mem::zeroed();
             assert_eq!(0, libc::sigemptyset(&mut empty_sigset));
-            Select { max_fd: -1, all_fds, read_fds, empty_sigset, consecutive_polls: 0 }
+            Select {
+                max_fd: -1,
+                all_fds,
+                read_fds,
+                empty_sigset,
+                consecutive_polls: 0,
+            }
         }
     }
 
@@ -208,7 +214,10 @@ impl Select {
             let mut to_block: libc::sigset_t = std::mem::zeroed();
             assert_eq!(0, libc::sigemptyset(&mut to_block));
             assert_eq!(0, libc::sigaddset(&mut to_block, signum));
-            assert_eq!(0, libc::sigprocmask(libc::SIG_BLOCK, &to_block, std::ptr::null_mut()));
+            assert_eq!(
+                0,
+                libc::sigprocmask(libc::SIG_BLOCK, &to_block, std::ptr::null_mut())
+            );
 
             let mut sa: libc::sigaction = std::mem::zeroed();
             sa.sa_flags = libc::SA_RESTART;
@@ -283,7 +292,12 @@ impl Select {
 #[cfg(windows)]
 impl Select {
     pub fn new() -> Select {
-        Select { all_fds: Vec::new(), read_fds: Vec::new(), watched_size: None, consecutive_polls: 0 }
+        Select {
+            all_fds: Vec::new(),
+            read_fds: Vec::new(),
+            watched_size: None,
+            consecutive_polls: 0,
+        }
     }
 
     pub fn add_fd(&mut self, fd: Fd) {
@@ -309,7 +323,9 @@ impl Select {
     /// While SIGWINCH is watched the wait is capped at 50 ms, because the
     /// console size is only noticed when this function runs (PLAN 7).
     pub fn select(&mut self, timeout: i32) -> std::io::Result<i32> {
-        use windows_sys::Win32::Networking::WinSock::{WSAGetLastError, WSAPoll, POLLRDNORM, WSAPOLLFD};
+        use windows_sys::Win32::Networking::WinSock::{
+            WSAGetLastError, WSAPoll, POLLRDNORM, WSAPOLLFD,
+        };
 
         self.read_fds.clear();
         clear_got_signal();
@@ -328,16 +344,26 @@ impl Select {
             let mut pollfds: Vec<WSAPOLLFD> = self
                 .all_fds
                 .iter()
-                .map(|&fd| WSAPOLLFD { fd: fd as usize, events: POLLRDNORM, revents: 0 })
+                .map(|&fd| WSAPOLLFD {
+                    fd: fd as usize,
+                    events: POLLRDNORM,
+                    revents: 0,
+                })
                 .collect();
             // SAFETY: pollfds is a valid array of the given length.
             ret = unsafe { WSAPoll(pollfds.as_mut_ptr(), pollfds.len() as u32, timeout) };
             if ret < 0 {
                 // SAFETY: plain call.
-                return Err(std::io::Error::from_raw_os_error(unsafe { WSAGetLastError() }));
+                return Err(std::io::Error::from_raw_os_error(unsafe {
+                    WSAGetLastError()
+                }));
             }
             // Readable, hung up or errored all mean "a read will not block".
-            self.read_fds = pollfds.iter().filter(|p| p.revents != 0).map(|p| p.fd as Fd).collect();
+            self.read_fds = pollfds
+                .iter()
+                .filter(|p| p.revents != 0)
+                .map(|p| p.fd as Fd)
+                .collect();
         }
 
         if let Some(old) = &self.watched_size {

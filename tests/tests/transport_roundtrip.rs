@@ -31,23 +31,26 @@
 
 //! Protocol buffers, zlib compression, and fragmentation round trips.
 
+use mosh_network::prost::Message;
 use mosh_network::proto::{client_buffers, host_buffers, transport_buffers};
 use mosh_network::transport::compressor::{compress_str, uncompress_str, BUFFER_SIZE};
 use mosh_network::transport::transportfragment::{Fragment, FragmentAssembly, Fragmenter};
 use mosh_network::{Connection, Session};
-use mosh_network::prost::Message;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 fn unhex(s: &str) -> Vec<u8> {
     let s: String = s.split_whitespace().collect();
-    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).expect("hex")).collect()
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).expect("hex"))
+        .collect()
 }
 
 #[test]
 fn instruction_wire_format() {
     /* TransportBuffers::Instruction with every field set; the expected bytes
-       are the proto2 encoding in field-number order, as C++ protobuf emits it */
+    are the proto2 encoding in field-number order, as C++ protobuf emits it */
     let inst = transport_buffers::Instruction {
         protocol_version: Some(2),
         old_num: Some(1),
@@ -58,8 +61,14 @@ fn instruction_wire_format() {
         chaff: Some(Vec::new()),
     };
     let bytes = inst.encode_to_vec();
-    assert_eq!(bytes, unhex("0802 1001 18ac02 2000 28ffffffffffffffffff01 32026162 3a00"));
-    assert_eq!(transport_buffers::Instruction::decode(bytes.as_slice()).unwrap(), inst);
+    assert_eq!(
+        bytes,
+        unhex("0802 1001 18ac02 2000 28ffffffffffffffffff01 32026162 3a00")
+    );
+    assert_eq!(
+        transport_buffers::Instruction::decode(bytes.as_slice()).unwrap(),
+        inst
+    );
 
     /* absent fields are not encoded and read back as defaults */
     let empty = transport_buffers::Instruction::default();
@@ -71,7 +80,10 @@ fn instruction_wire_format() {
     let mut with_unknown = bytes.clone();
     with_unknown.extend_from_slice(&unhex("4a03 78797a"));
     with_unknown.splice(0..0, unhex("4a00"));
-    assert_eq!(transport_buffers::Instruction::decode(with_unknown.as_slice()).unwrap(), inst);
+    assert_eq!(
+        transport_buffers::Instruction::decode(with_unknown.as_slice()).unwrap(),
+        inst
+    );
 
     /* HostBuffers: extensions 2, 3, 7 inside a HostMessage */
     let host = host_buffers::HostMessage {
@@ -89,17 +101,28 @@ fn instruction_wire_format() {
                     width: Some(80),
                     height: Some(24),
                 }),
-                echoack: Some(host_buffers::EchoAck { echo_ack_num: Some(5) }),
+                echoack: Some(host_buffers::EchoAck {
+                    echo_ack_num: Some(5),
+                }),
             },
         ],
     };
     let bytes = host.encode_to_vec();
-    assert_eq!(bytes, unhex("0a06 1204 22026869 0a0a 1a04 28503018 3a02 4005"));
-    assert_eq!(host_buffers::HostMessage::decode(bytes.as_slice()).unwrap(), host);
+    assert_eq!(
+        bytes,
+        unhex("0a06 1204 22026869 0a0a 1a04 28503018 3a02 4005")
+    );
+    assert_eq!(
+        host_buffers::HostMessage::decode(bytes.as_slice()).unwrap(),
+        host
+    );
 
     /* the same with an unknown field 9 inside an Instruction and inside HostMessage */
     let with_unknown = unhex("0a0a 1204 22026869 4a02 0102 0a0a 1a04 28503018 3a02 4005 4a01 ff");
-    assert_eq!(host_buffers::HostMessage::decode(with_unknown.as_slice()).unwrap(), host);
+    assert_eq!(
+        host_buffers::HostMessage::decode(with_unknown.as_slice()).unwrap(),
+        host
+    );
 
     /* ClientBuffers: extensions 2 and 3 */
     let user = client_buffers::UserMessage {
@@ -124,10 +147,16 @@ fn instruction_wire_format() {
         bytes,
         unhex("0a07 1205 2203 6c730d 0a10 1a0e 288401 30ffffffffffffffffff01")
     );
-    assert_eq!(client_buffers::UserMessage::decode(bytes.as_slice()).unwrap(), user);
+    assert_eq!(
+        client_buffers::UserMessage::decode(bytes.as_slice()).unwrap(),
+        user
+    );
     let mut with_unknown = unhex("0a0b 4a02 aabb 1205 2203 6c730d");
     with_unknown.extend_from_slice(&unhex("0a10 1a0e 288401 30ffffffffffffffffff01"));
-    assert_eq!(client_buffers::UserMessage::decode(with_unknown.as_slice()).unwrap(), user);
+    assert_eq!(
+        client_buffers::UserMessage::decode(with_unknown.as_slice()).unwrap(),
+        user
+    );
 }
 
 #[test]
@@ -144,17 +173,28 @@ fn compressor_round_trip() {
     ];
     for input in &inputs {
         let c = compress_str(input).unwrap();
-        assert_eq!(&uncompress_str(&c).unwrap(), input, "round trip of {} bytes", input.len());
+        assert_eq!(
+            &uncompress_str(&c).unwrap(),
+            input,
+            "round trip of {} bytes",
+            input.len()
+        );
         /* bytes after the zlib stream are ignored, as zlib's uncompress() does */
         let mut trailing = c.clone();
         trailing.extend_from_slice(b"junk");
         assert_eq!(&uncompress_str(&trailing).unwrap(), input);
         /* truncated input is rejected */
-        assert!(uncompress_str(&c[..c.len() - 1]).is_err(), "truncated stream accepted");
+        assert!(
+            uncompress_str(&c[..c.len() - 1]).is_err(),
+            "truncated stream accepted"
+        );
     }
     /* output larger than the 4 MiB buffer is rejected */
     let too_big = compress_str(&vec![0u8; BUFFER_SIZE + 1]).unwrap();
-    assert!(uncompress_str(&too_big).is_err(), "oversize output accepted");
+    assert!(
+        uncompress_str(&too_big).is_err(),
+        "oversize output accepted"
+    );
     /* garbage is rejected */
     assert!(uncompress_str(b"not zlib at all").is_err());
 }
@@ -208,9 +248,13 @@ fn fragment_round_trip() {
         }
 
         /* deliver over the wire format in reverse order; every fragment but the
-           completing one (fragment 0) is delivered twice, and the first one again
-           just before the end */
-        let received: Vec<Fragment> = frags.iter().rev().map(|f| Fragment::from_bytes(&f.tostring())).collect();
+        completing one (fragment 0) is delivered twice, and the first one again
+        just before the end */
+        let received: Vec<Fragment> = frags
+            .iter()
+            .rev()
+            .map(|f| Fragment::from_bytes(&f.tostring()))
+            .collect();
         let (completing, rest) = received.split_last().expect("at least one fragment");
         let mut deliveries: Vec<&Fragment> = rest.iter().flat_map(|f| [f, f]).collect();
         if let Some(first) = rest.first() {
@@ -227,8 +271,8 @@ fn fragment_round_trip() {
         assert_eq!(done, 1, "size {size}: assembled {done} times");
 
         /* a late duplicate of the completing fragment: upstream starts a new
-           assembly, which completes again only for a one-fragment instruction
-           (Transport::recv then drops it because new_num is already known) */
+        assembly, which completes again only for a one-fragment instruction
+        (Transport::recv then drops it because new_num is already known) */
         let again = assembly.add_fragment(completing);
         assert_eq!(again, frags.len() == 1, "size {size}: late duplicate");
         if again {
@@ -253,6 +297,8 @@ fn fragment_round_trip() {
     /* a retransmission of the same instruction keeps its id; a new one gets the next id */
     let again = fragmenter.make_fragments(&inst, mtu).unwrap();
     assert_eq!(again[0].id, frags[0].id);
-    let next = fragmenter.make_fragments(&instruction(&mut rng, 101, 1), mtu).unwrap();
+    let next = fragmenter
+        .make_fragments(&instruction(&mut rng, 101, 1), mtu)
+        .unwrap();
     assert_eq!(next[0].id, frags[0].id + 1);
 }

@@ -64,16 +64,27 @@ fn run(prog: &PathBuf, args: &[&str], stdin: &[u8]) -> (i32, String) {
         .stderr(Stdio::null())
         .spawn()
         .unwrap_or_else(|e| panic!("spawn {}: {e}", prog.display()));
-    child.stdin.take().expect("stdin").write_all(stdin).expect("write stdin");
+    child
+        .stdin
+        .take()
+        .expect("stdin")
+        .write_all(stdin)
+        .expect("write stdin");
     let out = child.wait_with_output().expect("wait");
-    (out.status.code().unwrap_or(-1), String::from_utf8(out.stdout).expect("utf8 stdout"))
+    (
+        out.status.code().unwrap_or(-1),
+        String::from_utf8(out.stdout).expect("utf8 stdout"),
+    )
 }
 
 /// Runs the same command on both programs and requires identical results.
 fn both(args: &[&str], stdin: &[u8], what: &str) -> (i32, String) {
     let r = run(&ref_crypto(), args, stdin);
     let c = run(&crypto_check(), args, stdin);
-    assert_eq!(r, c, "{what}: ref-crypto and crypto-check differ for args {args:?}");
+    assert_eq!(
+        r, c,
+        "{what}: ref-crypto and crypto-check differ for args {args:?}"
+    );
     r
 }
 
@@ -82,7 +93,10 @@ fn hex(b: &[u8]) -> String {
 }
 
 fn unhex(s: &str) -> Vec<u8> {
-    (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).expect("hex")).collect()
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).expect("hex"))
+        .collect()
 }
 
 fn key_string(rng: &mut StdRng) -> String {
@@ -103,16 +117,30 @@ struct Case {
 }
 
 fn check_case(c: &Case) {
-    let (dir, seq, ts, tsr) = (c.dir.to_string(), c.seq.to_string(), c.ts.to_string(), c.tsr.to_string());
+    let (dir, seq, ts, tsr) = (
+        c.dir.to_string(),
+        c.seq.to_string(),
+        c.ts.to_string(),
+        c.tsr.to_string(),
+    );
     let enc_args = ["enc", &c.key, &dir, &seq, &ts, &tsr];
 
     /* encrypt: byte-identical wire packets */
     let r = run(&ref_crypto(), &enc_args, &c.payload);
     let k = run(&crypto_check(), &enc_args, &c.payload);
     assert_eq!(r.0, 0, "ref-crypto enc failed for {enc_args:?}");
-    assert_eq!(r, k, "enc differs for {enc_args:?} payload {}", hex(&c.payload));
+    assert_eq!(
+        r,
+        k,
+        "enc differs for {enc_args:?} payload {}",
+        hex(&c.payload)
+    );
     let wire = r.1.trim_end().to_string();
-    assert_eq!(wire.len(), 2 * (8 + 4 + c.payload.len() + 16), "wire length");
+    assert_eq!(
+        wire.len(),
+        2 * (8 + 4 + c.payload.len() + 16),
+        "wire length"
+    );
 
     /* decrypt each other's packet */
     let expected = format!(
@@ -125,8 +153,16 @@ fn check_case(c: &Case) {
     );
     let ref_of_rust = run(&ref_crypto(), &["dec", &c.key], k.1.as_bytes());
     let rust_of_ref = run(&crypto_check(), &["dec", &c.key], r.1.as_bytes());
-    assert_eq!(ref_of_rust, (0, expected.clone()), "ref-crypto dec of crypto-check packet");
-    assert_eq!(rust_of_ref, (0, expected), "crypto-check dec of ref-crypto packet");
+    assert_eq!(
+        ref_of_rust,
+        (0, expected.clone()),
+        "ref-crypto dec of crypto-check packet"
+    );
+    assert_eq!(
+        rust_of_ref,
+        (0, expected),
+        "crypto-check dec of ref-crypto packet"
+    );
 
     /* one flipped byte must be rejected by both */
     let mut bad = unhex(&wire);
@@ -134,7 +170,11 @@ fn check_case(c: &Case) {
     bad[at] ^= c.flip_mask;
     let bad_hex = hex(&bad) + "\n";
     let res = both(&["dec", &c.key], bad_hex.as_bytes(), "flipped byte");
-    assert_eq!(res, (1, "error\n".to_string()), "flipped byte at {at} was accepted");
+    assert_eq!(
+        res,
+        (1, "error\n".to_string()),
+        "flipped byte at {at} was accepted"
+    );
 }
 
 #[test]
@@ -147,8 +187,16 @@ fn crypto_conformance() {
     assert!(make.success(), "make -C ref/ref-crypto failed");
 
     /* RFC 7253 vectors */
-    assert_eq!(run(&ref_crypto(), &["vectors"], b""), (0, "ok\n".to_string()), "ref-crypto vectors");
-    assert_eq!(run(&crypto_check(), &["vectors"], b""), (0, "ok\n".to_string()), "crypto-check vectors");
+    assert_eq!(
+        run(&ref_crypto(), &["vectors"], b""),
+        (0, "ok\n".to_string()),
+        "ref-crypto vectors"
+    );
+    assert_eq!(
+        run(&crypto_check(), &["vectors"], b""),
+        (0, "ok\n".to_string()),
+        "crypto-check vectors"
+    );
 
     let seed: u64 = match std::env::var("CRYPTO_SEED") {
         Ok(s) => s.parse().expect("CRYPTO_SEED is a u64"),
@@ -164,7 +212,11 @@ fn crypto_conformance() {
                 n @ 0..=3 => special_seqs[n],
                 _ => rng.random(),
             };
-            let len = if i % 50 == 0 { 0 } else { rng.random_range(0..=1400usize) };
+            let len = if i % 50 == 0 {
+                0
+            } else {
+                rng.random_range(0..=1400usize)
+            };
             let mut payload = vec![0u8; len];
             rng.fill_bytes(&mut payload);
             Case {
@@ -192,10 +244,13 @@ fn crypto_conformance() {
             });
         }
     });
-    println!("{CASES} random cases identical in {:.1}s", start.elapsed().as_secs_f64());
+    println!(
+        "{CASES} random cases identical in {:.1}s",
+        start.elapsed().as_secs_f64()
+    );
 
     /* key parsing: upstream's bad keys of length 22, and keys whose last
-       character carries bits beyond 128 */
+    character carries bits beyond 128 */
     let mut bad_keys: Vec<String> = vec![
         "AAAAAAAAAAAAAAAAAAAAA~".into(),
         "~AAAAAAAAAAAAAAAAAAAAA".into(),
@@ -210,7 +265,10 @@ fn crypto_conformance() {
     }
     let mut accepted = 0;
     for key in &bad_keys {
-        for args in [vec!["enc", key.as_str(), "0", "1", "2", "3"], vec!["dec", key.as_str()]] {
+        for args in [
+            vec!["enc", key.as_str(), "0", "1", "2", "3"],
+            vec!["dec", key.as_str()],
+        ] {
             let stdin: &[u8] = if args[0] == "enc" { b"x" } else { b"00" };
             let res = both(&args, stdin, "key parsing");
             if res.0 == 0 {

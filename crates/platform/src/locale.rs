@@ -72,10 +72,16 @@ impl LocaleVar {
 pub fn get_ctype() -> LocaleVar {
     for name in ["LC_ALL", "LC_CTYPE", "LANG"] {
         if let Some(value) = std::env::var_os(name) {
-            return LocaleVar { name: name.to_string(), value: value.to_string_lossy().into_owned() };
+            return LocaleVar {
+                name: name.to_string(),
+                value: value.to_string_lossy().into_owned(),
+            };
         }
     }
-    LocaleVar { name: String::new(), value: String::new() }
+    LocaleVar {
+        name: String::new(),
+        value: String::new(),
+    }
 }
 
 #[cfg(unix)]
@@ -109,7 +115,10 @@ pub fn set_native_locale() {
         let err = std::io::Error::last_os_error();
         if err.raw_os_error() == Some(libc::ENOENT) {
             let ctype = get_ctype();
-            eprintln!("The locale requested by {} isn't available here.", ctype.str());
+            eprintln!(
+                "The locale requested by {} isn't available here.",
+                ctype.str()
+            );
             if !ctype.name.is_empty() {
                 eprintln!("Running `locale-gen {}' may be necessary.\n", ctype.value);
             }

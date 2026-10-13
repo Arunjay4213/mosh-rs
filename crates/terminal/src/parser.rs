@@ -29,6 +29,8 @@
 // also delete it here.
 // Ported from: upstream/src/terminal/parser.h, upstream/src/terminal/parser.cc
 
+//! UTF-8 decoding and the escape-sequence state machine driver. Port of upstream `src/terminal/parser.{h,cc}`.
+
 /* Based on Paul Williams's parser,
 http://www.vt100.net/emu/dec_ansi_parser */
 
@@ -41,6 +43,7 @@ fn append_or_delete(act: Action, vec: &mut Actions) {
     }
 }
 
+/// The DEC/ANSI escape-sequence state machine (Paul Williams's parser): turns code points into actions.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Parser {
     state: State,
@@ -53,10 +56,14 @@ impl Default for Parser {
 }
 
 impl Parser {
+    /// A parser in the Ground state.
     pub fn new() -> Parser {
-        Parser { state: State::Ground }
+        Parser {
+            state: State::Ground,
+        }
     }
 
+    /// Feeds one code point and appends the resulting non-Ignore actions (exit, transition, enter) to `ret`.
     pub fn input(&mut self, ch: wchar_t, ret: &mut Actions) {
         let tx = self.state.input(ch);
 
@@ -72,11 +79,13 @@ impl Parser {
         }
     }
 
+    /// Returns to the Ground state.
     pub fn reset_input(&mut self) {
         self.state = State::Ground;
     }
 }
 
+/// Size of the partial UTF-8 sequence buffer (upstream `Parser::BUF_SIZE`).
 pub const BUF_SIZE: usize = 8;
 
 /// Result of glibc `mbrtowc()` on a UTF-8 buffer with a fresh state.
@@ -107,7 +116,7 @@ fn mbrtowc(b: &[u8]) -> Mbrtowc {
         (3, c & 0x0F)
     } else if (c & 0xF8) == 0xF0 {
         (4, c & 0x07)
-    } else if (c & 0xFC) == 0xF9 {
+    } else if (c & 0xFC) == 0xF8 {
         (5, c & 0x03)
     } else if (c & 0xFE) == 0xFC {
         (6, c & 0x01)
@@ -135,6 +144,7 @@ fn mbrtowc(b: &[u8]) -> Mbrtowc {
     Mbrtowc::Parsed(cnt, v)
 }
 
+/// Decodes a UTF-8 byte stream with glibc `mbrtowc` semantics and feeds the code points to a `Parser`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UTF8Parser {
     parser: Parser,
@@ -150,10 +160,16 @@ impl Default for UTF8Parser {
 }
 
 impl UTF8Parser {
+    /// A parser in the Ground state with an empty byte buffer.
     pub fn new() -> UTF8Parser {
-        UTF8Parser { parser: Parser::new(), buf: [0; BUF_SIZE], buf_len: 0 }
+        UTF8Parser {
+            parser: Parser::new(),
+            buf: [0; BUF_SIZE],
+            buf_len: 0,
+        }
     }
 
+    /// Feeds one byte; appends the actions produced by any code points it completes (U+FFFD for invalid sequences).
     pub fn input(&mut self, c: u8, ret: &mut Actions) {
         assert!(self.buf_len < BUF_SIZE);
 
@@ -239,6 +255,7 @@ impl UTF8Parser {
         }
     }
 
+    /// Returns to the Ground state and drops any buffered partial sequence.
     pub fn reset_input(&mut self) {
         self.parser.reset_input();
         self.buf[0] = 0;

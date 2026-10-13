@@ -29,15 +29,22 @@
 // also delete it here.
 // Ported from: upstream/src/terminal/terminaluserinput.h, upstream/src/terminal/terminaluserinput.cc
 
+//! Translating user cursor keys for the host. Port of upstream `src/terminal/terminaluserinput.{h,cc}`.
+
 use crate::parseraction::UserByte;
 
+/// Where the translator is in an ESC O sequence.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UserInputState {
+    /// Not in a sequence.
     Ground,
+    /// After ESC.
     ESC,
+    /// After ESC O.
     SS3,
 }
 
+/// Upstream `Terminal::UserInput`: rewrites the user's SS3 cursor keys to CSI when the host is not in application cursor-key mode.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UserInput {
     state: UserInputState,
@@ -50,10 +57,14 @@ impl Default for UserInput {
 }
 
 impl UserInput {
+    /// A translator in the Ground state.
     pub fn new() -> UserInput {
-        UserInput { state: UserInputState::Ground }
+        UserInput {
+            state: UserInputState::Ground,
+        }
     }
 
+    /// The bytes to send to the host for one user keystroke byte.
     pub fn input(&mut self, act: &UserByte, application_mode_cursor_keys: bool) -> Vec<u8> {
         /* The user will always be in application mode. If stm is not in
         application mode, convert user's cursor control function to an

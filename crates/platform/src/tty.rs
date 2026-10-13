@@ -89,7 +89,11 @@ mod unix {
         // SAFETY: raw_termios is initialized.
         unsafe { libc::cfmakeraw(&mut raw_termios) };
         tcsetattr(&raw_termios)?;
-        Ok(RawModeGuard { saved_termios, raw_termios, restored: false })
+        Ok(RawModeGuard {
+            saved_termios,
+            raw_termios,
+            restored: false,
+        })
     }
 
     impl RawModeGuard {
@@ -149,9 +153,14 @@ mod unix {
         while total_bytes_written < bytes.len() {
             let rest = &bytes[total_bytes_written..];
             // SAFETY: rest is valid for rest.len() bytes.
-            let bytes_written = unsafe { libc::write(libc::STDOUT_FILENO, rest.as_ptr().cast(), rest.len()) };
+            let bytes_written =
+                unsafe { libc::write(libc::STDOUT_FILENO, rest.as_ptr().cast(), rest.len()) };
             if bytes_written <= 0 {
-                return Err(if bytes_written == 0 { io::Error::from(io::ErrorKind::WriteZero) } else { io::Error::last_os_error() });
+                return Err(if bytes_written == 0 {
+                    io::Error::from(io::ErrorKind::WriteZero)
+                } else {
+                    io::Error::last_os_error()
+                });
             }
             total_bytes_written += bytes_written as usize;
         }
@@ -169,10 +178,11 @@ mod windows {
     use windows_sys::Win32::Foundation::{HANDLE, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::Storage::FileSystem::{ReadFile, WriteFile};
     use windows_sys::Win32::System::Console::{
-        GetConsoleCP, GetConsoleMode, GetConsoleOutputCP, GetConsoleScreenBufferInfo, GetStdHandle, ReadConsoleW,
-        SetConsoleCP, SetConsoleMode, SetConsoleOutputCP, CONSOLE_MODE, CONSOLE_SCREEN_BUFFER_INFO,
-        DISABLE_NEWLINE_AUTO_RETURN, ENABLE_ECHO_INPUT, ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT,
-        ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+        GetConsoleCP, GetConsoleMode, GetConsoleOutputCP, GetConsoleScreenBufferInfo, GetStdHandle,
+        ReadConsoleW, SetConsoleCP, SetConsoleMode, SetConsoleOutputCP, CONSOLE_MODE,
+        CONSOLE_SCREEN_BUFFER_INFO, DISABLE_NEWLINE_AUTO_RETURN, ENABLE_ECHO_INPUT,
+        ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_VIRTUAL_TERMINAL_INPUT,
+        ENABLE_VIRTUAL_TERMINAL_PROCESSING, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
     };
 
     const CP_UTF8: u32 = 65001;
@@ -229,7 +239,8 @@ mod windows {
     }
 
     fn raw_input_mode(saved: CONSOLE_MODE) -> CONSOLE_MODE {
-        (saved | ENABLE_VIRTUAL_TERMINAL_INPUT) & !(ENABLE_PROCESSED_INPUT | ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT)
+        (saved | ENABLE_VIRTUAL_TERMINAL_INPUT)
+            & !(ENABLE_PROCESSED_INPUT | ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT)
     }
 
     fn raw_output_mode(saved: CONSOLE_MODE) -> CONSOLE_MODE {
@@ -341,7 +352,16 @@ mod windows {
         if console_mode(input).is_err() {
             let mut n: u32 = 0;
             // SAFETY: out is valid for out.len() bytes.
-            if unsafe { ReadFile(input, out.as_mut_ptr(), out.len() as u32, &mut n, std::ptr::null_mut()) } == 0 {
+            if unsafe {
+                ReadFile(
+                    input,
+                    out.as_mut_ptr(),
+                    out.len() as u32,
+                    &mut n,
+                    std::ptr::null_mut(),
+                )
+            } == 0
+            {
                 return Err(io::Error::last_os_error());
             }
             return Ok(n as usize);
@@ -354,7 +374,13 @@ mod windows {
             let mut n: u32 = 0;
             // SAFETY: wide[len..] is valid for the requested number of units.
             if unsafe {
-                ReadConsoleW(input, wide[len..].as_mut_ptr().cast(), (wide.len() - len) as u32, &mut n, std::ptr::null())
+                ReadConsoleW(
+                    input,
+                    wide[len..].as_mut_ptr().cast(),
+                    (wide.len() - len) as u32,
+                    &mut n,
+                    std::ptr::null(),
+                )
             } == 0
             {
                 return Err(io::Error::last_os_error());
@@ -393,7 +419,16 @@ mod windows {
             let chunk = rest.len().min(u32::MAX as usize) as u32;
             let mut bytes_written: u32 = 0;
             // SAFETY: rest is valid for chunk bytes.
-            if unsafe { WriteFile(output, rest.as_ptr(), chunk, &mut bytes_written, std::ptr::null_mut()) } == 0 {
+            if unsafe {
+                WriteFile(
+                    output,
+                    rest.as_ptr(),
+                    chunk,
+                    &mut bytes_written,
+                    std::ptr::null_mut(),
+                )
+            } == 0
+            {
                 return Err(io::Error::last_os_error());
             }
             if bytes_written == 0 {
@@ -404,4 +439,3 @@ mod windows {
         Ok(())
     }
 }
-

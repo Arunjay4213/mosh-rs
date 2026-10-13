@@ -71,7 +71,10 @@ impl Fragment {
 
     /// `Fragment( const std::string& x )`: parse a received fragment.
     pub fn from_bytes(x: &[u8]) -> Fragment {
-        assert!(x.len() >= Fragment::FRAG_HEADER_LEN, "x.size() >= frag_header_len");
+        assert!(
+            x.len() >= Fragment::FRAG_HEADER_LEN,
+            "x.size() >= frag_header_len"
+        );
         let contents = x[Fragment::FRAG_HEADER_LEN..].to_vec();
         let id = u64::from_be_bytes(x[0..8].try_into().expect("8 bytes"));
         let mut fragment_num = u16::from_be_bytes(x[8..10].try_into().expect("2 bytes"));
@@ -91,7 +94,10 @@ impl Fragment {
         let mut ret = Vec::with_capacity(Fragment::FRAG_HEADER_LEN + self.contents.len());
         ret.extend_from_slice(&self.id.to_be_bytes());
         /* effective limit on size of a terminal screen change or buffered user input */
-        assert!(self.fragment_num & 0x8000 == 0, "!( fragment_num & 0x8000 )");
+        assert!(
+            self.fragment_num & 0x8000 == 0,
+            "!( fragment_num & 0x8000 )"
+        );
         let combined_fragment_num: u16 = ((self.final_ as u16) << 15) | self.fragment_num;
         ret.extend_from_slice(&combined_fragment_num.to_be_bytes());
         assert!(ret.len() == Fragment::FRAG_HEADER_LEN);
@@ -138,7 +144,10 @@ impl FragmentAssembly {
             /* see if we already have this fragment */
             if self.fragments.len() > num && self.fragments[num].initialized {
                 /* make sure new version is same as what we already have */
-                assert!(self.fragments[num] == *frag, "fragments.at( frag.fragment_num ) == frag");
+                assert!(
+                    self.fragments[num] == *frag,
+                    "fragments.at( frag.fragment_num ) == frag"
+                );
             } else {
                 if self.fragments.len() < num + 1 {
                     self.fragments.resize(num + 1, Fragment::default());
@@ -151,7 +160,8 @@ impl FragmentAssembly {
         if frag.final_ {
             self.fragments_total = num as i32 + 1;
             assert!(self.fragments.len() as i32 <= self.fragments_total);
-            self.fragments.resize(self.fragments_total as usize, Fragment::default());
+            self.fragments
+                .resize(self.fragments_total as usize, Fragment::default());
         }
 
         if self.fragments_total != -1 {
@@ -207,7 +217,11 @@ impl Fragmenter {
         }
     }
 
-    pub fn make_fragments(&mut self, inst: &Instruction, mtu: usize) -> Result<Vec<Fragment>, CryptoError> {
+    pub fn make_fragments(
+        &mut self,
+        inst: &Instruction,
+        mtu: usize,
+    ) -> Result<Vec<Fragment>, CryptoError> {
         let mtu = mtu.wrapping_sub(Fragment::FRAG_HEADER_LEN);
         let last = &self.last_instruction;
         if inst.old_num() != last.old_num()
@@ -222,7 +236,10 @@ impl Fragmenter {
         }
 
         if inst.old_num() == last.old_num() && inst.new_num() == last.new_num() {
-            assert!(inst.diff() == last.diff(), "inst.diff() == last_instruction.diff()");
+            assert!(
+                inst.diff() == last.diff(),
+                "inst.diff() == last_instruction.diff()"
+            );
         }
 
         self.last_instruction = inst.clone();
@@ -245,7 +262,12 @@ impl Fragmenter {
                 final_ = true;
             }
 
-            ret.push(Fragment::new(self.next_instruction_id, fragment_num, final_, this_fragment.to_vec()));
+            ret.push(Fragment::new(
+                self.next_instruction_id,
+                fragment_num,
+                final_,
+                this_fragment.to_vec(),
+            ));
             fragment_num = fragment_num.wrapping_add(1);
         }
 

@@ -61,7 +61,11 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
         desired_port: Option<&str>,
     ) -> Result<Transport<MyState, RemoteState>, Error> {
         let connection = Connection::new_server(desired_ip, desired_port)?;
-        Ok(Transport::with_connection(connection, initial_state, initial_remote))
+        Ok(Transport::with_connection(
+            connection,
+            initial_state,
+            initial_remote,
+        ))
     }
 
     /// Client.
@@ -73,7 +77,11 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
         port: &str,
     ) -> Result<Transport<MyState, RemoteState>, Error> {
         let connection = Connection::new_client(key_str, ip, port)?;
-        Ok(Transport::with_connection(connection, initial_state, initial_remote))
+        Ok(Transport::with_connection(
+            connection,
+            initial_state,
+            initial_remote,
+        ))
     }
 
     fn with_connection(
@@ -85,7 +93,11 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
         Transport {
             connection,
             sender,
-            received_states: vec![TimestampedState::new(timestamp(), 0, initial_remote.clone())],
+            received_states: vec![TimestampedState::new(
+                timestamp(),
+                0,
+                initial_remote.clone(),
+            )],
             receiver_quench_timer: 0,
             last_receiver_state: initial_remote.clone(),
             fragments: FragmentAssembly::new(),
@@ -136,8 +148,8 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
 
             /* Do not accept state if our queue is full */
             /* This is better than dropping states from the middle of the
-               queue (as sender does), because we don't want to ACK a state
-               and then discard it later. */
+            queue (as sender does), because we don't want to ACK a state
+            and then discard it later. */
 
             self.process_throwaway_until(inst.throwaway_num());
 
@@ -161,9 +173,13 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
 
             /* apply diff to reference state */
             /* upstream dereferences an iterator found before process_throwaway_until();
-               look the reference state up again so a throwaway past old_num cannot
-               leave it dangling */
-            let reference_state = match self.received_states.iter().find(|i| inst.old_num() == i.num) {
+            look the reference state up again so a throwaway past old_num cannot
+            leave it dangling */
+            let reference_state = match self
+                .received_states
+                .iter()
+                .find(|i| inst.old_num() == i.num)
+            {
                 Some(r) => r,
                 None => return Ok(()),
             };
@@ -176,7 +192,11 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
             }
 
             /* Insert new state in sorted place */
-            if let Some(pos) = self.received_states.iter().position(|i| i.num > new_state.num) {
+            if let Some(pos) = self
+                .received_states
+                .iter()
+                .position(|i| i.num > new_state.num)
+            {
                 let num = new_state.num;
                 self.received_states.insert(pos, new_state);
                 if self.verbose != 0 {
@@ -200,8 +220,12 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
             }
             let new_state_timestamp = new_state.timestamp;
             self.received_states.push(new_state);
-            self.sender
-                .set_ack_num(self.received_states.last().expect("received_states not empty").num);
+            self.sender.set_ack_num(
+                self.received_states
+                    .last()
+                    .expect("received_states not empty")
+                    .num,
+            );
 
             self.sender.remote_heard(new_state_timestamp);
             if !inst.diff().is_empty() {
@@ -215,7 +239,10 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
     fn process_throwaway_until(&mut self, throwaway_num: u64) {
         self.received_states.retain(|i| i.num >= throwaway_num);
 
-        assert!(!self.received_states.is_empty(), "received_states.size() > 0");
+        assert!(
+            !self.received_states.is_empty(),
+            "received_states.size() > 0"
+        );
     }
 
     /// Find diff between last receiver state and current remote state, then rationalize states.
@@ -232,7 +259,12 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
             i.state.subtract(&oldest_receiver_state);
         }
 
-        self.last_receiver_state = self.received_states.last().expect("received_states not empty").state.clone();
+        self.last_receiver_state = self
+            .received_states
+            .last()
+            .expect("received_states not empty")
+            .state
+            .clone();
         ret
     }
 
@@ -280,11 +312,16 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
     }
 
     pub fn get_remote_state_num(&self) -> u64 {
-        self.received_states.last().expect("received_states not empty").num
+        self.received_states
+            .last()
+            .expect("received_states not empty")
+            .num
     }
 
     pub fn get_latest_remote_state(&self) -> &TimestampedState<RemoteState> {
-        self.received_states.last().expect("received_states not empty")
+        self.received_states
+            .last()
+            .expect("received_states not empty")
     }
 
     pub fn fds(&self) -> Vec<SocketHandle> {

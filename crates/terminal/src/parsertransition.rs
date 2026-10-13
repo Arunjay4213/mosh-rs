@@ -29,20 +29,27 @@
 // also delete it here.
 // Ported from: upstream/src/terminal/parsertransition.h
 
+//! A parser transition: an action plus an optional next state. Port of upstream `src/terminal/parsertransition.h`.
+
 use crate::parseraction::{Action, ActionType};
 use crate::parserstate::State;
 
 /// Transition is only a courier for an Action.
 #[derive(Clone, Copy, Debug)]
 pub struct Transition {
+    /// The action to run.
     pub action: Action,
+    /// The state to move to, or None to stay.
     pub next_state: Option<State>,
 }
 
 impl Transition {
     /// `Transition( ActionPointer s_action = Ignore, State* s_next_state = NULL )`
     pub fn new(s_action: ActionType, s_next_state: Option<State>) -> Transition {
-        Transition { action: Action::new(s_action), next_state: s_next_state }
+        Transition {
+            action: Action::new(s_action),
+            next_state: s_next_state,
+        }
     }
 
     /// `Transition()`: an Ignore action and no state change.

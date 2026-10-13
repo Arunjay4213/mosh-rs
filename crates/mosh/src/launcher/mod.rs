@@ -119,7 +119,11 @@ There is NO WARRANTY, to the extent permitted by law.
 
 fn predict_check(argv0: &str, predict: &str, env_set: bool) {
     if !["adaptive", "always", "never", "experimental"].contains(&predict) {
-        let explanation = if env_set { " (MOSH_PREDICTION_DISPLAY in environment)" } else { "" };
+        let explanation = if env_set {
+            " (MOSH_PREDICTION_DISPLAY in environment)"
+        } else {
+            ""
+        };
         eprint!("{argv0}: Unknown mode \"{predict}\"{explanation}.\n\n");
         die(&usage(argv0), DIE);
     }
@@ -177,13 +181,18 @@ fn shellwords(line: &str) -> Vec<String> {
 
 /// `sub shell_quote { join ' ', map {(my $a = $_) =~ s/'/'\\''/g; "'$a'"} @_ }`
 fn shell_quote(args: &[String]) -> String {
-    args.iter().map(|a| format!("'{}'", a.replace('\'', "'\\''"))).collect::<Vec<_>>().join(" ")
+    args.iter()
+        .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn locale_vars() -> Vec<String> {
     LOCALE_VARS
         .iter()
-        .filter_map(|name| std::env::var_os(name).map(|v| format!("{name}={}", v.to_string_lossy())))
+        .filter_map(|name| {
+            std::env::var_os(name).map(|v| format!("{name}={}", v.to_string_lossy()))
+        })
         .collect()
 }
 
@@ -195,12 +204,20 @@ fn check_port_request(argv0: &str, port_request: &str) {
     };
     let is_number = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
     if !is_number(low) || !high.is_none_or(is_number) {
-        die(&format!("{argv0}: Server-side port or range ({port_request}) is not valid.\n"), DIE);
+        die(
+            &format!("{argv0}: Server-side port or range ({port_request}) is not valid.\n"),
+            DIE,
+        );
     }
     // Perl compares numerically; f64 behaves like Perl for over-long digit strings.
     let low_n: f64 = low.parse().unwrap();
     if !(0.0..=65535.0).contains(&low_n) {
-        die(&format!("{argv0}: Server-side (low) port ({low}) must be within valid range [0..65535].\n"), DIE);
+        die(
+            &format!(
+                "{argv0}: Server-side (low) port ({low}) must be within valid range [0..65535].\n"
+            ),
+            DIE,
+        );
     }
     if let Some(high) = high {
         let high_n: f64 = high.parse().unwrap();
@@ -231,7 +248,14 @@ fn ssh_resolved_hostname(argv0: &str, ssh: &[String], userhost: &str) -> String 
         .unwrap_or_else(|e| die(&format!("Cannot exec ssh: {e}\n"), DIE));
     if !output.status.success() {
         let _ = std::io::stderr().write_all(&output.stderr);
-        die(&format!("{argv0}: `{} -G {userhost}` failed ({}).\n", ssh.join(" "), output.status), DIE);
+        die(
+            &format!(
+                "{argv0}: `{} -G {userhost}` failed ({}).\n",
+                ssh.join(" "),
+                output.status
+            ),
+            DIE,
+        );
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     for line in stdout.lines() {
@@ -240,7 +264,10 @@ fn ssh_resolved_hostname(argv0: &str, ssh: &[String], userhost: &str) -> String 
         }
     }
     // ssh -G always prints hostname; fall back to what the user typed.
-    userhost.rsplit_once('@').map_or(userhost, |(_, host)| host).to_string()
+    userhost
+        .rsplit_once('@')
+        .map_or(userhost, |(_, host)| host)
+        .to_string()
 }
 
 /// Deviation 9.1, second half: `sub resolvename` (mosh.pl lines 484-538)
@@ -249,16 +276,28 @@ fn ssh_resolved_hostname(argv0: &str, ssh: &[String], userhost: &str) -> String 
 fn resolvename(argv0: &str, host: &str, family: &str) -> String {
     let mut res: Vec<SocketAddr> = match (host, 22).to_socket_addrs() {
         Ok(res) => res.collect(),
-        Err(err) => die(&format!("{argv0}: could not get canonical name for {host}: {err}\n"), DIE),
+        Err(err) => die(
+            &format!("{argv0}: could not get canonical name for {host}: {err}\n"),
+            DIE,
+        ),
     };
-    let is_family = |a: &SocketAddr, fam: &str| if fam == "inet" { a.is_ipv4() } else { a.is_ipv6() };
+    let is_family = |a: &SocketAddr, fam: &str| {
+        if fam == "inet" {
+            a.is_ipv4()
+        } else {
+            a.is_ipv6()
+        }
+    };
     if family == "inet" || family == "inet6" {
         /* If v4 or v6 was specified, reduce the host list. */
         res.retain(|a| is_family(a, family));
     } else if let Some(prefer) = family.strip_prefix("prefer-") {
         /* If prefer-* was specified, reorder the host list to put that family first. */
         if prefer != "inet" && prefer != "inet6" {
-            die(&format!("{argv0}: Invalid preferred family {family}\n"), DIE);
+            die(
+                &format!("{argv0}: Invalid preferred family {family}\n"),
+                DIE,
+            );
         }
         res.sort_by_key(|a| !is_family(a, prefer));
     } else if family != "all" {
@@ -268,7 +307,10 @@ fn resolvename(argv0: &str, host: &str, family: &str) -> String {
         }
     }
     match res.first() {
-        None => die(&format!("{argv0}: could not find address for {host}\n"), DIE),
+        None => die(
+            &format!("{argv0}: could not find address for {host}\n"),
+            DIE,
+        ),
         Some(SocketAddr::V6(a)) if a.scope_id() != 0 => format!("{}%{}", a.ip(), a.scope_id()),
         Some(a) => IpAddr::to_string(&a.ip()),
     }
@@ -282,7 +324,10 @@ fn parse_mosh_connect(line: &str) -> Option<(String, String)> {
         return None;
     }
     let key = rest.trim_end();
-    let key_ok = key.len() == 22 && key.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'/' || b == b'+');
+    let key_ok = key.len() == 22
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'/' || b == b'+');
     key_ok.then(|| (port.to_string(), key.to_string()))
 }
 
@@ -368,7 +413,9 @@ pub fn main() -> ! {
     })();
     if let Err(err) = parsed {
         match err {
-            lexopt::Error::UnexpectedOption(o) => eprintln!("Unknown option: {}", o.trim_start_matches('-')),
+            lexopt::Error::UnexpectedOption(o) => {
+                eprintln!("Unknown option: {}", o.trim_start_matches('-'))
+            }
             lexopt::Error::MissingValue { option: Some(o) } => {
                 eprintln!("Option {} requires an argument", o.trim_start_matches('-'))
             }
@@ -422,9 +469,15 @@ pub fn main() -> ! {
         Some(b) if b.eq_ignore_ascii_case("ssh") => {}
         Some(b) if b.eq_ignore_ascii_case("any") => {}
         // PLAN 9.3: only ssh and any.
-        Some(b) => die(&format!("{argv0}: --bind-server={b} is not supported (use ssh or any).\n"), DIE),
+        Some(b) => die(
+            &format!("{argv0}: --bind-server={b} is not supported (use ssh or any).\n"),
+            DIE,
+        ),
     }
-    if bind_ip.as_deref().is_none_or(|b| b.eq_ignore_ascii_case("ssh")) {
+    if bind_ip
+        .as_deref()
+        .is_none_or(|b| b.eq_ignore_ascii_case("ssh"))
+    {
         if !localhost {
             bind_arguments.push("-s".to_string());
         } else {
@@ -433,15 +486,28 @@ pub fn main() -> ! {
     }
 
     /* Count colors */
-    let colors = match Command::new(&client).arg("-c").stderr(Stdio::inherit()).output() {
+    let colors = match Command::new(&client)
+        .arg("-c")
+        .stderr(Stdio::inherit())
+        .output()
+    {
         Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).into_owned(),
-        Ok(out) => die(&format!("Can't count colors: {client} -c exited with {}\n", out.status), DIE),
+        Ok(out) => die(
+            &format!(
+                "Can't count colors: {client} -c exited with {}\n",
+                out.status
+            ),
+            DIE,
+        ),
         Err(e) => die(&format!("Can't count colors: {e}\n"), DIE),
     };
     let colors = colors.strip_suffix('\n').unwrap_or(&colors);
     let colors = colors.strip_suffix('\n').unwrap_or(colors);
-    let colors =
-        if !colors.is_empty() && colors.bytes().all(|b| b.is_ascii_digit()) { colors.to_string() } else { "0".to_string() };
+    let colors = if !colors.is_empty() && colors.bytes().all(|b| b.is_ascii_digit()) {
+        colors.to_string()
+    } else {
+        "0".to_string()
+    };
 
     std::env::set_var("MOSH_CLIENT_PID", std::process::id().to_string()); /* We don't support this, but it's useful for test and debug. */
 
@@ -469,7 +535,9 @@ pub fn main() -> ! {
     let mut cmd;
     if localhost {
         cmd = Command::new("sh");
-        cmd.arg("-c").arg(&server_command).env_remove("SSH_CONNECTION");
+        cmd.arg("-c")
+            .arg(&server_command)
+            .env_remove("SSH_CONNECTION");
         if let Some(home) = std::env::var_os("HOME") {
             cmd.current_dir(home); /* chdir; # $HOME */
         }
@@ -489,7 +557,10 @@ pub fn main() -> ! {
     match process::spawn_merged(&mut cmd) {
         Err(e) => {
             // The forked Perl child dies with this message into the pipe.
-            println!("Cannot exec {}: {e}", if localhost { server.as_str() } else { "ssh" });
+            println!(
+                "Cannot exec {}: {e}",
+                if localhost { server.as_str() } else { "ssh" }
+            );
         }
         Ok(mut child) => {
             let stdout = std::io::stdout();
@@ -497,9 +568,15 @@ pub fn main() -> ! {
                 let line = String::from_utf8_lossy(&raw);
                 if line.starts_with("MOSH IP ") {
                     if ip.is_some() {
-                        die(&format!("{argv0} error: detected attempt to redefine MOSH IP.\n"), DIE);
+                        die(
+                            &format!("{argv0} error: detected attempt to redefine MOSH IP.\n"),
+                            DIE,
+                        );
                     }
-                    ip = Some(parse_mosh_ip(&line).unwrap_or_else(|| die(&format!("Bad MOSH IP string: {line}\n"), DIE)));
+                    ip = Some(
+                        parse_mosh_ip(&line)
+                            .unwrap_or_else(|| die(&format!("Bad MOSH IP string: {line}\n"), DIE)),
+                    );
                 } else if line.starts_with("MOSH CONNECT ") {
                     match parse_mosh_connect(&line) {
                         Some(pk) => {
@@ -509,7 +586,9 @@ pub fn main() -> ! {
                         None => die(&format!("Bad MOSH CONNECT string: {line}\n"), DIE),
                     }
                 } else {
-                    if port_request.as_deref().is_some_and(|p| p.contains(':')) && line.contains("Bad UDP port") {
+                    if port_request.as_deref().is_some_and(|p| p.contains(':'))
+                        && line.contains("Bad UDP port")
+                    {
                         bad_udp_port_warning = true;
                     }
                     let mut out = stdout.lock();
@@ -523,11 +602,17 @@ pub fn main() -> ! {
     }
 
     let Some(ip) = ip else {
-        die(&format!("{argv0}: Did not find remote IP address (is SSH ProxyCommand disabled?).\n"), DIE_AFTER_WAIT);
+        die(
+            &format!("{argv0}: Did not find remote IP address (is SSH ProxyCommand disabled?).\n"),
+            DIE_AFTER_WAIT,
+        );
     };
     let Some((port, key)) = port_key else {
         if bad_udp_port_warning {
-            die(&format!("{argv0}: Server does not support UDP port range option.\n"), DIE_AFTER_WAIT);
+            die(
+                &format!("{argv0}: Server does not support UDP port range option.\n"),
+                DIE_AFTER_WAIT,
+            );
         }
         die(
             &format!("{argv0}: Did not find mosh server startup message. (Have you installed mosh on your server?)\n"),
@@ -537,8 +622,13 @@ pub fn main() -> ! {
 
     /* Now start real mosh client */
     let mut client_cmd = Command::new(&client);
-    client_cmd.arg(format!("-# {} |", cmdline.join(" "))).arg(&ip).arg(&port);
-    client_cmd.env("MOSH_KEY", key).env("MOSH_PREDICTION_DISPLAY", &predict);
+    client_cmd
+        .arg(format!("-# {} |", cmdline.join(" ")))
+        .arg(&ip)
+        .arg(&port);
+    client_cmd
+        .env("MOSH_KEY", key)
+        .env("MOSH_PREDICTION_DISPLAY", &predict);
     if !term_init {
         client_cmd.env("MOSH_NO_TERM_INIT", "1");
     }

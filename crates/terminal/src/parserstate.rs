@@ -30,32 +30,49 @@
 // Ported from: upstream/src/terminal/parserstate.h, upstream/src/terminal/parserstate.cc,
 //              upstream/src/terminal/parserstatefamily.h
 
+//! The parser states and their transition rules. Port of upstream `src/terminal/parserstate.{h,cc}` and `parserstatefamily.h`.
+
 use crate::parseraction::{wchar_t, Action, ActionType};
 use crate::parsertransition::Transition;
 
 /// One member of upstream's `StateFamily`. Upstream has one class per state
 /// and a family object holding one instance of each; the states are
 /// stateless, so here each is an enum value.
+// Upstream name, kept so the port can be compared line by line.
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {
+    /// Printing characters and executing controls.
     Ground,
 
+    /// After ESC.
     Escape,
+    /// After ESC and an intermediate byte.
     Escape_Intermediate,
 
+    /// After CSI.
     CSI_Entry,
+    /// Collecting CSI parameters.
     CSI_Param,
+    /// After a CSI intermediate byte.
     CSI_Intermediate,
+    /// Swallowing a malformed CSI sequence.
     CSI_Ignore,
 
+    /// After DCS.
     DCS_Entry,
+    /// Collecting DCS parameters.
     DCS_Param,
+    /// After a DCS intermediate byte.
     DCS_Intermediate,
+    /// Inside a DCS string.
     DCS_Passthrough,
+    /// Swallowing a malformed DCS string.
     DCS_Ignore,
 
+    /// Inside an OSC string.
     OSC_String,
+    /// Inside an SOS, PM or APC string (ignored).
     SOS_PM_APC_String,
 }
 
@@ -89,6 +106,7 @@ impl State {
         Transition::none() /* don't allocate an Ignore action */
     }
 
+    /// The transition for code point `ch`: the anywhere rules first, then this state's rule (code points >= 0xA0 are classified like 'A').
     pub fn input(self, ch: wchar_t) -> Transition {
         /* Check for immediate transitions. */
         let mut anywhere = self.anywhere_rule(ch);
@@ -105,6 +123,7 @@ impl State {
         ret
     }
 
+    /// The action run on entering this state.
     pub fn enter(self) -> Action {
         match self {
             Escape => Action::new(Clear),
@@ -116,6 +135,7 @@ impl State {
         }
     }
 
+    /// The action run on leaving this state.
     pub fn exit(self) -> Action {
         match self {
             DCS_Passthrough => Action::new(Unhook),
@@ -144,11 +164,13 @@ impl State {
     }
 }
 
+// Upstream name, kept so the port can be compared line by line.
 #[allow(non_snake_case)]
 fn C0_prime(ch: wchar_t) -> bool {
     (ch <= 0x17) || (ch == 0x19) || ((0x1C..=0x1F).contains(&ch))
 }
 
+// Upstream name, kept so the port can be compared line by line.
 #[allow(non_snake_case)]
 fn GLGR(ch: wchar_t) -> bool {
     ((0x20..=0x7F).contains(&ch)) /* GL area */

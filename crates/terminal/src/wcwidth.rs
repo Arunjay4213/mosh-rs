@@ -20,6 +20,8 @@
 // Locale: C.UTF-8
 // Produced by: ldd (Ubuntu GLIBC 2.39-0ubuntu8.9) 2.39
 
+//! glibc `wcwidth()` for every code point, as upstream `terminal.cc` calls it under a UTF-8 locale.
+
 /// (first, last, width) for every code point range 0..=0x10FFFF, sorted, contiguous.
 static WCWIDTH_TABLE: &[(u32, u32, i8)] = &[
     (0x0, 0x0, 0),

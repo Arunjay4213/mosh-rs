@@ -29,12 +29,15 @@
 // also delete it here.
 // Ported from: upstream/src/terminal/terminal.h, upstream/src/terminal/terminal.cc
 
+//! The terminal emulator: printing characters and routing actions. Port of upstream `src/terminal/terminal.{h,cc}`.
+
 use crate::parseraction::Action;
 use crate::terminaldispatcher::{Dispatcher, Function_Type};
 use crate::terminalframebuffer::{Cell, Framebuffer};
 use crate::terminaluserinput::UserInput;
 use crate::wcwidth::wcwidth;
 
+/// Upstream `Terminal::Emulator`: framebuffer, dispatcher and user-input translator.
 #[derive(Clone, Debug)]
 pub struct Emulator {
     pub(crate) fb: Framebuffer,
@@ -50,6 +53,7 @@ impl PartialEq for Emulator {
 }
 
 impl Emulator {
+    /// An emulator with a blank `s_width` x `s_height` screen.
     pub fn new(s_width: usize, s_height: usize) -> Emulator {
         Emulator {
             fb: Framebuffer::new(s_width as i32, s_height as i32),
@@ -58,16 +62,19 @@ impl Emulator {
         }
     }
 
+    /// Takes the replies queued for the host (e.g. cursor position reports).
     pub fn read_octets_to_host(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.dispatch.terminal_to_host)
     }
 
+    /// The current framebuffer.
     pub fn get_fb(&self) -> &Framebuffer {
         &self.fb
     }
 
     pub(crate) fn execute(&mut self, act: &Action) {
-        self.dispatch.dispatch(Function_Type::CONTROL, act, &mut self.fb);
+        self.dispatch
+            .dispatch(Function_Type::CONTROL, act, &mut self.fb);
     }
 
     pub(crate) fn print(&mut self, act: &Action) {
@@ -164,25 +171,31 @@ impl Emulator {
         }
     }
 
+    // Upstream name, kept so the port can be compared line by line.
     #[allow(non_snake_case)]
     pub(crate) fn CSI_dispatch(&mut self, act: &Action) {
-        self.dispatch.dispatch(Function_Type::CSI, act, &mut self.fb);
+        self.dispatch
+            .dispatch(Function_Type::CSI, act, &mut self.fb);
     }
 
+    // Upstream name, kept so the port can be compared line by line.
     #[allow(non_snake_case)]
     pub(crate) fn OSC_end(&mut self, act: &Action) {
         self.dispatch.OSC_dispatch(act, &mut self.fb);
     }
 
+    // Upstream name, kept so the port can be compared line by line.
     #[allow(non_snake_case)]
     pub(crate) fn Esc_dispatch(&mut self, act: &Action) {
         /* handle 7-bit ESC-encoding of C1 control characters */
         if self.dispatch.get_dispatch_chars().is_empty() && (0x40 <= act.ch) && (act.ch <= 0x5F) {
             let mut act2 = *act;
             act2.ch += 0x40;
-            self.dispatch.dispatch(Function_Type::CONTROL, &act2, &mut self.fb);
+            self.dispatch
+                .dispatch(Function_Type::CONTROL, &act2, &mut self.fb);
         } else {
-            self.dispatch.dispatch(Function_Type::ESCAPE, act, &mut self.fb);
+            self.dispatch
+                .dispatch(Function_Type::ESCAPE, act, &mut self.fb);
         }
     }
 

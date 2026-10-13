@@ -39,6 +39,8 @@ pub trait State: PartialEq + Clone {
     fn apply_string(&mut self, diff: &[u8]);
     /// Drop the part of `self` that `prefix` already contains.
     fn subtract(&mut self, prefix: &Self);
+    /// Called on the new current state by `set_current_state`.
+    fn reset_input(&mut self);
 }
 
 #[derive(Clone, Debug)]

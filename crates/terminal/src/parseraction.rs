@@ -29,31 +29,49 @@
 // also delete it here.
 // Ported from: upstream/src/terminal/parseraction.h, upstream/src/terminal/parseraction.cc
 
+//! Parser actions and how each acts on the emulator. Port of upstream `src/terminal/parseraction.{h,cc}`.
+
 use crate::terminal::Emulator;
 
 /// Upstream `wchar_t`. On the arm64 Linux build that serves as the oracle it
 /// is a 32-bit unsigned integer; every value the parser produces is at most
 /// 0x10FFFF (or the -1 default, which no code path reads).
+// Upstream name, kept so the port can be compared line by line.
 #[allow(non_camel_case_types)]
 pub type wchar_t = u32;
 
 /// The concrete action classes of upstream's `Parser::Action` hierarchy.
+// Upstream name, kept so the port can be compared line by line.
 #[allow(non_camel_case_types)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ActionType {
+    /// No-op; never appended to an action list.
     Ignore,
+    /// Print the character at the cursor.
     Print,
+    /// Run a C0/C1 control function.
     Execute,
+    /// Clear the dispatcher's parameters and intermediates.
     Clear,
+    /// Collect an intermediate or private-marker byte.
     Collect,
+    /// Collect a parameter digit or ';'.
     Param,
+    /// Dispatch an ESC sequence (or a 7-bit C1 control).
     Esc_Dispatch,
+    /// Dispatch a CSI sequence.
     CSI_Dispatch,
+    /// Start of a DCS string (ignored by the emulator).
     Hook,
+    /// DCS string byte (ignored by the emulator).
     Put,
+    /// End of a DCS string (ignored by the emulator).
     Unhook,
+    /// Start of an OSC string.
     OSC_Start,
+    /// OSC string character.
     OSC_Put,
+    /// End of an OSC string: dispatch it.
     OSC_End,
 }
 
@@ -62,19 +80,28 @@ pub enum ActionType {
 /// state machine).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Action {
+    /// Which action this is.
     pub kind: ActionType,
+    /// The code point that triggered the action (`u32::MAX`, upstream's -1, when none).
     pub ch: wchar_t,
+    /// Whether `ch` is meaningful.
     pub char_present: bool,
 }
 
+/// Upstream `Parser::Actions`.
 pub type Actions = Vec<Action>;
 
 impl Action {
     /// `Action() : ch( -1 ), char_present( false )`
     pub fn new(kind: ActionType) -> Action {
-        Action { kind, ch: u32::MAX, char_present: false }
+        Action {
+            kind,
+            ch: u32::MAX,
+            char_present: false,
+        }
     }
 
+    /// Upstream's action class name, e.g. "Print".
     pub fn name(&self) -> &'static str {
         match self.kind {
             ActionType::Ignore => "Ignore",
@@ -94,10 +121,12 @@ impl Action {
         }
     }
 
+    /// True for the Ignore action.
     pub fn ignore(&self) -> bool {
         self.kind == ActionType::Ignore
     }
 
+    /// Applies the action to the emulator, as upstream's virtual `act_on_terminal` does.
     pub fn act_on_terminal(&self, emu: &mut Emulator) {
         match self.kind {
             ActionType::Print => emu.print(self),
@@ -124,14 +153,17 @@ pub struct UserByte {
 }
 
 impl UserByte {
+    /// A user keystroke byte.
     pub fn new(s_c: u8) -> UserByte {
         UserByte { c: s_c }
     }
 
+    /// "UserByte".
     pub fn name(&self) -> &'static str {
         "UserByte"
     }
 
+    /// Translates the byte for the host (cursor-key mode) and queues it in `terminal_to_host`.
     pub fn act_on_terminal(&self, emu: &mut Emulator) {
         let s = emu.user.input(self, emu.fb.ds.application_mode_cursor_keys);
         emu.dispatch.terminal_to_host.extend_from_slice(&s);
@@ -141,19 +173,27 @@ impl UserByte {
 /// resize event -- not part of the host-source state machine
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Resize {
+    /// New width in columns.
     pub width: usize,
+    /// New height in rows.
     pub height: usize,
 }
 
 impl Resize {
+    /// A resize to `s_width` x `s_height`.
     pub fn new(s_width: usize, s_height: usize) -> Resize {
-        Resize { width: s_width, height: s_height }
+        Resize {
+            width: s_width,
+            height: s_height,
+        }
     }
 
+    /// "Resize".
     pub fn name(&self) -> &'static str {
         "Resize"
     }
 
+    /// Resizes the emulator's framebuffer.
     pub fn act_on_terminal(&self, emu: &mut Emulator) {
         emu.resize(self.width, self.height);
     }

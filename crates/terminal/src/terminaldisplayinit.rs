@@ -36,6 +36,8 @@
 // known to lack ECH and BCE. The values are what ncurses 6.4 terminfo on the
 // devbox returns (`infocmp -1 xterm`, `infocmp -1 screen`, `infocmp -1 tmux`).
 
+//! Choosing the local terminal's capabilities. Port of upstream `src/terminal/terminaldisplayinit.cc`, without terminfo (PLAN.md 9.6).
+
 use crate::terminaldisplay::Display;
 
 /// The terminfo answers upstream would get for one terminal type.
@@ -55,7 +57,12 @@ const XTERM_CLASS: TermCaps = TermCaps {
 };
 
 /// "screen", "screen-256color", "tmux", "tmux-256color": no ech, no bce.
-const SCREEN_CLASS: TermCaps = TermCaps { ech: false, bce: false, smcup: "\x1b[?1049h", rmcup: "\x1b[?1049l" };
+const SCREEN_CLASS: TermCaps = TermCaps {
+    ech: false,
+    bce: false,
+    smcup: "\x1b[?1049h",
+    rmcup: "\x1b[?1049l",
+};
 
 fn term_caps(term_type: Option<&str>) -> &'static TermCaps {
     match term_type {
@@ -65,8 +72,15 @@ fn term_caps(term_type: Option<&str>) -> &'static TermCaps {
 }
 
 impl Display {
+    /// Terminal capabilities; with `use_environment`, chosen from `TERM` and `MOSH_NO_TERM_INIT` (no terminfo, PLAN.md 9.6).
     pub fn new(use_environment: bool) -> Display {
-        let mut d = Display { has_ech: true, has_bce: true, has_title: true, smcup: None, rmcup: None };
+        let mut d = Display {
+            has_ech: true,
+            has_bce: true,
+            has_title: true,
+            smcup: None,
+            rmcup: None,
+        };
 
         if use_environment {
             let term_type = std::env::var("TERM").ok();
@@ -81,7 +95,15 @@ impl Display {
             /* Check if we can set the window title and icon name.  terminfo does not
             have reliable information on this, so we hardcode a whitelist of
             terminal type prefixes. */
-            const TITLE_TERM_TYPES: [&str; 7] = ["xterm", "rxvt", "kterm", "Eterm", "alacritty", "screen", "tmux"];
+            const TITLE_TERM_TYPES: [&str; 7] = [
+                "xterm",
+                "rxvt",
+                "kterm",
+                "Eterm",
+                "alacritty",
+                "screen",
+                "tmux",
+            ];
 
             d.has_title = false;
             if let Some(term_type) = term_type.as_deref() {

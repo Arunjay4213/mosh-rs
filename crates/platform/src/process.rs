@@ -46,12 +46,17 @@ pub struct LineProcess {
 
 pub fn spawn_merged(cmd: &mut Command) -> io::Result<LineProcess> {
     let (reader, writer) = io::pipe()?;
-    cmd.stdin(Stdio::inherit()).stdout(writer.try_clone()?).stderr(writer);
+    cmd.stdin(Stdio::inherit())
+        .stdout(writer.try_clone()?)
+        .stderr(writer);
     let child = cmd.spawn();
     // `cmd` still holds our copies of the write end; replace them so the
     // pipe reaches end of file when the child exits.
     cmd.stdout(Stdio::null()).stderr(Stdio::null());
-    Ok(LineProcess { child: child?, reader: BufReader::new(reader) })
+    Ok(LineProcess {
+        child: child?,
+        reader: BufReader::new(reader),
+    })
 }
 
 impl LineProcess {

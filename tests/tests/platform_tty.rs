@@ -53,19 +53,28 @@ fn wait_for(out: &Arc<Mutex<Vec<u8>>>, needle: &str, timeout: Duration) -> Strin
         if text.contains(needle) {
             return text;
         }
-        assert!(Instant::now() < deadline, "timed out waiting for {needle:?}; output so far:\n{text}");
+        assert!(
+            Instant::now() < deadline,
+            "timed out waiting for {needle:?}; output so far:\n{text}"
+        );
         std::thread::sleep(Duration::from_millis(20));
     }
 }
 
 fn between<'a>(text: &'a str, start: &str, end: &str) -> &'a str {
-    let a = text.find(start).unwrap_or_else(|| panic!("missing {start:?}")) + start.len();
-    let b = a + text[a..].find(end).unwrap_or_else(|| panic!("missing {end:?}"));
+    let a = text
+        .find(start)
+        .unwrap_or_else(|| panic!("missing {start:?}"))
+        + start.len();
+    let b = a + text[a..]
+        .find(end)
+        .unwrap_or_else(|| panic!("missing {end:?}"));
     &text[a..b]
 }
 
 fn has_token(stty: &str, token: &str) -> bool {
-    stty.split_whitespace().any(|t| t.trim_end_matches(';') == token)
+    stty.split_whitespace()
+        .any(|t| t.trim_end_matches(';') == token)
 }
 
 #[test]
@@ -97,11 +106,17 @@ fn raw_mode_resize_and_large_write_through_a_pty() {
     };
 
     let text = wait_for(&out, "waiting for SIGWINCH", Duration::from_secs(10));
-    assert!(text.contains("size 100x30"), "initial size not 100x30:\n{text}");
+    assert!(
+        text.contains("size 100x30"),
+        "initial size not 100x30:\n{text}"
+    );
     let raw_stty = between(&text, "raw on", "waiting for SIGWINCH");
     println!("stty -a in raw mode:\n{}", raw_stty.trim());
     for token in ["-icanon", "-echo", "-isig"] {
-        assert!(has_token(raw_stty, token), "raw-mode stty lacks {token}:\n{raw_stty}");
+        assert!(
+            has_token(raw_stty, token),
+            "raw-mode stty lacks {token}:\n{raw_stty}"
+        );
     }
 
     pty::set_window_size(&master, 120, 40).expect("TIOCSWINSZ");
@@ -113,17 +128,30 @@ fn raw_mode_resize_and_large_write_through_a_pty() {
 
     let big = between(&text, "big start\n", "\nbig end");
     let x_count = big.bytes().filter(|&b| b == b'x').count();
-    println!("1 MB write: {} bytes received, {} of them 'x'", big.len(), x_count);
+    println!(
+        "1 MB write: {} bytes received, {} of them 'x'",
+        big.len(),
+        x_count
+    );
     assert_eq!(big.len(), 1 << 20);
     assert_eq!(x_count, 1 << 20);
 
     let cooked_stty = &text[text.find("raw off").expect("missing raw off")..];
     println!("stty -a after raw_mode_off:\n{}", cooked_stty.trim());
     for token in ["icanon", "echo", "isig"] {
-        assert!(has_token(cooked_stty, token), "restored stty lacks {token}:\n{cooked_stty}");
+        assert!(
+            has_token(cooked_stty, token),
+            "restored stty lacks {token}:\n{cooked_stty}"
+        );
     }
     for token in ["-icanon", "-echo", "-isig"] {
-        assert!(!has_token(cooked_stty, token), "restored stty still has {token}:\n{cooked_stty}");
+        assert!(
+            !has_token(cooked_stty, token),
+            "restored stty still has {token}:\n{cooked_stty}"
+        );
     }
-    assert!(status.success(), "tty-probe exited with {status:?}:\n{text}");
+    assert!(
+        status.success(),
+        "tty-probe exited with {status:?}:\n{text}"
+    );
 }

@@ -42,7 +42,9 @@ pub use prost;
 
 pub use crypto::{Base64Key, CryptoError, Message, Nonce, Session};
 pub use timestamp::{freeze_timestamp, frozen_timestamp};
-pub use transport::network::{timestamp, timestamp16, timestamp_diff, Connection, Direction, NetworkError, Packet};
+pub use transport::network::{
+    timestamp, timestamp16, timestamp_diff, Connection, Direction, NetworkError, Packet,
+};
 pub use transport::networktransport::Transport;
 pub use transport::transportstate::{State, TimestampedState};
 pub use transport::Error;

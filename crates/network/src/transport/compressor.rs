@@ -50,7 +50,10 @@ pub fn compress_str(input: &[u8]) -> Result<Vec<u8>, CryptoError> {
     let out = e.finish();
     match out {
         Ok(out) if ok && out.len() <= BUFFER_SIZE => Ok(out),
-        _ => Err(dos_detected("Z_OK == compress( buffer, &len, input.data(), input.size() )", "compress_str")),
+        _ => Err(dos_detected(
+            "Z_OK == compress( buffer, &len, input.data(), input.size() )",
+            "compress_str",
+        )),
     }
 }
 
@@ -58,7 +61,12 @@ pub fn compress_str(input: &[u8]) -> Result<Vec<u8>, CryptoError> {
 /// or truncated input, and when the output would exceed the buffer.
 /// Bytes after the end of the zlib stream are ignored, as `uncompress()` does.
 pub fn uncompress_str(input: &[u8]) -> Result<Vec<u8>, CryptoError> {
-    let err = || dos_detected("Z_OK == uncompress( buffer, &len, input.data(), input.size() )", "uncompress_str");
+    let err = || {
+        dos_detected(
+            "Z_OK == uncompress( buffer, &len, input.data(), input.size() )",
+            "uncompress_str",
+        )
+    };
     let mut d = Decompress::new(true);
     let mut out: Vec<u8> = Vec::with_capacity((input.len() * 4 + 64).min(BUFFER_SIZE));
     loop {

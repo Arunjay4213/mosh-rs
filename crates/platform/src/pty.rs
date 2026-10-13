@@ -52,10 +52,18 @@ pub enum Fork {
 /// In the child only async-signal-safe work is guaranteed to be sound if the
 /// parent had other threads. Call `exec` promptly in the child.
 pub fn forkpty(cols: u16, rows: u16) -> io::Result<Fork> {
-    let window_size = nix::pty::Winsize { ws_row: rows, ws_col: cols, ws_xpixel: 0, ws_ypixel: 0 };
+    let window_size = nix::pty::Winsize {
+        ws_row: rows,
+        ws_col: cols,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
     // SAFETY: the child either execs or exits; see the doc comment.
     match unsafe { nix::pty::forkpty(Some(&window_size), None) } {
-        Ok(nix::pty::ForkptyResult::Parent { child, master }) => Ok(Fork::Parent { master, child: child.as_raw() }),
+        Ok(nix::pty::ForkptyResult::Parent { child, master }) => Ok(Fork::Parent {
+            master,
+            child: child.as_raw(),
+        }),
         Ok(nix::pty::ForkptyResult::Child) => Ok(Fork::Child),
         Err(e) => Err(io::Error::from(e)),
     }
@@ -64,7 +72,12 @@ pub fn forkpty(cols: u16, rows: u16) -> io::Result<Fork> {
 /// `ioctl( host_fd, TIOCSWINSZ, &window_size )`. The kernel sends SIGWINCH to
 /// the foreground process group of the pty.
 pub fn set_window_size(fd: &impl AsRawFd, cols: u16, rows: u16) -> io::Result<()> {
-    let window_size = libc::winsize { ws_row: rows, ws_col: cols, ws_xpixel: 0, ws_ypixel: 0 };
+    let window_size = libc::winsize {
+        ws_row: rows,
+        ws_col: cols,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
     // SAFETY: TIOCSWINSZ reads one winsize struct from the pointer.
     if unsafe { libc::ioctl(fd.as_raw_fd(), libc::TIOCSWINSZ, &window_size) } < 0 {
         return Err(io::Error::last_os_error());
@@ -77,7 +90,8 @@ pub fn set_window_size(fd: &impl AsRawFd, cols: u16, rows: u16) -> io::Result<()
 /// command. Only returns on failure.
 pub fn exec(argv: &[String], env: &[(String, String)]) -> io::Error {
     for (name, value) in env {
-        let (Ok(name), Ok(value)) = (CString::new(name.as_str()), CString::new(value.as_str())) else {
+        let (Ok(name), Ok(value)) = (CString::new(name.as_str()), CString::new(value.as_str()))
+        else {
             return io::Error::from(io::ErrorKind::InvalidInput);
         };
         // SAFETY: both are valid C strings; overwrite = true as upstream.
@@ -85,7 +99,11 @@ pub fn exec(argv: &[String], env: &[(String, String)]) -> io::Error {
             return io::Error::last_os_error();
         }
     }
-    let Ok(args) = argv.iter().map(|a| CString::new(a.as_str())).collect::<Result<Vec<_>, _>>() else {
+    let Ok(args) = argv
+        .iter()
+        .map(|a| CString::new(a.as_str()))
+        .collect::<Result<Vec<_>, _>>()
+    else {
         return io::Error::from(io::ErrorKind::InvalidInput);
     };
     if args.is_empty() {

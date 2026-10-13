@@ -63,7 +63,10 @@ struct Log {
 impl State for Log {
     /// bytes appended since `existing`
     fn diff_from(&self, existing: &Log) -> Vec<u8> {
-        assert!(self.bytes.starts_with(&existing.bytes), "diff_from: existing is not a prefix");
+        assert!(
+            self.bytes.starts_with(&existing.bytes),
+            "diff_from: existing is not a prefix"
+        );
         self.bytes[existing.bytes.len()..].to_vec()
     }
 
@@ -77,9 +80,14 @@ impl State for Log {
 
     /// drop the prefix (asserted to be one, as UserStream::subtract does)
     fn subtract(&mut self, prefix: &Log) {
-        assert!(self.bytes.starts_with(&prefix.bytes), "subtract: not a prefix");
+        assert!(
+            self.bytes.starts_with(&prefix.bytes),
+            "subtract: not a prefix"
+        );
         self.bytes.drain(..prefix.bytes.len());
     }
+
+    fn reset_input(&mut self) {}
 }
 
 fn hex(b: &[u8]) -> String {
@@ -120,8 +128,13 @@ fn report(e: Error) {
 
 fn server(port: Option<&str>) -> ExitCode {
     let mut network: Transport<Log, Log> =
-        Transport::new_server(&Log::default(), &Log::default(), Some("127.0.0.1"), port).expect("bind server");
-    println!("MOSH CONNECT {} {}", network.port().expect("port"), network.get_key());
+        Transport::new_server(&Log::default(), &Log::default(), Some("127.0.0.1"), port)
+            .expect("bind server");
+    println!(
+        "MOSH CONNECT {} {}",
+        network.port().expect("port"),
+        network.get_key()
+    );
     std::io::stdout().flush().expect("flush");
 
     let acked_ts_start = network.get_sent_state_acked_timestamp();
@@ -158,13 +171,22 @@ fn server(port: Option<&str>) -> ExitCode {
         "server packets={} acked_ts_advance={} remote_addr={} remote={}",
         packets,
         network.get_sent_state_acked_timestamp() - acked_ts_start,
-        network.get_remote_addr().map_or("none".to_string(), |a| a.to_string()),
+        network
+            .get_remote_addr()
+            .map_or("none".to_string(), |a| a.to_string()),
         hex(&received)
     );
     ExitCode::SUCCESS
 }
 
-fn client(key: &str, ip: &str, port: &str, changes: usize, duration_ms: u64, seed: u64) -> ExitCode {
+fn client(
+    key: &str,
+    ip: &str,
+    port: &str,
+    changes: usize,
+    duration_ms: u64,
+    seed: u64,
+) -> ExitCode {
     let mut network: Transport<Log, Log> =
         Transport::new_client(&Log::default(), &Log::default(), key, ip, port).expect("client");
     network.set_send_delay(1); /* minimal delay on outgoing keystrokes, as stmclient does */
@@ -214,7 +236,7 @@ fn client(key: &str, ip: &str, port: &str, changes: usize, duration_ms: u64, see
         }
 
         /* rationalize_states() subtracts the acknowledged state from the current
-           state, so an empty current state means the server has acknowledged everything */
+        state, so an empty current state means the server has acknowledged everything */
         if pushed == changes && network.get_current_state().bytes.is_empty() {
             break "done";
         }

@@ -61,7 +61,10 @@ fn link(h: &Hyperlink) -> String {
 }
 
 fn rend(r: &Renditions) -> String {
-    format!("{} {} {}", r.attributes, r.foreground_color, r.background_color)
+    format!(
+        "{} {} {}",
+        r.attributes, r.foreground_color, r.background_color
+    )
 }
 
 fn dump(fb: &Framebuffer, to_host: &[u8], o: &mut String) {
@@ -76,7 +79,11 @@ fn dump(fb: &Framebuffer, to_host: &[u8], o: &mut String) {
         b(ds.cursor_visible),
         b(ds.next_print_will_wrap)
     );
-    let _ = writeln!(o, "combining {} {}", ds.combining_char_row, ds.combining_char_col);
+    let _ = writeln!(
+        o,
+        "combining {} {}",
+        ds.combining_char_row, ds.combining_char_col
+    );
     let _ = writeln!(
         o,
         "origin {} autowrap {} insert {} cursor_keys_app {} reverse_video {} bracketed_paste {}",
@@ -95,10 +102,24 @@ fn dump(fb: &Framebuffer, to_host: &[u8], o: &mut String) {
         b(ds.mouse_alternate_scroll),
         ds.mouse_encoding_mode as i32
     );
-    let _ = writeln!(o, "scroll_region {} {}", ds.scrolling_region_top_row, ds.scrolling_region_bottom_row);
-    let tabs: Vec<String> =
-        ds.tabs.iter().enumerate().filter(|(_, &t)| t).map(|(i, _)| i.to_string()).collect();
-    let _ = writeln!(o, "default_tabs {} tabs {}", b(ds.default_tabs), tabs.join(","));
+    let _ = writeln!(
+        o,
+        "scroll_region {} {}",
+        ds.scrolling_region_top_row, ds.scrolling_region_bottom_row
+    );
+    let tabs: Vec<String> = ds
+        .tabs
+        .iter()
+        .enumerate()
+        .filter(|(_, &t)| t)
+        .map(|(i, _)| i.to_string())
+        .collect();
+    let _ = writeln!(
+        o,
+        "default_tabs {} tabs {}",
+        b(ds.default_tabs),
+        tabs.join(",")
+    );
     let _ = writeln!(o, "renditions {}", rend(&ds.renditions));
     let _ = writeln!(o, "hyperlink {}", link(&ds.hyperlink));
     let _ = writeln!(
@@ -197,7 +218,10 @@ fn usage() -> ! {
 
 fn read_stdin() -> Vec<u8> {
     let mut v = Vec::new();
-    std::io::stdin().lock().read_to_end(&mut v).unwrap_or_else(|e| die(&format!("vt-check: stdin: {}", e)));
+    std::io::stdin()
+        .lock()
+        .read_to_end(&mut v)
+        .unwrap_or_else(|e| die(&format!("vt-check: stdin: {}", e)));
     v
 }
 
@@ -234,15 +258,29 @@ fn main() {
             }
         }
         ("frame", 6) | ("frame", 7) => {
-            let initialized = if args.len() == 7 { atoi(&args[6]) != 0 } else { true };
-            let f = do_frame(w, h, &read_file(&args[4]), &read_file(&args[5]), initialized);
+            let initialized = if args.len() == 7 {
+                atoi(&args[6]) != 0
+            } else {
+                true
+            };
+            let f = do_frame(
+                w,
+                h,
+                &read_file(&args[4]),
+                &read_file(&args[5]),
+                initialized,
+            );
             let _ = out.write_all(f.as_bytes());
         }
         ("frame-batch", 4) | ("frame-batch", 5) => {
-            let initialized = if args.len() == 5 { atoi(&args[4]) != 0 } else { true };
+            let initialized = if args.len() == 5 {
+                atoi(&args[4]) != 0
+            } else {
+                true
+            };
             let input = read_stdin();
             let recs = records(&input);
-            if recs.len() % 2 != 0 {
+            if !recs.len().is_multiple_of(2) {
                 die("vt-check: frame-batch needs an even number of records");
             }
             for pair in recs.chunks(2) {

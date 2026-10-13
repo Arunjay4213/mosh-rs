@@ -43,6 +43,8 @@ static void header( const char* glibc )
           "// Locale: C.UTF-8\n"
           "// Produced by: %s\n"
           "\n"
+          "//! glibc `wcwidth()` for every code point, as upstream `terminal.cc` calls it under a UTF-8 locale.\n"
+          "\n"
           "/// (first, last, width) for every code point range 0..=0x10FFFF, sorted, contiguous.\n"
           "static WCWIDTH_TABLE: &[(u32, u32, i8)] = &[\n",
           glibc );

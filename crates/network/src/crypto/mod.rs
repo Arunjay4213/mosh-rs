@@ -170,7 +170,10 @@ impl Base64Key {
 
     pub fn printable_key(&self) -> String {
         let base64 = base64_encode(&self.key);
-        assert!(base64[23] == b'=' && base64[22] == b'=', "Unexpected output from base64_encode");
+        assert!(
+            base64[23] == b'=' && base64[22] == b'=',
+            "Unexpected output from base64_encode"
+        );
         String::from_utf8(base64[..22].to_vec()).expect("base64 is ASCII")
     }
 
@@ -201,7 +204,9 @@ impl Nonce {
 
     pub fn from_bytes(s_bytes: &[u8]) -> Result<Nonce, CryptoError> {
         if s_bytes.len() != 8 {
-            return Err(CryptoError::new("Nonce representation must be 8 octets long."));
+            return Err(CryptoError::new(
+                "Nonce representation must be 8 octets long.",
+            ));
         }
         let mut bytes = [0u8; Nonce::NONCE_LEN];
         bytes[4..].copy_from_slice(s_bytes);
@@ -265,7 +270,11 @@ impl Session {
         assert!(pt_len <= Session::RECEIVE_MTU);
 
         let ciphertext = ae_encrypt(&self.ctx, plaintext.nonce.data(), &plaintext.text, &[]);
-        assert_eq!(ciphertext.len(), ciphertext_len, "ae_encrypt() returned error.");
+        assert_eq!(
+            ciphertext.len(),
+            ciphertext_len,
+            "ae_encrypt() returned error."
+        );
 
         self.blocks_encrypted += (pt_len >> 4) as u64;
         if pt_len & 0xF != 0 {
@@ -329,14 +338,20 @@ pub fn disable_dumping_core() {
         if libc::getrlimit(libc::RLIMIT_CORE, &mut limit) != 0 {
             /* We don't throw CryptoException because this is called very early
             in main(), outside of 'try'. */
-            eprintln!("getrlimit(RLIMIT_CORE): {}", std::io::Error::last_os_error());
+            eprintln!(
+                "getrlimit(RLIMIT_CORE): {}",
+                std::io::Error::last_os_error()
+            );
             std::process::exit(1);
         }
         #[allow(clippy::unnecessary_cast)] /* rlim_t is not u64 everywhere */
         SAVED_CORE_RLIMIT.store(limit.rlim_cur as u64, Ordering::Relaxed);
         limit.rlim_cur = 0;
         if libc::setrlimit(libc::RLIMIT_CORE, &limit) != 0 {
-            eprintln!("setrlimit(RLIMIT_CORE): {}", std::io::Error::last_os_error());
+            eprintln!(
+                "setrlimit(RLIMIT_CORE): {}",
+                std::io::Error::last_os_error()
+            );
             std::process::exit(1);
         }
     }

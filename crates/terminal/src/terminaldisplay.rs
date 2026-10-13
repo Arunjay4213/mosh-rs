@@ -29,10 +29,14 @@
 // also delete it here.
 // Ported from: upstream/src/terminal/terminaldisplay.h, upstream/src/terminal/terminaldisplay.cc
 
+//! Rendering framebuffer differences as escape sequences (`new_frame`). Port of upstream `src/terminal/terminaldisplay.{h,cc}`.
+
 use std::rc::Rc;
 
 use crate::parseraction::wchar_t;
-use crate::terminalframebuffer::{color_type, rows_type, Cell, Framebuffer, Hyperlink, Renditions, Row};
+use crate::terminalframebuffer::{
+    color_type, rows_type, Cell, Framebuffer, Hyperlink, Renditions, Row,
+};
 use crate::terminalframebuffer::{MOUSE_ENCODING_DEFAULT, MOUSE_REPORTING_NONE};
 
 /* Print a new "frame" to the terminal, using ANSI/ECMA-48 escape codes. */
@@ -42,23 +46,34 @@ fn initial_rendition() -> Renditions {
 }
 
 /* variables used within a new_frame */
+/// Working state while `Display::new_frame` builds its output.
 pub struct FrameState<'a> {
+    /// The escape-sequence output built so far.
     pub str: String,
 
+    /// Where the output leaves the cursor column (-1 = unknown).
     pub cursor_x: i32,
+    /// Where the output leaves the cursor row (-1 = unknown).
     pub cursor_y: i32,
+    /// Renditions in effect on the output terminal.
     pub current_rendition: Renditions,
+    /// Hyperlink in effect on the output terminal.
     pub current_hyperlink: Hyperlink,
+    /// Cursor visibility on the output terminal.
     pub cursor_visible: bool,
 
+    /// The frame the output terminal currently shows.
     pub last_frame: &'a Framebuffer,
 }
 
 impl<'a> FrameState<'a> {
+    /// Initial state for drawing over `s_last`.
     pub fn new(s_last: &'a Framebuffer) -> FrameState<'a> {
         FrameState {
             /* Preallocate for better performance.  Make a guess-- doesn't matter for correctness */
-            str: String::with_capacity((s_last.ds.get_width() * s_last.ds.get_height() * 4) as usize),
+            str: String::with_capacity(
+                (s_last.ds.get_width() * s_last.ds.get_height() * 4) as usize,
+            ),
             cursor_x: 0,
             cursor_y: 0,
             current_rendition: Renditions::new(0),
@@ -68,28 +83,35 @@ impl<'a> FrameState<'a> {
         }
     }
 
+    /// Appends one character.
     pub fn append_char(&mut self, c: char) {
         self.str.push(c);
     }
+    /// Appends `s` copies of `c`.
     pub fn append_n(&mut self, s: usize, c: char) {
         for _ in 0..s {
             self.str.push(c);
         }
     }
+    /// Appends a code point as UTF-8.
     pub fn append_wchar(&mut self, wc: wchar_t) {
         Cell::append_to_str(&mut self.str, wc);
     }
+    /// Appends a string.
     pub fn append(&mut self, s: &str) {
         self.str.push_str(s);
     }
+    /// Appends a string.
     pub fn append_string(&mut self, append: &str) {
         self.str.push_str(append);
     }
 
+    /// Appends a cell's grapheme (a space for an empty cell).
     pub fn append_cell(&mut self, cell: &Cell) {
         cell.print_grapheme(&mut self.str);
     }
 
+    /// Moves the cursor, hiding it first if visible; no-op if already there.
     pub fn append_silent_move(&mut self, y: i32, x: i32) {
         if self.cursor_x == x && self.cursor_y == y {
             return;
@@ -102,6 +124,7 @@ impl<'a> FrameState<'a> {
         self.append_move(y, x);
     }
 
+    /// Moves the cursor with CR/LF or backspaces when cheap, else CUP.
     pub fn append_move(&mut self, y: i32, x: i32) {
         let last_x = self.cursor_x;
         let last_y = self.cursor_y;
@@ -128,6 +151,7 @@ impl<'a> FrameState<'a> {
         self.append(&tmp);
     }
 
+    /// Emits SGR if `r` differs from the current renditions (or `force`).
     pub fn update_rendition(&mut self, r: &Renditions, force: bool) {
         if force || !(self.current_rendition == *r) {
             /* print renditions */
@@ -137,6 +161,7 @@ impl<'a> FrameState<'a> {
         }
     }
 
+    /// Emits OSC 8 if `h` differs from the current hyperlink (or `force`).
     pub fn update_hyperlink(&mut self, h: &Hyperlink, force: bool) {
         if force || self.current_hyperlink != *h {
             /* print hyperlink */
@@ -147,6 +172,7 @@ impl<'a> FrameState<'a> {
     }
 }
 
+/// Upstream `Terminal::Display`: renders framebuffer differences as escape sequences for the local terminal.
 #[derive(Clone, Debug)]
 pub struct Display {
     /// erase character is part of vt200 but not supported by tmux
@@ -165,10 +191,12 @@ pub struct Display {
 }
 
 impl Display {
+    /// Escape sequences to start using the terminal (alternate screen, application cursor keys).
     pub fn open(&self) -> String {
         format!("{}{}", self.smcup.unwrap_or(""), "\x1b[?1h")
     }
 
+    /// Escape sequences to restore the terminal on exit.
     pub fn close(&self) -> String {
         format!(
             "{}{}",
@@ -179,6 +207,7 @@ impl Display {
         )
     }
 
+    /// The bytes that turn a terminal showing `last` into one showing `f`; `initialized` false means the terminal state is unknown.
     pub fn new_frame(&self, mut initialized: bool, last: &Framebuffer, f: &Framebuffer) -> String {
         let mut frame = FrameState::new(last);
 
@@ -270,7 +299,10 @@ impl Display {
         if frame.last_frame.ds.get_width() < f.ds.get_width() {
             for p in rows.iter_mut() {
                 let mut r = (**p).clone();
-                r.cells.resize(f.ds.get_width() as usize, Cell::new(f.ds.get_background_rendition() as color_type));
+                r.cells.resize(
+                    f.ds.get_width() as usize,
+                    Cell::new(f.ds.get_background_rendition() as color_type),
+                );
                 *p = Rc::new(r);
             }
         }
@@ -306,7 +338,8 @@ impl Display {
                 /* how big is the region that was scrolled? */
                 let mut region_height = 1;
                 while lines_scrolled + region_height < f.ds.get_height() {
-                    if *f.get_row(region_height) == *rows[(lines_scrolled + region_height) as usize] {
+                    if *f.get_row(region_height) == *rows[(lines_scrolled + region_height) as usize]
+                    {
                         scroll_height = region_height + 1;
                     } else {
                         break;
@@ -338,7 +371,9 @@ impl Display {
                     /* Common case:  if we're already on the bottom line and we're scrolling the whole
                      * screen, just do a CR and LFs.
                      */
-                    if scroll_height + lines_scrolled == f.ds.get_height() && frame.cursor_y + 1 == f.ds.get_height() {
+                    if scroll_height + lines_scrolled == f.ds.get_height()
+                        && frame.cursor_y + 1 == f.ds.get_height()
+                    {
                         frame.append_char('\r');
                         frame.append_n(lines_scrolled as usize, '\n');
                         frame.cursor_x = 0;
@@ -377,12 +412,22 @@ impl Display {
         /* Now update the display, row by row */
         let mut wrap = false;
         while frame_y < f.ds.get_height() {
-            wrap = self.put_row(initialized, &mut frame, f, frame_y, &rows[frame_y as usize], wrap);
+            wrap = self.put_row(
+                initialized,
+                &mut frame,
+                f,
+                frame_y,
+                &rows[frame_y as usize],
+                wrap,
+            );
             frame_y += 1;
         }
 
         /* has cursor location changed? */
-        if (!initialized) || (f.ds.get_cursor_row() != frame.cursor_y) || (f.ds.get_cursor_col() != frame.cursor_x) {
+        if (!initialized)
+            || (f.ds.get_cursor_row() != frame.cursor_y)
+            || (f.ds.get_cursor_col() != frame.cursor_x)
+        {
             frame.append_move(f.ds.get_cursor_row(), f.ds.get_cursor_col());
         }
 
@@ -402,11 +447,16 @@ impl Display {
 
         /* has bracketed paste mode changed? */
         if (!initialized) || (f.ds.bracketed_paste != frame.last_frame.ds.bracketed_paste) {
-            frame.append(if f.ds.bracketed_paste { "\x1b[?2004h" } else { "\x1b[?2004l" });
+            frame.append(if f.ds.bracketed_paste {
+                "\x1b[?2004h"
+            } else {
+                "\x1b[?2004l"
+            });
         }
 
         /* has mouse reporting mode changed? */
-        if (!initialized) || (f.ds.mouse_reporting_mode != frame.last_frame.ds.mouse_reporting_mode) {
+        if (!initialized) || (f.ds.mouse_reporting_mode != frame.last_frame.ds.mouse_reporting_mode)
+        {
             if f.ds.mouse_reporting_mode == MOUSE_REPORTING_NONE {
                 frame.append("\x1b[?1003l");
                 frame.append("\x1b[?1002l");
@@ -424,7 +474,11 @@ impl Display {
 
         /* has mouse focus mode changed? */
         if (!initialized) || (f.ds.mouse_focus_event != frame.last_frame.ds.mouse_focus_event) {
-            frame.append(if f.ds.mouse_focus_event { "\x1b[?1004h" } else { "\x1b[?1004l" });
+            frame.append(if f.ds.mouse_focus_event {
+                "\x1b[?1004h"
+            } else {
+                "\x1b[?1004l"
+            });
         }
 
         /* has mouse encoding mode changed? */
@@ -499,7 +553,9 @@ impl Display {
                     blank_renditions = *cell.get_renditions();
                     blank_hyperlink = cell.get_hyperlink().clone();
                 }
-                if *cell.get_renditions() == blank_renditions && *cell.get_hyperlink() == blank_hyperlink {
+                if *cell.get_renditions() == blank_renditions
+                    && *cell.get_hyperlink() == blank_hyperlink
+                {
                     /* Remember run of blank cells */
                     clear_count += 1;
                     frame_x += 1;
@@ -595,6 +651,7 @@ impl Display {
     }
 
     fn can_use_erase(&self, frame: &FrameState) -> bool {
-        self.has_bce || (frame.current_rendition == initial_rendition() && frame.current_hyperlink.empty())
+        self.has_bce
+            || (frame.current_rendition == initial_rendition() && frame.current_hyperlink.empty())
     }
 }

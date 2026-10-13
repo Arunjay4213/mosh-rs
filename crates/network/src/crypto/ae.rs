@@ -77,10 +77,12 @@ pub fn ae_decrypt(ctx: &AeCtx, nonce: &[u8; NONCE_LEN], ct: &[u8], ad: &[u8]) ->
     let (body, tag) = ct.split_at(ct.len() - TAG_LEN);
     let mut pt = body.to_vec();
     let tag: [u8; TAG_LEN] = tag.try_into().expect("tag length");
-    match ctx
-        .cipher
-        .decrypt_inout_detached(&(*nonce).into(), ad, pt.as_mut_slice().into(), &tag.into())
-    {
+    match ctx.cipher.decrypt_inout_detached(
+        &(*nonce).into(),
+        ad,
+        pt.as_mut_slice().into(),
+        &tag.into(),
+    ) {
         Ok(()) => Some(pt),
         Err(_) => None,
     }

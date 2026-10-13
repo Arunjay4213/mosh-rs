@@ -35,9 +35,8 @@
 //! the `terminal*` modules. The character width table in `wcwidth` is
 //! generated from glibc so widths match upstream exactly.
 
-#![allow(non_snake_case)]
-#![allow(non_camel_case_types)]
-#![allow(non_upper_case_globals)]
+#![forbid(unsafe_code)]
+#![deny(missing_docs)]
 
 pub mod parser;
 pub mod parseraction;
