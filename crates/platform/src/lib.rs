@@ -35,9 +35,11 @@
 //! the pseudoterminal (unix only), process spawning for the launcher, and
 //! locale checks.
 
+pub mod coredump;
 pub mod locale;
 pub mod process;
 #[cfg(unix)]
 pub mod pty;
 pub mod select;
+pub mod socket;
 pub mod tty;

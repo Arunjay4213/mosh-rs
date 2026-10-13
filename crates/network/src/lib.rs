@@ -32,6 +32,8 @@
 
 //! Crypto, protocol buffers, and the SSP transport.
 
+#![forbid(unsafe_code)]
+
 pub mod crypto;
 pub mod proto;
 pub mod timestamp;

@@ -67,6 +67,12 @@ impl From<NetworkError> for Error {
     }
 }
 
+impl From<mosh_platform::socket::SysError> for Error {
+    fn from(e: mosh_platform::socket::SysError) -> Error {
+        Error::Network(e.into())
+    }
+}
+
 impl From<CryptoError> for Error {
     fn from(e: CryptoError) -> Error {
         Error::Crypto(e)

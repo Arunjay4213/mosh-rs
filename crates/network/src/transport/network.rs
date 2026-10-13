@@ -33,6 +33,9 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::net::{SocketAddr, UdpSocket};
 
+pub use mosh_platform::socket::SocketHandle;
+use mosh_platform::socket::{self as sys, last_errno, strerror, SysError};
+
 use super::{dos_detected, Error};
 use crate::crypto::{unique, Base64Key, CryptoError, Message, Nonce, Session};
 use crate::timestamp::frozen_timestamp;
@@ -85,21 +88,10 @@ impl fmt::Display for NetworkError {
 
 impl std::error::Error for NetworkError {}
 
-#[cfg(unix)]
-fn strerror(e: i32) -> String {
-    // SAFETY: strerror returns a pointer to a NUL-terminated string.
-    unsafe { std::ffi::CStr::from_ptr(libc::strerror(e)) }
-        .to_string_lossy()
-        .into_owned()
-}
-
-#[cfg(windows)]
-fn strerror(e: i32) -> String {
-    std::io::Error::from_raw_os_error(e).to_string()
-}
-
-fn last_errno() -> i32 {
-    std::io::Error::last_os_error().raw_os_error().unwrap_or(0)
+impl From<SysError> for NetworkError {
+    fn from(e: SysError) -> NetworkError {
+        NetworkError::new(e.function, e.errno)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -172,32 +164,8 @@ impl Packet {
     }
 }
 
-#[cfg(unix)]
-pub type SocketHandle = std::os::fd::RawFd;
-#[cfg(windows)]
-pub type SocketHandle = std::os::windows::io::RawSocket;
-
-struct Socket {
-    sock: UdpSocket,
-}
-
-impl Socket {
-    fn fd(&self) -> SocketHandle {
-        #[cfg(unix)]
-        {
-            use std::os::fd::AsRawFd;
-            self.sock.as_raw_fd()
-        }
-        #[cfg(windows)]
-        {
-            use std::os::windows::io::AsRawSocket;
-            self.sock.as_raw_socket()
-        }
-    }
-}
-
 pub struct Connection {
-    socks: VecDeque<Socket>,
+    socks: VecDeque<UdpSocket>,
     has_remote_addr: bool,
     remote_addr: Option<SocketAddr>,
 
@@ -370,14 +338,14 @@ impl Connection {
             search_high = port_high;
         }
 
-        #[cfg(unix)]
         self.socks.push_back(sys::new_socket(local_addr.is_ipv6())?);
 
         let mut saved_errno = 0;
         for i in search_low..=search_high {
             local_addr.set_port(i as u16);
 
-            match sys::bind(&mut self.socks, &local_addr) {
+            let sock = self.socks.back_mut().expect("socket pushed above");
+            match sys::bind(sock, &local_addr) {
                 Ok(()) => {
                     self.set_mtu(local_addr.is_ipv6());
                     return Ok(true);
@@ -386,7 +354,6 @@ impl Connection {
             } // else fallthrough to below code, on last iteration.
         }
 
-        #[cfg(unix)]
         self.socks.pop_back();
 
         eprintln!(
@@ -425,7 +392,7 @@ impl Connection {
         self.last_port_choice = timestamp();
     }
 
-    fn sock(&self) -> &Socket {
+    fn sock(&self) -> &UdpSocket {
         assert!(!self.socks.is_empty());
         self.socks.back().expect("socks not empty")
     }
@@ -498,7 +465,7 @@ impl Connection {
         let p = self.session.encrypt(&px.to_message())?;
 
         let remote_addr = self.remote_addr.expect("has_remote_addr");
-        let sent = self.sock().sock.send_to(&p, remote_addr);
+        let sent = self.sock().send_to(&p, remote_addr);
         let failed_errno = match sent {
             Ok(n) if n == p.len() => None,
             Ok(_) => Some(last_errno()),
@@ -546,7 +513,7 @@ impl Connection {
     /// Returns `Ok(None)` where upstream's `recv_one` throws EAGAIN/EWOULDBLOCK.
     fn recv_one(&mut self, sock_index: usize) -> Result<Option<Vec<u8>>, Error> {
         let (msg_payload, packet_remote_addr, congestion_experienced) =
-            match sys::recv_raw(&self.socks[sock_index].sock)? {
+            match sys::recv_raw(&self.socks[sock_index], Session::RECEIVE_MTU)? {
                 None => return Ok(None),
                 Some(r) => r,
             };
@@ -628,7 +595,7 @@ impl Connection {
     }
 
     pub fn fds(&self) -> Vec<SocketHandle> {
-        self.socks.iter().map(Socket::fd).collect()
+        self.socks.iter().map(sys::socket_handle).collect()
     }
 
     pub fn get_mtu(&self) -> i32 {
@@ -636,7 +603,7 @@ impl Connection {
     }
 
     pub fn port(&self) -> Result<String, NetworkError> {
-        match self.sock().sock.local_addr() {
+        match self.sock().local_addr() {
             Ok(a) => Ok(a.port().to_string()),
             Err(e) => Err(NetworkError::new(
                 "getsockname",
@@ -730,444 +697,5 @@ impl Connection {
         }
 
         true
-    }
-}
-
-/// Platform socket calls. Unix follows upstream's BSD socket calls
-/// (getaddrinfo, socket options, recvmsg with the TOS control message).
-#[cfg(unix)]
-mod sys {
-    use super::{last_errno, NetworkError, Socket};
-    use std::collections::VecDeque;
-    use std::ffi::{CStr, CString};
-    use std::mem::{size_of, zeroed};
-    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6, UdpSocket};
-    use std::os::fd::{AsRawFd, FromRawFd};
-
-    use crate::crypto::Session;
-
-    pub const EMSGSIZE: i32 = libc::EMSGSIZE;
-
-    fn setsockopt_int(
-        fd: libc::c_int,
-        level: libc::c_int,
-        name: libc::c_int,
-        value: libc::c_int,
-    ) -> libc::c_int {
-        // SAFETY: passes a pointer to a local c_int with its size.
-        unsafe {
-            libc::setsockopt(
-                fd,
-                level,
-                name,
-                &value as *const libc::c_int as *const libc::c_void,
-                size_of::<libc::c_int>() as libc::socklen_t,
-            )
-        }
-    }
-
-    /// `Connection::Socket::Socket( int family )`.
-    pub fn new_socket(ipv6: bool) -> Result<Socket, NetworkError> {
-        let family = if ipv6 { libc::AF_INET6 } else { libc::AF_INET };
-        // SAFETY: plain socket(2) call.
-        let fd = unsafe { libc::socket(family, libc::SOCK_DGRAM, 0) };
-        if fd < 0 {
-            return Err(NetworkError::new("socket", last_errno()));
-        }
-        // SAFETY: fd is a freshly created socket that nothing else owns.
-        let sock = unsafe { UdpSocket::from_raw_fd(fd) };
-
-        /* Disable path MTU discovery */
-        #[cfg(any(target_os = "linux", target_os = "android"))]
-        {
-            let flag = libc::IP_PMTUDISC_DONT;
-            if setsockopt_int(fd, libc::IPPROTO_IP, libc::IP_MTU_DISCOVER, flag) < 0 {
-                return Err(NetworkError::new("setsockopt", last_errno()));
-            }
-        }
-
-        //  int dscp = 0x92; /* OS X does not have IPTOS_DSCP_AF42 constant */
-        let dscp = 0x02; /* ECN-capable transport only */
-        if setsockopt_int(fd, libc::IPPROTO_IP, libc::IP_TOS, dscp) < 0 {
-            //    perror( "setsockopt( IP_TOS )" );
-        }
-
-        /* request explicit congestion notification on received datagrams */
-        #[cfg(any(
-            target_os = "linux",
-            target_os = "android",
-            target_vendor = "apple",
-            target_os = "freebsd"
-        ))]
-        {
-            let tosflag = 1;
-            if setsockopt_int(fd, libc::IPPROTO_IP, libc::IP_RECVTOS, tosflag) < 0
-                && family == libc::IPPROTO_IP
-            {
-                /* FreeBSD disallows this option on IPv6 sockets. */
-                eprintln!(
-                    "setsockopt( IP_RECVTOS ): {}",
-                    std::io::Error::last_os_error()
-                );
-            }
-        }
-
-        /* upstream passes MSG_DONTWAIT to every sendto() and recvmsg() */
-        if let Err(e) = sock.set_nonblocking(true) {
-            return Err(NetworkError::new("fcntl", e.raw_os_error().unwrap_or(0)));
-        }
-
-        Ok(Socket { sock })
-    }
-
-    fn to_sockaddr(addr: &SocketAddr) -> (libc::sockaddr_storage, libc::socklen_t) {
-        // SAFETY: sockaddr_storage is plain data; all-zero is a valid value.
-        let mut ss: libc::sockaddr_storage = unsafe { zeroed() };
-        let len = match addr {
-            SocketAddr::V4(a) => {
-                // SAFETY: sockaddr_storage is large enough and aligned for sockaddr_in.
-                let sin = unsafe {
-                    &mut *(&mut ss as *mut libc::sockaddr_storage as *mut libc::sockaddr_in)
-                };
-                sin.sin_family = libc::AF_INET as libc::sa_family_t;
-                sin.sin_port = a.port().to_be();
-                sin.sin_addr = libc::in_addr {
-                    s_addr: u32::from_ne_bytes(a.ip().octets()),
-                };
-                #[cfg(any(
-                    target_vendor = "apple",
-                    target_os = "freebsd",
-                    target_os = "openbsd",
-                    target_os = "netbsd",
-                    target_os = "dragonfly"
-                ))]
-                {
-                    sin.sin_len = size_of::<libc::sockaddr_in>() as u8;
-                }
-                size_of::<libc::sockaddr_in>()
-            }
-            SocketAddr::V6(a) => {
-                // SAFETY: sockaddr_storage is large enough and aligned for sockaddr_in6.
-                let sin6 = unsafe {
-                    &mut *(&mut ss as *mut libc::sockaddr_storage as *mut libc::sockaddr_in6)
-                };
-                sin6.sin6_family = libc::AF_INET6 as libc::sa_family_t;
-                sin6.sin6_port = a.port().to_be();
-                sin6.sin6_flowinfo = a.flowinfo();
-                sin6.sin6_addr = libc::in6_addr {
-                    s6_addr: a.ip().octets(),
-                };
-                sin6.sin6_scope_id = a.scope_id();
-                #[cfg(any(
-                    target_vendor = "apple",
-                    target_os = "freebsd",
-                    target_os = "openbsd",
-                    target_os = "netbsd",
-                    target_os = "dragonfly"
-                ))]
-                {
-                    sin6.sin6_len = size_of::<libc::sockaddr_in6>() as u8;
-                }
-                size_of::<libc::sockaddr_in6>()
-            }
-        };
-        (ss, len as libc::socklen_t)
-    }
-
-    /// # Safety
-    /// `sa` must point to a socket address of at least `len` bytes.
-    unsafe fn from_sockaddr(sa: *const libc::sockaddr, len: libc::socklen_t) -> Option<SocketAddr> {
-        // SAFETY: caller guarantees sa points to len valid bytes; family is read first.
-        unsafe {
-            match (*sa).sa_family as libc::c_int {
-                libc::AF_INET if len as usize >= size_of::<libc::sockaddr_in>() => {
-                    let sin = &*(sa as *const libc::sockaddr_in);
-                    Some(SocketAddr::V4(SocketAddrV4::new(
-                        Ipv4Addr::from(sin.sin_addr.s_addr.to_ne_bytes()),
-                        u16::from_be(sin.sin_port),
-                    )))
-                }
-                libc::AF_INET6 if len as usize >= size_of::<libc::sockaddr_in6>() => {
-                    let sin6 = &*(sa as *const libc::sockaddr_in6);
-                    Some(SocketAddr::V6(SocketAddrV6::new(
-                        Ipv6Addr::from(sin6.sin6_addr.s6_addr),
-                        u16::from_be(sin6.sin6_port),
-                        sin6.sin6_flowinfo,
-                        sin6.sin6_scope_id,
-                    )))
-                }
-                _ => None,
-            }
-        }
-    }
-
-    /// `AddrInfo( node, service, hints )` with upstream's hints, first result.
-    /// `passive` selects the server hints (AI_PASSIVE).
-    pub fn resolve(
-        node: Option<&str>,
-        service: &str,
-        passive: bool,
-    ) -> Result<SocketAddr, NetworkError> {
-        let bad = |msg: String| {
-            NetworkError::new(
-                format!("Bad IP address ({}): {}", node.unwrap_or("(null)"), msg),
-                0,
-            )
-        };
-        let node_c = match node.map(CString::new).transpose() {
-            Ok(n) => n,
-            Err(_) => return Err(bad("embedded NUL".to_string())),
-        };
-        let service_c = CString::new(service).map_err(|_| bad("embedded NUL".to_string()))?;
-
-        // SAFETY: addrinfo is plain data; all-zero is the documented way to init hints.
-        let mut hints: libc::addrinfo = unsafe { zeroed() };
-        hints.ai_family = libc::AF_UNSPEC;
-        hints.ai_socktype = libc::SOCK_DGRAM;
-        hints.ai_flags = libc::AI_NUMERICHOST | libc::AI_NUMERICSERV;
-        if passive {
-            hints.ai_flags |= libc::AI_PASSIVE;
-        }
-
-        let mut res: *mut libc::addrinfo = std::ptr::null_mut();
-        // SAFETY: valid C strings (or NULL node), valid hints, out-pointer to res.
-        let errcode = unsafe {
-            libc::getaddrinfo(
-                node_c.as_ref().map_or(std::ptr::null(), |n| n.as_ptr()),
-                service_c.as_ptr(),
-                &hints,
-                &mut res,
-            )
-        };
-        if errcode != 0 {
-            // SAFETY: gai_strerror returns a static NUL-terminated string.
-            let msg = unsafe { CStr::from_ptr(libc::gai_strerror(errcode)) }
-                .to_string_lossy()
-                .into_owned();
-            return Err(bad(msg));
-        }
-        // SAFETY: getaddrinfo succeeded, so res points to at least one addrinfo.
-        let addr = unsafe {
-            let first = &*res;
-            let a = from_sockaddr(first.ai_addr, first.ai_addrlen);
-            libc::freeaddrinfo(res);
-            a
-        };
-        addr.ok_or_else(|| NetworkError::new("Unknown address family", 0))
-    }
-
-    /// Binds the newest socket (pushed by `try_bind`) to `local_addr`.
-    /// Returns errno on failure.
-    pub fn bind(socks: &mut VecDeque<Socket>, local_addr: &SocketAddr) -> Result<(), i32> {
-        let fd = socks
-            .back()
-            .expect("socket pushed by try_bind")
-            .sock
-            .as_raw_fd();
-        if let SocketAddr::V6(a) = local_addr {
-            if a.ip().is_unspecified() {
-                let off = 0;
-                if setsockopt_int(fd, libc::IPPROTO_IPV6, libc::IPV6_V6ONLY, off) != 0 {
-                    eprintln!(
-                        "setsockopt( IPV6_V6ONLY, off ): {}",
-                        std::io::Error::last_os_error()
-                    );
-                }
-            }
-        }
-        let (ss, len) = to_sockaddr(local_addr);
-        // SAFETY: ss holds a valid sockaddr of length len.
-        if unsafe {
-            libc::bind(
-                fd,
-                &ss as *const libc::sockaddr_storage as *const libc::sockaddr,
-                len,
-            )
-        } == 0
-        {
-            Ok(())
-        } else {
-            Err(last_errno())
-        }
-    }
-
-    /// Receive one datagram with its source address and ECN mark.
-    /// `Ok(None)` means EAGAIN/EWOULDBLOCK.
-    pub fn recv_raw(sock: &UdpSocket) -> Result<Option<(Vec<u8>, SocketAddr, bool)>, NetworkError> {
-        /* receive source address, ECN, and payload in msghdr structure */
-        // SAFETY: plain data structures, zero-initialized.
-        let mut packet_remote_addr: libc::sockaddr_storage = unsafe { zeroed() };
-        let mut header: libc::msghdr = unsafe { zeroed() };
-        let mut msg_payload = [0u8; Session::RECEIVE_MTU];
-        /* u64 elements keep the control buffer aligned for cmsghdr */
-        let mut msg_control = [0u64; Session::RECEIVE_MTU / 8];
-        let mut msg_iovec = libc::iovec {
-            iov_base: msg_payload.as_mut_ptr() as *mut libc::c_void,
-            iov_len: msg_payload.len(),
-        };
-
-        /* receive source address */
-        header.msg_name =
-            &mut packet_remote_addr as *mut libc::sockaddr_storage as *mut libc::c_void;
-        header.msg_namelen = size_of::<libc::sockaddr_storage>() as libc::socklen_t;
-
-        /* receive payload */
-        header.msg_iov = &mut msg_iovec;
-        header.msg_iovlen = 1;
-
-        /* receive explicit congestion notification */
-        header.msg_control = msg_control.as_mut_ptr() as *mut libc::c_void;
-        header.msg_controllen = (msg_control.len() * 8) as _;
-
-        /* receive flags */
-        header.msg_flags = 0;
-
-        // SAFETY: header points at live buffers declared above.
-        let received_len =
-            unsafe { libc::recvmsg(sock.as_raw_fd(), &mut header, libc::MSG_DONTWAIT) };
-
-        if received_len < 0 {
-            let errno = last_errno();
-            if errno == libc::EAGAIN || errno == libc::EWOULDBLOCK {
-                return Ok(None);
-            }
-            return Err(NetworkError::new("recvmsg", errno));
-        }
-
-        if header.msg_flags & libc::MSG_TRUNC != 0 {
-            return Err(NetworkError::new(
-                "Received oversize datagram",
-                last_errno(),
-            ));
-        }
-
-        /* receive ECN */
-        let mut congestion_experienced = false;
-
-        // SAFETY: header was filled in by recvmsg; CMSG_FIRSTHDR/CMSG_DATA stay within msg_control.
-        unsafe {
-            let ecn_hdr = libc::CMSG_FIRSTHDR(&header);
-            if !ecn_hdr.is_null()
-                && (*ecn_hdr).cmsg_level == libc::IPPROTO_IP
-                && is_tos_type((*ecn_hdr).cmsg_type)
-            {
-                /* got one */
-                let ecn_octet_p = libc::CMSG_DATA(ecn_hdr);
-                assert!(!ecn_octet_p.is_null());
-                congestion_experienced = (*ecn_octet_p & 0x03) == 0x03;
-            }
-        }
-
-        // SAFETY: recvmsg wrote msg_namelen bytes of address into packet_remote_addr.
-        let addr = unsafe {
-            from_sockaddr(
-                &packet_remote_addr as *const libc::sockaddr_storage as *const libc::sockaddr,
-                header.msg_namelen,
-            )
-        };
-        let addr = addr.ok_or_else(|| NetworkError::new("recv_one: unknown address family", 0))?;
-
-        Ok(Some((
-            msg_payload[..received_len as usize].to_vec(),
-            addr,
-            congestion_experienced,
-        )))
-    }
-
-    fn is_tos_type(t: libc::c_int) -> bool {
-        #[cfg(any(
-            target_os = "linux",
-            target_os = "android",
-            target_vendor = "apple",
-            target_os = "freebsd"
-        ))]
-        {
-            t == libc::IP_TOS || t == libc::IP_RECVTOS
-        }
-        #[cfg(not(any(
-            target_os = "linux",
-            target_os = "android",
-            target_vendor = "apple",
-            target_os = "freebsd"
-        )))]
-        {
-            t == libc::IP_TOS
-        }
-    }
-}
-
-/// Windows: std sockets. No IP_MTU_DISCOVER, IP_TOS or ECN (TOS) reception.
-#[cfg(windows)]
-mod sys {
-    use super::{NetworkError, Socket};
-    use std::collections::VecDeque;
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
-
-    use crate::crypto::Session;
-
-    const WSAEWOULDBLOCK: i32 = 10035;
-    const WSAEMSGSIZE: i32 = 10040;
-    pub const EMSGSIZE: i32 = WSAEMSGSIZE;
-
-    fn errno(e: &std::io::Error) -> i32 {
-        e.raw_os_error().unwrap_or(0)
-    }
-
-    /// An unbound socket cannot be created with std; bind to the
-    /// unspecified address and port 0, which is what the first sendto()
-    /// on an unbound socket does implicitly.
-    pub fn new_socket(ipv6: bool) -> Result<Socket, NetworkError> {
-        let any: SocketAddr = if ipv6 {
-            (Ipv6Addr::UNSPECIFIED, 0).into()
-        } else {
-            (Ipv4Addr::UNSPECIFIED, 0).into()
-        };
-        let sock = UdpSocket::bind(any).map_err(|e| NetworkError::new("socket", errno(&e)))?;
-        sock.set_nonblocking(true)
-            .map_err(|e| NetworkError::new("ioctlsocket", errno(&e)))?;
-        Ok(Socket { sock })
-    }
-
-    /// Numeric host and port only, as upstream's AI_NUMERICHOST | AI_NUMERICSERV.
-    pub fn resolve(
-        node: Option<&str>,
-        service: &str,
-        _passive: bool,
-    ) -> Result<SocketAddr, NetworkError> {
-        let bad = || {
-            NetworkError::new(
-                format!(
-                    "Bad IP address ({}): Name or service not known",
-                    node.unwrap_or("(null)")
-                ),
-                0,
-            )
-        };
-        let ip: IpAddr = match node {
-            None => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-            Some(n) => n.parse().map_err(|_| bad())?,
-        };
-        let port: u16 = service.parse().map_err(|_| bad())?;
-        Ok(SocketAddr::new(ip, port))
-    }
-
-    /// Creates and binds a socket at `local_addr`, pushing it on success.
-    pub fn bind(socks: &mut VecDeque<Socket>, local_addr: &SocketAddr) -> Result<(), i32> {
-        let sock = UdpSocket::bind(local_addr).map_err(|e| errno(&e))?;
-        sock.set_nonblocking(true).map_err(|e| errno(&e))?;
-        socks.push_back(Socket { sock });
-        Ok(())
-    }
-
-    pub fn recv_raw(sock: &UdpSocket) -> Result<Option<(Vec<u8>, SocketAddr, bool)>, NetworkError> {
-        let mut msg_payload = [0u8; Session::RECEIVE_MTU];
-        match sock.recv_from(&mut msg_payload) {
-            Ok((n, addr)) => Ok(Some((msg_payload[..n].to_vec(), addr, false))),
-            Err(e) if errno(&e) == WSAEWOULDBLOCK => Ok(None),
-            Err(e) if errno(&e) == WSAEMSGSIZE => {
-                Err(NetworkError::new("Received oversize datagram", errno(&e)))
-            }
-            Err(e) => Err(NetworkError::new("recvmsg", errno(&e))),
-        }
     }
 }

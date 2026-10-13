@@ -3,6 +3,11 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 Phase 1 review fixes: network (agent A)
+
+- Review F3: the socket system calls (`new_socket`, `resolve`, `bind`, `recv_raw`, `strerror`, the TOS/ECN read) moved from `crates/network/src/transport/network.rs` to `crates/platform/src/socket.rs`, and `disable_dumping_core`/`reenable_dumping_core` to `crates/platform/src/coredump.rs`. `crates/network` now depends on `mosh-platform`, no longer on `libc`, and carries `#![forbid(unsafe_code)]`. PLAN.md section 2 updated to say sockets live in the platform crate. Two signatures changed to fit the new boundary: `bind` takes the one socket instead of the socket deque (on Windows it replaces the socket with a newly bound one), and `recv_raw` takes the maximum datagram length; errors come back as `mosh_platform::socket::SysError`, which converts to `NetworkError`.
+- PLAN.md section 2 also now lists `reset_input` in the `State` trait (added at the coordinator's request; upstream calls it in `set_current_state`).
+
 ## 2026-10-13 CI push blocked and upstream version corrected
 
 - NEEDS THE USER. The CI fix (local branch `ci-upstream-build`, commit a3f29e9) cannot be pushed: GitHub rejects workflow changes from the `github-moshrs` deploy key ("refusing to allow an OAuth App to create or update workflow .github/workflows/ci.yml without workflow scope"). No `gh` CLI or token exists on devbox. To land it, run from `~/mosh-rs` with credentials that have the `workflow` scope: `git rebase origin/main ci-upstream-build && git push <https-url-with-token> ci-upstream-build:main`, or grant the key workflow permission. CI stays red until then; work continues because the fix is ready and verified locally (both oracle tests pass against a from-scratch upstream build).

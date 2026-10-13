@@ -222,7 +222,7 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "flate2",
- "libc",
+ "mosh-platform",
  "ocb3",
  "prost",
  "rand",
