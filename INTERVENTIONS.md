@@ -6,7 +6,7 @@ Newest entry first.
 ## 2026-10-13 Client landed; NEEDS THE USER: overlay review, ci/terminfo updated
 
 - NEEDS THE USER: Fable line-by-line review of the prediction overlay port, from the laptop (CLAUDE.md: Fable reviews run there). Compare `crates/mosh/src/client/terminaloverlay.rs` with `upstream/src/frontend/terminaloverlay.cc` and `.h`, and `crates/mosh/src/client/stmclient.rs` with `stmclient.cc`. The overlay has not changed since commit 0504a2d. Findings go to `reviews/`; the Phase 2 gate waits on them.
-- NEEDS THE USER: push branch ci/terminfo, now commit 73ad9c6 (replaces e137062). It also installs `sysstat`, so the client and server idle-CPU tests run in CI instead of printing SKIPPED.
+- NEEDS THE USER: push branch ci/terminfo, now the commit printed by `git log -1 ci/terminfo` on devbox (replaces e137062 and 73ad9c6). It also installs `sysstat` (idle-CPU tests run instead of printing SKIPPED) and `vim` (the interop vim scenario).
 - PLAN 9.6 now says the generated terminfo table carries `colors` and that `mosh-client -c` falls back to xterm's count for an unknown TERM, consistent with the rest of 9.6 (agent B adds the column; until then the client runs `tput colors`, marked INTERIM). Reason: Windows has no terminfo or `tput`.
 - PLAN 9 item 11 added: the client exits cleanly where upstream crashes (unreadable window size at startup, panics). Reason: upstream's behavior there is a crash or a raw terminal, not a design choice.
 - Agent E ported the whole overlay in its first landing instead of two, because an empty prediction engine would have been the throwaway stub the brief forbade. Accepted.
