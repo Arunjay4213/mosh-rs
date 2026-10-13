@@ -57,7 +57,8 @@ pub fn suspend_self() {
 /// nothing: an unset `TERM` keeps upstream's behavior.
 ///
 /// Call it first thing in `main`, before any thread starts: setting the
-/// environment is only sound while no other thread can read it.
+/// environment is only sound while no other thread can read it (which is
+/// why `set_var` is `unsafe` in edition 2024; this crate is edition 2021).
 pub fn default_term_if_unset() {
     #[cfg(windows)]
     {
