@@ -45,7 +45,8 @@
 //   is kept as history), a partial scrolling region, and a small backlog
 //   that overflows while the client is away.
 // - Live: scrollback-probe against a real mosh-server, clean, through 30%
-//   loss, through a 10 s blackout, and against the C++ server.
+//   loss, through a 10 s blackout, and against the C++ server, each holding
+//   /tmp/mosh-rs-interop.lock for its session.
 // - Rendering: random colored, linked, wide and combining lines rendered by
 //   the server read back cell for cell in upstream's emulator (ref-term).
 
@@ -864,6 +865,22 @@ mod live {
 
     const CXX_SERVER: &str = "/usr/bin/mosh-server";
 
+    /// Holds /tmp/mosh-rs-interop.lock (the lock of tests/interop.sh,
+    /// tests/scrollback.sh and tools/bench) while it lives, so live sessions
+    /// of concurrent runs never share ports. Live tests in this file also
+    /// wait for each other: flock locks belong to each open file.
+    fn lock() -> std::fs::File {
+        use std::os::fd::AsRawFd;
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("/tmp/mosh-rs-interop.lock")
+            .expect("open /tmp/mosh-rs-interop.lock");
+        // SAFETY: flock on a descriptor we own; released when `lock` drops.
+        assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) }, 0);
+        lock
+    }
+
     /// Fragments one instruction may need: the window's bytes of lines plus
     /// two bytes of protobuf framing per line (lines of at least 4 bytes,
     /// so at most half again), even if nothing compresses, in fragments of
@@ -1033,6 +1050,7 @@ mod live {
     /// must be exactly seq 1 50000 and no instruction may exceed the
     /// fragment bound.
     fn session(what: &str, port: u16, link: impl FnOnce() -> (u16, Option<Impair>)) {
+        let _lock = lock();
         let log = temp("server", port);
         let server = release_dir().join("mosh-server").display().to_string();
         let key = start_server(&server, port, Some(&log));
@@ -1085,6 +1103,7 @@ mod live {
     /// the capability, sends no lines, and the session works as before.
     #[test]
     fn cxx_server_ignores_capability() {
+        let _lock = lock();
         let key = start_server(CXX_SERVER, 61220, None);
         let (shutdown, counts, got) = probe(61220, &key);
         println!("C++ server, capability sent: {counts}");
