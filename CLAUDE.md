@@ -87,3 +87,6 @@ Rust reimplementation of mosh, ported from mosh master (decd9b7, March 2026), wi
   Commit such changes on a local branch named `ci/<topic>` and log "NEEDS THE USER: push branch ci/<topic>" in INTERVENTIONS.md.
   The laptop fetches it from devbox, reviews it, and pushes it as `laptop/<topic>`, which goes through the same PR and CI gate.
 - Reference decision (2026-10-13): the upstream reference is mosh master at commit decd9b7 (2026-03-22, 39 commits after the 1.4.0 tag), because that is what the oracles and interop were built against and it carries fixes 1.4.0 lacks. Describe the project everywhere as "ported from mosh master (decd9b7, March 2026), wire-compatible with mosh 1.4.0". Update README, PLAN and module docs accordingly.
+
+- Merging is GitHub "rebase and merge": commit shas change on main, so check landing with `scripts/landed.sh <sha-or-branch>` (patch equivalence), never by sha ancestry.
+- INTERVENTIONS.md, STATUS.md and CHANGELOG.md are append-only and shared by many branches; `.gitattributes` gives them the union merge driver, so when a PR reports a conflict, `git fetch origin && git rebase origin/main && git push --force-with-lease` resolves it without hand edits.

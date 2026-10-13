@@ -1,9 +1,9 @@
 name: Auto-merge
 
-# When CI is green on an agent/ or laptop/ branch, fast-forward main to the tested commit and
-# delete the branch. GitHub then marks the PR as merged. A fast-forward keeps the commit sha, so
-# main holds exactly the commit CI tested and `scripts/landed.sh <sha>` works. ("Rebase and merge"
-# would rewrite every sha.) If main has moved on, the PR gets a comment asking for a rebase.
+# When CI is green on an agent/ or laptop/ branch, merge the PR with GitHub's "rebase and merge"
+# and delete the branch. Required status checks (strict=false) were satisfied on the branch head.
+# A rebase rewrites shas, so `scripts/landed.sh` checks patch equivalence (git cherry), not the sha.
+# If the PR has conflicts with main, it gets a comment asking for a rebase.
 on:
   workflow_run:
     workflows: [CI]
@@ -26,7 +26,7 @@ jobs:
     concurrency:
       group: auto-merge
     steps:
-      - name: Fast-forward main to the tested commit
+      - name: Rebase-merge the green PR
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH: ${{ github.event.workflow_run.head_branch }}
@@ -38,10 +38,8 @@ jobs:
           if [ -z "$pr" ]; then
             echo "no open PR from $BRANCH at $SHA (newer push or no PR); nothing to do"; exit 0
           fi
-          if gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/main" -f sha="$SHA" -F force=false > /dev/null; then
-            echo "main fast-forwarded to $SHA (PR #$pr)"
-            # The repo setting "automatically delete head branches" may have deleted it already.
-            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" || echo "$BRANCH was already deleted"
+          if gh pr merge "$pr" --repo "$GITHUB_REPOSITORY" --rebase --delete-branch; then
+            echo "PR #$pr ($BRANCH at $SHA) rebase-merged into main"
           else
-            gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" --body "Rebase onto main and push again"
+            gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" --body "Rebase onto main and push again (merge conflict). INTERVENTIONS.md, STATUS.md and CHANGELOG.md use the union merge driver, so a local git rebase resolves appends automatically."
           fi
