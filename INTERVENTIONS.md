@@ -3,6 +3,12 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 CI
+
+- Failure: CI on d9c8289 could not build `ref/ref-crypto` because the GitHub runner had no built upstream tree at `upstream/`, and also lacked apt mosh and `ssh localhost` for the launcher test.
+- Fix: `scripts/build-upstream.sh` builds upstream (cached by `actions/cache`) and links `upstream/`, and the CI test job installs mosh, tmux, sshd and build deps, sets `LANG=C.UTF-8`, and authorizes a key for `ssh localhost`.
+- Deviation found: devbox's `~/src/mosh` is not the mosh-1.4.0 tag but master commit decd9b7 (39 commits later, includes OSC 8 hyperlinks), and `ref/ref-term` does not compile against the 1.4.0 tag, so the script pins decd9b7; PLAN.md still says 1.4.0 and needs the orchestrator's decision.
+
 ## 2026-10-13 Phase 1 review and PLAN section 9 additions
 
 - An independent review of commit 451b2ce arrived from the user's other machine (`reviews/2026-10-13-phase1-terminal-network.md`, 26 findings). Blocking items F1, F4, F5, F8 and F17 were already fixed in d9c8289. The remaining network items went to agent A, terminal items to agent B, and the missing impaired-transport driver to agent H.
