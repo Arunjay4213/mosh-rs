@@ -3,6 +3,11 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 NEEDS THE USER: push branch ci/run-all
+
+- NEEDS THE USER: push branch ci/run-all (commit a36d03d, one line in `.github/workflows/ci.yml`). The test job runs `tests/run-all.sh` instead of `cargo build && cargo test`, so shell drivers such as `tests/transport-impaired.sh` run in CI too. `run-all.sh` itself now passes `--no-fail-fast` (on main, 8636f95), so one failing test binary no longer hides the rest. This replaces the "low priority" note in the entry below.
+- Docs now describe the port as "ported from mosh master (decd9b7, March 2026), wire-compatible with mosh 1.4.0" per the CLAUDE.md reference decision (539f9ed). Mentions of 1.4.0 that refer to the release binaries used for interop and benchmarks are unchanged.
+
 ## 2026-10-13 CI now builds upstream; launcher fails on the runner
 
 - The user pushed the CI fix (a3f29e9). CI now builds upstream and the oracle tests run there. It is still red because two launcher tests fail on the GitHub runners (first seen on cc19759):
