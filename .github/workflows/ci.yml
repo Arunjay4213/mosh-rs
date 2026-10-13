@@ -5,8 +5,11 @@ on:
     branches: [main]
   pull_request:
 
+# Pull requests: one run per branch, newest wins. Pushes to main: every commit gets its own
+# run (group keyed by sha), because GitHub keeps only one queued run per group and would
+# otherwise cancel queued main runs whenever the next push arrives.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
