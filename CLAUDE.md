@@ -47,3 +47,9 @@ Rust reimplementation of mosh 1.4.0. Read `PLAN.md` first. Section numbers below
 - Every `pub` item has a doc comment. Every module starts with a doc comment naming the upstream file and what the module does.
 - Integer casts between signed and unsigned mirror upstream exactly and get a comment where the value could be negative or exceed the range.
 - Independent code reviews land in `reviews/`. Before a gate is declared passed, every item in every `reviews/*.md` file is either fixed or answered in that file, with the commit hash.
+
+## CI feedback
+
+- CI runs on every push to main and writes its result, including the last 80 lines of each job's log, to the `ci-status` branch.
+- After every push, run `scripts/ci-status.sh --wait 15` to get the result for HEAD (exit 0 pass, 1 fail, 2 no result yet). Read the log excerpts on failure.
+- Red CI is fixed before any new work starts, and no gate is declared passed while CI is red. Record each CI failure and its fix in INTERVENTIONS.md.

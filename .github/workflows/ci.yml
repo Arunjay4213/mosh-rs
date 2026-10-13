@@ -24,7 +24,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - run: cargo fmt --all --check
+      - run: cargo fmt --all --check 2>&1 | tee fmt.log; exit ${PIPESTATUS[0]}
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: log-fmt
+          path: fmt.log
 
   clippy:
     name: clippy
@@ -35,7 +41,13 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tee clippy.log; exit ${PIPESTATUS[0]}
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: log-clippy
+          path: clippy.log
 
   test:
     name: test (${{ matrix.os }})
@@ -50,5 +62,58 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y tmux
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo build --release --workspace
-      - run: cargo test --release --workspace
+      - run: (cargo build --release --workspace && cargo test --release --workspace) 2>&1 | tee test.log; exit ${PIPESTATUS[0]}
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: log-test-${{ matrix.os }}
+          path: test.log
+
+  report:
+    name: write result to ci-status branch
+    needs: [fmt, clippy, test]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: logs
+      - name: Compose report
+        env:
+          R_FMT: ${{ needs.fmt.result }}
+          R_CLIPPY: ${{ needs.clippy.result }}
+          R_TEST: ${{ needs.test.result }}
+        shell: bash
+        run: |
+          short=$(git rev-parse --short=7 HEAD)
+          overall=success
+          for r in "$R_FMT" "$R_CLIPPY" "$R_TEST"; do [ "$r" = success ] || overall=failure; done
+          {
+            echo "result: $overall"
+            echo "commit: $(git rev-parse HEAD)"
+            echo "subject: $(git log -1 --format=%s)"
+            echo "run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "fmt: $R_FMT"; echo "clippy: $R_CLIPPY"; echo "test: $R_TEST"
+            for d in logs/*/; do
+              n=$(basename "$d"); f=$(ls "$d" | head -1)
+              echo; echo "## $n (last 80 lines)"; echo '```'
+              tail -n 80 "$d/$f" | sed 's/\x1b\[[0-9;]*m//g'
+              echo '```'
+            done
+          } > report.md
+          mkdir -p out/runs && cp report.md "out/runs/$short.md" && cp report.md out/latest.md
+      - name: Push to ci-status branch
+        shell: bash
+        run: |
+          git config user.name "ci-status bot"; git config user.email "ci-status@users.noreply.github.com"
+          if git fetch -q origin ci-status; then
+            git worktree add -q st origin/ci-status
+          else
+            git worktree add -q --detach st && (cd st && git checkout -q --orphan ci-status && git rm -rqf . 2>/dev/null || true)
+          fi
+          mkdir -p st/runs && cp out/latest.md st/latest.md && cp out/runs/*.md st/runs/
+          cd st && git add -A && git commit -q -m "ci result for $(git -C .. rev-parse --short=7 HEAD)" && git push -q origin HEAD:ci-status
