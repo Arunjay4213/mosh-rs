@@ -152,17 +152,24 @@ Upstream's own test suite (`make check`, 32 tests) also passes with mosh-rs bina
 
 ## Performance
 
-Targets from [PLAN.md](PLAN.md) section 5, measured by `tools/bench` against C++ mosh 1.4.0 on the same machine.
-No number appears here until it has been measured.
+Targets from [PLAN.md](PLAN.md) section 5, measured by `tools/bench` against C++ mosh 1.4.0 (Ubuntu 24.04 package) on the same machine: devbox, an 8-core arm64 Linux VM (Neoverse-V1), mosh-rs commit 7cab26f, with `target/release/bench --hour`.
+Both implementations run the same scripted workload, alternating run by run; [tools/bench/README.md](tools/bench/README.md) describes it.
 
 | Metric | Target | mosh-rs | mosh 1.4.0 |
 | --- | --- | --- | --- |
-| Idle CPU, client and server, 60 s | 0.0% | measured at v0.1.0 | measured at v0.1.0 |
-| Resident memory after a 1 hour session | no more than mosh 1.4.0 | measured at v0.1.0 | measured at v0.1.0 |
-| Static binary size | under 4 MB | measured at v0.1.0 | measured at v0.1.0 |
-| Startup to first frame, loopback | under 20 ms | measured at v0.1.0 | measured at v0.1.0 |
-| Keystroke to screen with prediction, 300 ms RTT | one render, no visible delay | measured at v0.1.0 | measured at v0.1.0 |
-| `seq 1 100000` over loopback | no slower than mosh 1.4.0 | measured at v0.1.0 | measured at v0.1.0 |
+| Idle CPU over 60 s, client and server | 0.0% | 0.00%, 0.00% | 0.00%, 0.00% |
+| Resident memory after a 1 hour session, client | no more than mosh 1.4.0 | 4.1 MiB | 14.3 MiB |
+| Resident memory after a 1 hour session, server | no more than mosh 1.4.0 | 2.5 MiB | 9.9 MiB |
+| Static binary size (aarch64 musl): mosh, mosh-client, mosh-server | under 4 MB | 0.8 MB, 1.2 MB, 1.1 MB | 16 KB Perl script, 0.33 MB and 0.26 MB plus shared libraries |
+| Client startup to its first terminal write | under 20 ms | 1.40 ms | 2.94 ms |
+| Startup to the first frame, loopback | no slower than mosh 1.4.0 | 252.2 ms | 256.6 ms |
+| Keystroke to screen with prediction, 300 ms RTT | one render, no visible delay | 0.09 ms, one render | 0.08 ms, one render |
+| `seq 1 100000` until done on screen, loopback | no slower than mosh 1.4.0 | 110 ms | 130 ms |
+
+Notes:
+- The first frame takes about 250 ms in both implementations because upstream's round-trip estimate starts at 1 second, which sets the first send interval to its 250 ms maximum; mosh-rs keeps upstream's timing.
+- Part of the memory difference is shared-library pages: the C++ binaries load several shared libraries, the static mosh-rs binaries load none.
+- All numbers are medians where several runs were taken; the full output, including p90 values and per-run times, is printed by `tools/bench`.
 
 ## How it works
 

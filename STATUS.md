@@ -578,3 +578,14 @@ Gate not declared: CI is red until the laptop pushes branch `ci/terminfo`. Next:
 - Fix for the Phase 3 laptop failure (`CreateProcessW failed error:2`, INTERVENTIONS "Phase 3 Windows test, first pass"): the ProxyCommand words are quoted by `mosh_platform::process::proxy_command_quote`, POSIX single quotes on unix (unchanged byte for byte: `ProxyCommand='.../mosh' '--family=prefer-inet' --fake-proxy -- %h %p` seen in `ps` during a session) and Windows command-line rules on Windows (`windows_command_line_quote`), because Win32-OpenSSH runs no shell for ProxyCommand: `ssh_proxy_connect` passes the whole string to its `posix_spawnp`, whose `build_commandline_string` (contrib/win32/win32compat/misc.c) hands it to CreateProcessW unchanged when it starts with `"`, else quotes only up to the first space after `.exe`.
 - New check `windows_proxy_command_quoting` in `tests/tests/launcher.rs`: plain path unchanged, `C:\Program Files\mosh-rs\mosh.exe` -> `"C:\Program Files\mosh-rs\mosh.exe"`, `C:\dir with space\` -> `"C:\dir with space\\"`, forward slashes unchanged, embedded quotes escaped.
 - `cargo test --release -p mosh-tests --test launcher`: 5 passed, 0 failed (dual-stack case included). fmt, clippy native and Windows clean; Windows `mosh` builds. Laptop rerun of Phase 3 steps 3-6 needs fresh Windows binaries.
+
+## 2026-10-13 Phase 5: one-hour bench rerun by the orchestrator, README numbers
+
+`target/release/bench --hour` at 7cab26f on devbox, side by side with C++ mosh 1.4.0. Every PLAN 5 target passes:
+- Idle CPU over 60 s: 0.00% client and server (C++ the same).
+- Memory after a one-hour session: client 4228 kB (C++ 14596 kB), server 2564 kB (C++ 10124 kB).
+- Static aarch64 binaries: mosh 797,824 B, mosh-client 1,225,216 B, mosh-server 1,101,520 B (target under 4 MB).
+- Client startup to first write 1.40 ms (target under 20 ms; C++ 2.94 ms); first frame 252.2 ms (C++ 256.6 ms).
+- Keystroke at 300 ms round trip with prediction: 0.09 ms, one render (C++ 0.08 ms, one render).
+- `seq 1 100000` until done on screen: 110 ms (C++ 130 ms).
+The README performance table now holds these numbers. Also verified: `cargo check` for the release targets not built so far, aarch64-apple-darwin and x86_64-pc-windows-msvc, passes with no errors or warnings.
