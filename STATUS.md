@@ -239,3 +239,19 @@ Measured (`cargo test --release -p mosh-tests --test prediction_e2e`): 3 passed.
   C++: 2/4/2, 2/2/2, 2/2/2 and 316/312/310 ms. Ours: 2/2/2, 3/3/2, 3/2/2 and 312/316/318 ms.
 - `client_e2e` gains `Ctrl-^ Ctrl-Z` suspend (`[mosh is suspended.]`, the shell reports the job stopped and works, `fg` repaints the session) and a client with no server (the "Nothing received" bar after 0.3 s (C++) and 0.5 s (ours), "Timed out waiting for server..." at 15.0 s, exit 1 after 19 s with the four-line stderr explanation, same for both): 7 passed.
 - `idle_cpu` prints SKIPPED where `pidstat` is missing (the CI runner has no `sysstat`).
+
+## 2026-10-13 Interop harness (agent M)
+
+What landed (8edd8d8, 5fafd9c, 9d41baf):
+- `tests/interop.sh`: the interop matrix (PLAN 3.4). Each cell runs `mosh-server new` with a scenario script, `udp-impair` with the profile's impairment, and the client in its own 80x24 tmux server, then polls `capture-pane` until the screen equals a direct (no mosh) tmux run of the same scenario. Scenarios: seq, colors (compared with `-e`), vim, wide, resize, typing. Profiles: clean, loss5, loss30, blackout (then typed keys must echo within 10 s), rebind (then typed keys must echo, and the proxy must forward server-to-client packets to its new port).
+- `tests/upstream-check.sh`: upstream `make check` (PLAN 3.5) in a copy of the upstream tree with any client/server pair; the upstream tree is never written.
+- `tests/interop/README.md`: usage, the gate commands for D and E, and four mosh 1.4.0 limits the scenarios avoid (no alternate screen, SGR 2 dropped, 256-color 0-7 and bright 90-107 redrawn differently, echo interleaving under batching).
+- `tests/run-all.sh` picks both up unchanged. With no arguments `interop.sh` runs cxx x cxx with a 10 s blackout (45 s wall); `upstream-check.sh` runs cxx x cxx (about 4 min).
+
+Measured on devbox:
+- `tests/interop.sh --client cxx --server cxx --profile all --scenario all` (120 s blackout): 30 cells, 30 passed, wall time 2m15s (10 cells in parallel).
+- `tests/upstream-check.sh`: TOTAL 32, PASS 30, XFAIL 2, FAIL 0, XPASS 0, ERROR 0 in 242 s. `make -q` confirmed no rebuild; sha256 of all 640 files in `~/src/mosh`, and their mtimes, identical before and after; `git status --short` empty.
+- Can fail: the stub Rust client (before D and E landed) failed every cell; `INTEROP_CORRUPT_DIRECT=wide` failed the wide cells with a one-line diff; `--server /bin/false` gave FAIL 1, ERROR 27, exit 1.
+- After D and E landed: `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client all --server all`: 120 cells, 119 passed. The failure was rust x rust, loss30, vim: the client printed `[mosh is exiting.]` after 15.8 s without ever showing the session; the proxy saw 8 client packets (6 dropped) and 1 server packet in that time. Three reruns of rust x rust loss5 and loss30 passed (36 cells). Not yet explained; for D and E.
+
+Open: CI's test job installs no `vim`, which the vim scenario needs; `interop.sh` then fails naming it. The fix is adding `vim` to the apt line in `.github/workflows/ci.yml`, which devbox cannot push.
