@@ -88,7 +88,8 @@ fn sockaddr_from_bytes(b: &[u8], af_inet: i32, af_inet6: i32) -> Option<SocketAd
         let ip = Ipv4Addr::new(b[4], b[5], b[6], b[7]);
         Some(SocketAddr::V4(SocketAddrV4::new(ip, port)))
     } else if family == af_inet6 && b.len() >= 28 {
-        let flowinfo = u32::from_be_bytes([b[4], b[5], b[6], b[7]]);
+        // The raw field, as std and `socket.rs` keep it (`SocketAddrV6::flowinfo`).
+        let flowinfo = u32::from_ne_bytes([b[4], b[5], b[6], b[7]]);
         let mut octets = [0u8; 16];
         octets.copy_from_slice(&b[8..24]);
         let scope_id = u32::from_ne_bytes([b[24], b[25], b[26], b[27]]);

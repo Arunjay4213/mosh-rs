@@ -244,6 +244,12 @@ Design, all gated on negotiation so old peers see byte-identical behavior:
 - Resize: while the client watches SIGWINCH, `Select::select` caps its wait at 50 ms and compares the `GetConsoleScreenBufferInfo` window size after every call, raising SIGWINCH when it changed.
 - Ctrl+C arrives as byte 0x03 and goes to the server like any key.
   The escape key is Ctrl-^ as upstream, typed as Ctrl+6 in Windows Terminal.
+- Ctrl+Break cannot be turned off by the console mode, and Windows' default handler ends the process without restoring the console.
+  The client's `Select::add_signal(SIGINT)` installs a console control handler that turns Ctrl+Break (and a generated Ctrl+C event) into SIGINT, which the main loop handles as upstream handles SIGINT: a clean shutdown that restores the console on the way out.
+  The handler only sets a pending flag that `select()` moves into the signal set after it polls (as unix keeps a blocked signal pending until `pselect`), and the wait is capped at 50 ms while it is installed, so the flag is noticed promptly.
+  `mosh.exe`, which waits for `mosh-client.exe`, ignores the event so it does not give the console back before the client has finished.
+  Close, logoff and shutdown events keep the default handling; the console goes away with the process.
+- Console setup errors, including a failure to start the input thread, are returned from `raw_mode_on`, and the client prints them and exits 1 as it does for a failed `tcgetattr` (section 9 item 11).
 - ssh: spawn `ssh.exe` from the Windows OpenSSH that ships with Windows 10 and later.
 - Build: cross-compile on devbox for `x86_64-pc-windows-gnu` with the mingw package already available there, copy the exe to the laptop for testing. Releases use the MSVC target built on a Windows GitHub Actions runner.
 - `mosh-server` is unix only, as upstream.
@@ -290,6 +296,8 @@ The default client is `mosh-client` from PATH, as mosh.pl. On Windows only, `mos
 14. The server session child flushes stdout before `execvp`.
     Upstream does not, so when `mosh-server new`'s stdout is a file or pipe (fully buffered), its motd and detached-session warning are lost at the exec; ours prints them.
     Through ssh's terminal, the normal case, both print them (STATUS.md, detached-session warning).
+
+15. On Linux x86_64 and aarch64, `mosh-server` reads the utmp file (`/run/utmp`, else `/var/run/utmp`) with glibc's `struct utmpx` record layout instead of calling `getutxent()`, for the detached-session warning (mosh-server.cc line 1046), because musl's `getutxent` is a stub that never returns a record, so a static musl `mosh-server` would never warn. Reading the file the same way in the glibc and musl builds keeps them identical. A file whose size is not a whole number of records yields no records, as `getutxent` does for a file it cannot use. Other systems call `getutxent()`.
 
 Anything else that differs from upstream is a bug.
 

@@ -121,7 +121,12 @@ mod unix {
 
         /* Put terminal driver in raw mode */
         let mut raw_termios = saved_termios;
-        #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+        #[cfg(any(
+            target_os = "linux",
+            target_os = "android",
+            target_os = "macos",
+            target_os = "cygwin"
+        ))]
         if raw_termios.c_iflag & libc::IUTF8 == 0 {
             /* Probably not really necessary since we are putting terminal driver into raw mode anyway. */
             raw_termios.c_iflag |= libc::IUTF8;
@@ -221,8 +226,9 @@ mod windows {
         GetConsoleCP, GetConsoleMode, GetConsoleOutputCP, GetConsoleScreenBufferInfo, GetStdHandle,
         ReadConsoleW, SetConsoleCP, SetConsoleMode, SetConsoleOutputCP, CONSOLE_MODE,
         CONSOLE_SCREEN_BUFFER_INFO, DISABLE_NEWLINE_AUTO_RETURN, ENABLE_ECHO_INPUT,
-        ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_VIRTUAL_TERMINAL_INPUT,
-        ENABLE_VIRTUAL_TERMINAL_PROCESSING, STD_INPUT_HANDLE, STD_OUTPUT_HANDLE,
+        ENABLE_LINE_INPUT, ENABLE_PROCESSED_INPUT, ENABLE_PROCESSED_OUTPUT,
+        ENABLE_VIRTUAL_TERMINAL_INPUT, ENABLE_VIRTUAL_TERMINAL_PROCESSING, STD_INPUT_HANDLE,
+        STD_OUTPUT_HANDLE,
     };
 
     const CP_UTF8: u32 = 65001;
@@ -284,7 +290,12 @@ mod windows {
     }
 
     fn raw_output_mode(saved: CONSOLE_MODE) -> CONSOLE_MODE {
-        saved | ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN
+        /* VT processing needs ENABLE_PROCESSED_OUTPUT (SetConsoleMode documentation);
+        it is on by default, but a parent program may have cleared it. */
+        saved
+            | ENABLE_PROCESSED_OUTPUT
+            | ENABLE_VIRTUAL_TERMINAL_PROCESSING
+            | DISABLE_NEWLINE_AUTO_RETURN
     }
 
     /// PLAN section 7: VT processing on output, VT input with processed,
@@ -295,8 +306,11 @@ mod windows {
         let output = std_handle(STD_OUTPUT_HANDLE)?;
         let saved_input_mode = console_mode(input)?;
         let saved_output_mode = console_mode(output)?;
-        // SAFETY: plain calls.
+        // SAFETY: plain calls; both return 0 on failure.
         let (saved_input_cp, saved_output_cp) = unsafe { (GetConsoleCP(), GetConsoleOutputCP()) };
+        if saved_input_cp == 0 || saved_output_cp == 0 {
+            return Err(io::Error::last_os_error());
+        }
         let guard = RawModeGuard {
             input,
             output,
@@ -307,6 +321,14 @@ mod windows {
             restored: false,
         };
         guard.apply_raw()?;
+        /* The console input thread starts here, after line and echo input
+        are off (a ReadConsoleW started in line mode would wait for Enter).
+        If it cannot start, the error is returned like a failed tcgetattr
+        and dropping the guard restores the console. */
+        if STDIN.get().is_none() {
+            let receiver = start_stdin_thread()?;
+            let _ = STDIN.set(receiver);
+        }
         Ok(guard)
     }
 
@@ -353,11 +375,8 @@ mod windows {
         Ok((cols, rows))
     }
 
-    /// Receiving end of the stdin forwarding connection, created on first use.
-    fn stdin_socket() -> &'static TcpStream {
-        static STDIN: OnceLock<TcpStream> = OnceLock::new();
-        STDIN.get_or_init(|| start_stdin_thread().expect("cannot start console input thread"))
-    }
+    /// Receiving end of the stdin forwarding connection, set by `raw_mode_on`.
+    static STDIN: OnceLock<TcpStream> = OnceLock::new();
 
     fn start_stdin_thread() -> io::Result<TcpStream> {
         let listener = TcpListener::bind("127.0.0.1:0")?;
@@ -375,8 +394,14 @@ mod windows {
             let input = input as HANDLE;
             let mut buf = [0u8; 16384];
             loop {
+                // Dropping `sender` gives the reader end of file.
                 match read_console_bytes(input, &mut buf) {
-                    Ok(0) | Err(_) => break, // dropping `sender` gives the reader EOF
+                    Ok(0) => break,
+                    Err(e) => {
+                        /* As the unix client reports a failed read( STDIN_FILENO ). */
+                        crate::stdio::perror("read", &e);
+                        break;
+                    }
                     Ok(n) => {
                         if sender.write_all(&buf[..n]).is_err() {
                             break;
@@ -443,14 +468,23 @@ mod windows {
         Ok(written)
     }
 
-    /// The socket to watch in `Select` for console input.
+    /// The socket to watch in `Select` for console input. Before a
+    /// successful `raw_mode_on` there is none and this is INVALID_SOCKET, so
+    /// a `select` on it fails with an error rather than waiting forever.
     pub fn stdin_fd() -> Fd {
-        stdin_socket().as_raw_socket()
+        STDIN.get().map_or(
+            windows_sys::Win32::Networking::WinSock::INVALID_SOCKET as Fd,
+            |s| s.as_raw_socket(),
+        )
     }
 
-    /// Read bytes typed at the console. Ok(0) is end of file.
+    /// Read bytes typed at the console. Ok(0) is end of file. Before a
+    /// successful `raw_mode_on` there is no console input to read.
     pub fn read_stdin(buf: &mut [u8]) -> io::Result<usize> {
-        (&mut stdin_socket()).read(buf)
+        match STDIN.get() {
+            Some(mut socket) => socket.read(buf),
+            None => Err(io::Error::from(io::ErrorKind::NotConnected)),
+        }
     }
 
     /// swrite( STDOUT_FILENO, ... ) with WriteFile, so bytes reach the

@@ -58,6 +58,7 @@ use std::rc::Rc;
 use mosh_network::{freeze_timestamp, timestamp, Error, Transport};
 use mosh_platform::locale::{get_ctype, is_utf8_locale, locale_charset};
 use mosh_platform::select::{Select, SIGCONT, SIGHUP, SIGINT, SIGPIPE, SIGTERM, SIGWINCH};
+use mosh_platform::stdio::perror;
 use mosh_platform::tty::{self, RawModeGuard};
 use mosh_terminal::{
     Actions, Display, Emulator, Framebuffer, Hyperlink, Resize, UTF8Parser, UserByte,
@@ -93,15 +94,6 @@ fn with_guard(f: impl FnOnce(&RawModeGuard) -> std::io::Result<()>) -> std::io::
         Some((guard, _)) => f(guard),
         None => Ok(()),
     })
-}
-
-/// `perror( s )`: `s: <system message>`, without the `(os error N)` that
-/// `io::Error` adds.
-fn perror(s: &str, e: &std::io::Error) {
-    match e.raw_os_error() {
-        Some(errno) => errln!("{s}: {}", mosh_platform::socket::strerror(errno)),
-        None => errln!("{s}: {e}"),
-    }
 }
 
 /// `swrite( STDOUT_FILENO, ... )`: report a failed write, as upstream.

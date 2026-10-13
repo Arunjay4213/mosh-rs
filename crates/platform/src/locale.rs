@@ -133,7 +133,7 @@ pub fn set_native_locale() {
                 crate::errln!("Running `locale-gen {}' may be necessary.\n", ctype.value);
             }
         } else {
-            crate::errln!("setlocale: {err}");
+            crate::stdio::perror("setlocale", &err);
         }
     }
 }

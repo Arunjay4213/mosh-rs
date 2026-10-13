@@ -8,6 +8,16 @@ Newest entry first.
 - `~/.cargo/bin/rustup` vanished at 18:47 UTC (every tool in `~/.cargo/bin` is a symlink to it, so `cargo` stopped working); the toolchains under `~/.rustup` (stable 1.99.0, 1.91.1, 1.89.0, 1.88.0) were intact. Agent S2 noticed it; no agent reports deleting it, and the orchestrator does not know the cause.
 - The orchestrator reinstalled the binary with `rustup-init -y --no-modify-path --default-toolchain stable` at 19:10 UTC; the existing toolchains were kept, `cargo 1.99.0` works, the workspace builds. Note for non-login shells: `~/.cargo/bin` is not on PATH unless added, as CLAUDE.md says.
 - Agent S2's last item is closed: the intermittent `command_output_and_exit` failure on the arm runner was a test race (the test matched `MOSH_EXIT=` in the echoed command line before the shell printed the real status); 11 waits in three test files now wait for a whole `MOSH_EXIT=<n>` line; no product change; on main as c8561cd through green CI.
+## 2026-10-13 NEEDS THE USER: Windows checks for the platform review fixes (agent C, review P1, P2, P5, P6, P8, P13)
+
+Devbox cannot run Windows code; these changes are compiled and clippy-clean for `x86_64-pc-windows-gnu` but not run. On the laptop's next pass with binaries built from branch `agent/platform-review`:
+
+1. P2, Ctrl+Break: in a session (`mosh.exe devbox`, Windows Terminal), press Ctrl+Break. Expected: the client shuts down cleanly as for a SIGINT ("Signal received, shutting down..." can flash), the prompt comes back only after `mosh-client.exe` exits, and then typing at the prompt echoes normally (line editing works in cmd.exe). Repeat in a cmd.exe (conhost) window.
+2. P1, input setup errors: no simple way to force a loopback failure; just confirm a normal session still reads keys (the input thread now starts inside `raw_mode_on`).
+3. P6: start `mosh.exe` from a program that cleared `ENABLE_PROCESSED_OUTPUT` is hard to arrange; confirm colors and cursor movement still render (vim, `ls --color`).
+4. P5: no change in behavior expected; after exit, `chcp` shows the code page that was active before mosh started.
+5. P13: if a link-local IPv6 address is reachable, `mosh-client.exe fe80::<addr>%<interface index> <port>` with `MOSH_KEY` set should accept the address (before the fix it printed "Bad IP address").
+6. P8: if console input fails (closing the console window's input is the only easy way), the client prints `read: <message>` instead of exiting silently.
 
 ## 2026-10-13 CI: client_e2e command_output_and_exit "non-zero exit" (agent S2)
 

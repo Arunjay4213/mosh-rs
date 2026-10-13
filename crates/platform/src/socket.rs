@@ -115,10 +115,15 @@ pub fn strerror(e: i32) -> String {
         .into_owned()
 }
 
-/// The system message for error code `e`.
+/// The system message for error code `e`, without Rust's " (os error N)"
+/// suffix, as C `strerror()` gives it.
 #[cfg(windows)]
 pub fn strerror(e: i32) -> String {
-    std::io::Error::from_raw_os_error(e).to_string()
+    let text = std::io::Error::from_raw_os_error(e).to_string();
+    match text.rfind(" (os error ") {
+        Some(at) => text[..at].to_string(),
+        None => text,
+    }
 }
 
 #[cfg(unix)]
@@ -199,10 +204,7 @@ mod unix {
                 && family == libc::IPPROTO_IP
             {
                 /* FreeBSD disallows this option on IPv6 sockets. */
-                crate::errln!(
-                    "setsockopt( IP_RECVTOS ): {}",
-                    std::io::Error::last_os_error()
-                );
+                crate::stdio::perror("setsockopt( IP_RECVTOS )", &std::io::Error::last_os_error());
             }
         }
 
@@ -360,9 +362,9 @@ mod unix {
             if a.ip().is_unspecified() {
                 let off = 0;
                 if setsockopt_int(fd, libc::IPPROTO_IPV6, libc::IPV6_V6ONLY, off) != 0 {
-                    crate::errln!(
-                        "setsockopt( IPV6_V6ONLY, off ): {}",
-                        std::io::Error::last_os_error()
+                    crate::stdio::perror(
+                        "setsockopt( IPV6_V6ONLY, off )",
+                        &std::io::Error::last_os_error(),
                     );
                 }
             }
@@ -485,7 +487,7 @@ mod unix {
 #[cfg(windows)]
 mod windows {
     use super::SysError;
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6, UdpSocket};
 
     const WSAEWOULDBLOCK: i32 = 10035;
     const WSAEMSGSIZE: i32 = 10040;
@@ -524,11 +526,19 @@ mod windows {
                 0,
             )
         };
-        let ip: IpAddr = match node {
-            None => IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-            Some(n) => n.parse().map_err(|_| bad())?,
-        };
         let port: u16 = service.parse().map_err(|_| bad())?;
+        let Some(n) = node else {
+            return Ok(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port));
+        };
+        /* An IPv6 literal may carry a zone, `fe80::1%3`, which getaddrinfo
+        with AI_NUMERICHOST accepts as the interface index (the unix half
+        accepts it the same way). */
+        if let Some((addr, zone)) = n.split_once('%') {
+            let ip: Ipv6Addr = addr.parse().map_err(|_| bad())?;
+            let scope_id: u32 = zone.parse().map_err(|_| bad())?;
+            return Ok(SocketAddr::V6(SocketAddrV6::new(ip, port, 0, scope_id)));
+        }
+        let ip: IpAddr = n.parse().map_err(|_| bad())?;
         Ok(SocketAddr::new(ip, port))
     }
 

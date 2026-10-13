@@ -88,3 +88,13 @@ macro_rules! errln {
         $crate::stdio::write_stderr(format_args!("{}\n", format_args!($($arg)*)))
     };
 }
+
+/// C `perror( s )`: `s: <strerror text>` on stderr, the system message
+/// without Rust's " (os error N)" suffix (`socket::strerror`), as upstream
+/// prints it. An error without an OS code prints its own text.
+pub fn perror(s: &str, e: &io::Error) {
+    match e.raw_os_error() {
+        Some(errno) => write_stderr(format_args!("{s}: {}\n", crate::socket::strerror(errno))),
+        None => write_stderr(format_args!("{s}: {e}\n")),
+    }
+}

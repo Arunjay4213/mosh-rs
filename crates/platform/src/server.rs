@@ -156,7 +156,12 @@ pub fn write(fd: &impl AsRawFd, buf: &[u8]) -> io::Result<usize> {
 /// names the failing call ("tcgetattr" or "tcsetattr"). Returns Ok without
 /// doing anything where IUTF8 does not exist (upstream's `HAVE_IUTF8`).
 pub fn set_iutf8_stdin() -> Result<(), (&'static str, io::Error)> {
-    #[cfg(any(target_os = "linux", target_os = "android", target_os = "macos"))]
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "android",
+        target_os = "macos",
+        target_os = "cygwin"
+    ))]
     // SAFETY: tcgetattr fills the zeroed struct; tcsetattr reads it.
     unsafe {
         let mut child_termios: libc::termios = std::mem::zeroed();
@@ -231,7 +236,9 @@ pub struct UtmpxEntry {
 /// record is 384 bytes; aarch64 has a 64-bit `long` session and `timeval`,
 /// so its record is 400 bytes (devbox's `/run/utmp` parses as 48 records of
 /// 400 bytes, all with a valid `ut_type`). The file is written in the
-/// machine's byte order.
+/// machine's byte order. A file whose size is not a whole number of records
+/// was not written with this layout, so it yields no records, as
+/// `getutxent` yields none for a file it cannot use (PLAN 9 item 15).
 #[cfg(all(
     target_os = "linux",
     any(target_arch = "x86_64", target_arch = "aarch64")
@@ -255,6 +262,9 @@ pub fn getutxent_all() -> Vec<UtmpxEntry> {
     let data = std::fs::read("/run/utmp")
         .or_else(|_| std::fs::read("/var/run/utmp"))
         .unwrap_or_default();
+    if !data.len().is_multiple_of(RECORD) {
+        return Vec::new();
+    }
     data.as_chunks::<RECORD>()
         .0
         .iter()

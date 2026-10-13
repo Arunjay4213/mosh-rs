@@ -51,19 +51,41 @@ const MAX_SIGNAL_NUMBER: usize = 64;
  * something's wrong. */
 const MAX_POLLS: u32 = 10;
 
-#[allow(clippy::declare_interior_mutable_const)]
-const NO_SIGNAL: AtomicBool = AtomicBool::new(false);
 /* We assume writes to got_signal are atomic, though we also try to mask out
 concurrent signal handlers. */
-static GOT_SIGNAL: [AtomicBool; MAX_SIGNAL_NUMBER + 1] = [NO_SIGNAL; MAX_SIGNAL_NUMBER + 1];
+static GOT_SIGNAL: [AtomicBool; MAX_SIGNAL_NUMBER + 1] =
+    [const { AtomicBool::new(false) }; MAX_SIGNAL_NUMBER + 1];
+
+/// Windows: set by the console control handler for Ctrl+Break (and a
+/// generated Ctrl+C), moved into `GOT_SIGNAL[SIGINT]` by `select()` after it
+/// polls, the way unix keeps a blocked signal pending until `pselect`.
+#[cfg(windows)]
+static CONSOLE_INTERRUPT: AtomicBool = AtomicBool::new(false);
+
+/// Windows console control handler installed by `add_signal(SIGINT)`.
+/// Ctrl+Break cannot be turned off with the input mode (only Ctrl+C can),
+/// and the default handler ends the process without running any `Drop`, so
+/// the console would stay raw. Like a SIGINT on unix, the event is turned
+/// into the client's clean shutdown, which restores the console on its way
+/// out. Other events (close, logoff, shutdown) go to the default handler.
+#[cfg(windows)]
+unsafe extern "system" fn console_ctrl_handler(ctrl_type: u32) -> windows_sys::core::BOOL {
+    use windows_sys::Win32::System::Console::{CTRL_BREAK_EVENT, CTRL_C_EVENT};
+    if ctrl_type == CTRL_BREAK_EVENT || ctrl_type == CTRL_C_EVENT {
+        CONSOLE_INTERRUPT.store(true, Ordering::SeqCst);
+        return 1;
+    }
+    0
+}
 static VERBOSE: AtomicU32 = AtomicU32::new(0);
 
 #[cfg(unix)]
 pub use libc::{SIGCONT, SIGHUP, SIGINT, SIGPIPE, SIGTERM, SIGUSR1, SIGWINCH};
 
 /// Windows has no such signals. The numbers exist so the event loop reads
-/// the same on both systems; only SIGWINCH is ever raised (by polling the
-/// console size), and Ctrl-C arrives as byte 0x03 instead of SIGINT.
+/// the same on both systems; only SIGWINCH (by polling the console size)
+/// and SIGINT (Ctrl+Break, through the console control handler) are ever
+/// raised. Ctrl-C arrives as byte 0x03, as on a raw unix tty.
 #[cfg(windows)]
 mod winsig {
     /// Hangup.
@@ -122,6 +144,8 @@ pub struct Select {
     read_fds: Vec<Fd>,
     #[cfg(windows)]
     watched_size: Option<std::io::Result<(u16, u16)>>,
+    #[cfg(windows)]
+    watched_interrupt: bool,
 
     consecutive_polls: u32,
 }
@@ -311,6 +335,7 @@ impl Select {
             all_fds: Vec::new(),
             read_fds: Vec::new(),
             watched_size: None,
+            watched_interrupt: false,
             consecutive_polls: 0,
         }
     }
@@ -334,6 +359,17 @@ impl Select {
         if signum == SIGWINCH && self.watched_size.is_none() {
             self.watched_size = Some(crate::tty::window_size());
         }
+        if signum == SIGINT && !self.watched_interrupt {
+            // SAFETY: registers a handler with the documented signature; it
+            // only stores to an atomic.
+            unsafe {
+                windows_sys::Win32::System::Console::SetConsoleCtrlHandler(
+                    Some(console_ctrl_handler),
+                    1,
+                );
+            }
+            self.watched_interrupt = true;
+        }
     }
 
     /// Timeout unit: milliseconds; negative timeout means wait forever.
@@ -348,14 +384,18 @@ impl Select {
         clear_got_signal();
 
         let mut timeout = self.rate_limit(timeout);
-        if self.watched_size.is_some() && !(0..=50).contains(&timeout) {
+        if (self.watched_size.is_some() || self.watched_interrupt) && !(0..=50).contains(&timeout) {
             timeout = 50;
         }
 
         let mut ret = 0;
         if self.all_fds.is_empty() {
-            if timeout > 0 {
-                std::thread::sleep(std::time::Duration::from_millis(timeout as u64));
+            /* Nothing to poll: wait the timeout, or 50 ms for "forever", so
+            the caller still loops and sees signals (upstream's
+            pselect(0, ...) blocks until a signal arrives). */
+            let ms = if timeout < 0 { 50 } else { timeout };
+            if ms > 0 {
+                std::thread::sleep(std::time::Duration::from_millis(ms as u64));
             }
         } else {
             let mut pollfds: Vec<WSAPOLLFD> = self
@@ -383,6 +423,9 @@ impl Select {
                 .collect();
         }
 
+        if self.watched_interrupt && CONSOLE_INTERRUPT.swap(false, Ordering::SeqCst) {
+            GOT_SIGNAL[SIGINT as usize].store(true, Ordering::SeqCst);
+        }
         if let Some(old) = &self.watched_size {
             let now = crate::tty::window_size();
             if now.as_ref().ok() != old.as_ref().ok() {
