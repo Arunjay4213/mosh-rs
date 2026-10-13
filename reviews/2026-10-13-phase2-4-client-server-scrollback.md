@@ -165,3 +165,9 @@ Method note: the allocation numbers in G1 come from a 40-line program in the scr
 | Finding | Status | Commit | Note |
 |---------|--------|--------|------|
 | G3 | fixed | 077968f | portable code, not a pinned toolchain: struct-level `non_snake_case` allows (with reason) in terminaldispatcher.rs, typed byte-string consts in vt-fuzz; `rust-version = "1.89"` (aes 0.9.3 needs it; 1.88.0 refused); clippy -D warnings and `test --release --workspace --no-run` pass on 1.89.0, 1.91.1 and stable 1.99; CLAUDE.md states it |
+| G6 | fixed | cb9bfd2 | `mosh::BUILD_VERSION` (package version, no build script) used by `mosh`, `mosh-client`, `mosh-server`; `mosh-client --version` prints `mosh-client (mosh-rs 0.1.0) [build 0.1.0]` |
+| G7 | fixed | cb9bfd2 | unix runs `mosh-client` from PATH as mosh.pl; sibling `mosh-client.exe` only on Windows (`process::default_client_program`); PLAN section 8 says so |
+| G8 | fixed | cb9bfd2 | Getopt::Long parsing ported (prefixes, case-insensitive, no bundling, negations, next-argument values); `--experimental-remote-ip` ported; `chomp` exact (note: upstream turns `256\n\n` into `256\n`, not 0, checked against /usr/bin/mosh); test `options_and_messages_match_mosh_pl`: 73 cases, 0 different from /usr/bin/mosh; PLAN section 8 |
+| G10 | fixed | cb9bfd2 | relay retries `ErrorKind::Interrupted` (kept a loop rather than `std::io::copy` because each chunk must be flushed to the ssh pipe) |
+| G11 | fixed | cb9bfd2 | `resolvename` ported over `mosh_platform::netdb::getaddrinfo` (numeric, then AI_CANONNAME and the canonical name); test `proxy_resolves_canonical_name_like_mosh_pl` with a devbox /etc/hosts alias: equal to mosh.pl for 5 `--family` values, the old code differed in 4 |
+| G12 | fixed | cb9bfd2 | `expect("digits only, checked above")` |
