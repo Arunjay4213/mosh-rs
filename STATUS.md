@@ -337,3 +337,10 @@ Agent M's rust x rust loss30 vim failure: repeating `--profile loss30` 5 times p
 
 The `network_timeout` case asserted the server lived at least 4 s after the client was killed. The server times out 5 s after it last heard from the client, which can be up to 3 s (the client's ACK_INTERVAL) before the kill on a slow runner, so that bound could fail without a bug. It now checks the server is alive 1 s after the kill and gone within 10 s.
 Measured: `network_timeout` and `signal_timeout` passed; exit 4.755 s after the kill for both servers.
+
+## 2026-10-13 Spawn: agent F, Phase 2 cleanup cluster
+
+Agent F (Opus, medium effort, own worktree) takes three small items found by agent D, because they cut across crates whose agents have finished (PLAN 10: "fresh small agents per bug cluster"):
+- Restore upstream's `compare` in the `State` trait and the verbose round-trip check that prints "round-trip Instruction verification failed", so upstream's `make check` can catch that failure in our binaries (it currently passes silently). Withdraws PLAN 9.10.
+- `cargo build --workspace --target x86_64-pc-windows-gnu` fails because unix-only test tools are not gated; gate them.
+- Diagnostic messages in the network and platform crates use `eprintln!`, which panics if stderr is closed (for example after ssh exits); C's stdio ignores that error.
