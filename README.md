@@ -26,10 +26,11 @@ It runs over UDP, keeps the screen in sync instead of streaming bytes, and echoe
 
 mosh-rs is a Rust port of mosh master (decd9b7, March 2026), wire-compatible with mosh 1.4.0, so that it works with the `mosh-server` already installed on your hosts.
 It adds two things upstream mosh never had: a native Windows client, and scrollback that lands in your local terminal's history.
+Scrollback is opt-in: run `mosh --scrollback host` against a mosh-rs `mosh-server`; plain `mosh host` behaves like upstream and keeps no history.
 The Linux release binaries are single static binaries.
 
 **Status: pre-alpha.**
-v0.1.0 is the first pre-release: download it from the [Releases page](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.0) and see [Install](#install).
+The current pre-release is v0.1.1: download it from the [Releases page](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.1) and see [Install](#install).
 The [Known limitations](#known-limitations) list says what has been tested and what has not.
 Every number and every compatibility result in this README was measured, and anything not yet tested is marked as such.
 
@@ -40,7 +41,8 @@ For security problems, follow [SECURITY.md](SECURITY.md) instead.
 ## Known limitations
 
 - Pre-alpha: expect rough edges, and report them in the issue tracker.
-- The v0.1.0 macOS client cannot connect (an address lookup bug on macOS, fixed on main); the v0.1.0 macOS server works. Use v0.1.1 or later on a Mac.
+- The v0.1.0 macOS client cannot connect (an address lookup bug on macOS); use v0.1.1 or later on a Mac.
+- Windows: there is no native ARM64 build; the x86_64 build runs on Windows on Arm through emulation.
 - Windows: sleeping and waking the machine, Ctrl-^ Ctrl-Z, and idle CPU have not been tested; losing and regaining the network has.
 - `mosh-server` is Unix-only, as in upstream.
 - No X forwarding, port forwarding, or SOCKS; mosh never had them.
@@ -58,61 +60,80 @@ New features are additive protobuf fields that existing peers ignore, so mixed o
 
 ## Install
 
-Pre-built binaries are attached to the [v0.1.0 release](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.0).
+Pre-built binaries are attached to the [v0.1.1 release](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.1).
 Each archive has a `.sha256` file next to it for checking the download.
-v0.1.0 is a pre-release; the [Known limitations](#known-limitations) list says what has been tested.
+v0.1.1 is a pre-release; the [Known limitations](#known-limitations) list says what has been tested.
 
 mosh-rs works with the `mosh-server` already on your hosts (mosh 1.4), so you can install only the client side.
-The `--scrollback` feature needs the mosh-rs `mosh-server` on the remote host.
+The `--scrollback` feature needs the mosh-rs `mosh-server` on the remote host: install the same archive there (see [Scrollback](#scrollback)).
 
 ### Linux (x86_64 and arm64)
 
 The archives hold static binaries for `mosh`, `mosh-client`, and `mosh-server`.
-Replace `x86_64` with `aarch64` for arm64.
+`uname -m` prints `x86_64` or `aarch64`, which picks the matching archive.
 
 ```sh
-v=v0.1.0; t=x86_64-unknown-linux-musl
+v=v0.1.1; t=$(uname -m)-unknown-linux-musl
 curl -LO https://github.com/Arunjay4213/mosh-rs/releases/download/$v/mosh-rs-$v-$t.tar.gz
 curl -LO https://github.com/Arunjay4213/mosh-rs/releases/download/$v/mosh-rs-$v-$t.tar.gz.sha256
 sha256sum -c mosh-rs-$v-$t.tar.gz.sha256
 tar xzf mosh-rs-$v-$t.tar.gz
 sudo install mosh-rs-$v-$t/mosh mosh-rs-$v-$t/mosh-client mosh-rs-$v-$t/mosh-server /usr/local/bin/
+mosh --version   # prints "mosh-rs 0.1.1"
 ```
+
+Without sudo, install into a directory on your `PATH` that you own instead, such as `~/.local/bin`.
+If an archive for the wrong CPU is installed, every program fails with "cannot execute binary file: Exec format error".
 
 ### macOS (Apple silicon)
 
-Download `mosh-rs-v0.1.0-aarch64-apple-darwin.tar.gz` and install it the same way, with `shasum -a 256 -c` in place of `sha256sum -c`.
-The v0.1.0 macOS `mosh` launcher cannot connect: it finds no address for any host, so it stops with "Could not connect to HOST, last tried :" and "Did not find remote IP address".
-The cause was reading the address family at the Linux position of a C socket address; macOS puts a length byte first.
-It is fixed on main, and the fix was used for a real session from an Apple silicon Mac (macOS 15.8) to a Linux server over the network, typing a command and quitting with `[mosh is exiting.]` ([STATUS.md](STATUS.md)).
-Until the macOS release asset is rebuilt, build from source on the Mac (`cargo build --release -p mosh`); v0.1.1 carries the fix once it is tagged.
-The v0.1.0 `mosh-server` was verified on macOS separately: a Linux client ran a full session against it ([INTERVENTIONS.md](INTERVENTIONS.md)).
+Download `mosh-rs-v0.1.1-aarch64-apple-darwin.tar.gz` and install it the same way, with `shasum -a 256 -c` in place of `sha256sum -c`.
+The v0.1.0 macOS `mosh` launcher could not connect ("Did not find remote IP address"), because it read the address family at the Linux position of a C socket address.
+v0.1.1 fixes this: the v0.1.1 release archive was used for a real session from an Apple silicon Mac to a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)).
+The v0.1.0 `mosh-server` was verified on macOS separately: a Linux client ran a full session against it.
 
 ### Windows (x86_64)
 
-1. Download `mosh-rs-v0.1.0-x86_64-pc-windows-msvc.zip` and unzip it.
-2. Keep `mosh.exe` and `mosh-client.exe` together in one folder: `mosh.exe` starts the `mosh-client.exe` next to it.
-3. In Windows Terminal, run `.\mosh.exe user@host` from that folder, or add the folder to your `PATH`.
+There is one Windows build, for x86_64.
+It also runs on Windows on Arm through the x64 emulation built into Windows 11; the hand tests below were run that way, on an ARM64 Windows 11 laptop.
+
+In PowerShell, download the zip and its checksum, compare the two hashes, and unzip:
+
+```powershell
+$f = "mosh-rs-v0.1.1-x86_64-pc-windows-msvc"
+Invoke-WebRequest "https://github.com/Arunjay4213/mosh-rs/releases/download/v0.1.1/$f.zip" -OutFile "$f.zip"
+Invoke-WebRequest "https://github.com/Arunjay4213/mosh-rs/releases/download/v0.1.1/$f.zip.sha256" -OutFile "$f.zip.sha256"
+(Get-FileHash "$f.zip" -Algorithm SHA256).Hash.ToLower() -eq (Get-Content "$f.zip.sha256").Split(" ")[0]   # must print True
+Expand-Archive "$f.zip" -DestinationPath .
+cd $f
+.\mosh.exe --version   # prints "mosh-rs 0.1.1"
+```
+
+The zip unpacks into a folder named `mosh-rs-v0.1.1-x86_64-pc-windows-msvc` that holds `mosh.exe` and `mosh-client.exe`.
+Keep the two together in one folder: `mosh.exe` starts the `mosh-client.exe` next to it.
+In Windows Terminal, run `.\mosh.exe user@host` from that folder, or add the folder to your `PATH` and run `mosh user@host`.
 
 The launcher uses the OpenSSH client that ships with Windows 10 and later.
 There is no Windows server; the remote host needs `mosh-server` from mosh-rs or mosh 1.4.
 The escape key is Ctrl-^, which you type as Ctrl+6 in Windows Terminal, so Ctrl+6 then `.` quits a session.
 See [Windows](#windows) for what has been tested.
 
-### From crates.io
+### With cargo
 
-Install with Cargo, which builds from source and needs Rust 1.89 or later:
+Cargo can build and install the v0.1.1 tag from Git with Rust 1.89 or later.
+The package is named `mosh`, and it installs `mosh`, `mosh-client`, and `mosh-server` into `~/.cargo/bin`:
 
 ```sh
-cargo install mosh
+cargo install --locked --git https://github.com/Arunjay4213/mosh-rs --tag v0.1.1 mosh
 ```
 
-This installs `mosh`, `mosh-client`, and `mosh-server` into `~/.cargo/bin`.
-On Windows the installed `mosh-server.exe` only prints that the server is not supported there, as described under [Windows (x86_64)](#windows-x86_64).
+Publishing to crates.io as `mosh` is prepared and will make this `cargo install mosh`; until then use the Git form above.
+The crate named `mosh-rs` on crates.io is a different, unrelated project, so do not run `cargo install mosh-rs`.
+On Windows the installed `mosh-server.exe` only prints that the server is not supported there, as described under [Windows](#windows).
 
 ### From source
 
-Build on Linux with Rust 1.89 or later (the minimum, `rust-version` in `Cargo.toml`):
+Build on Linux or macOS with Rust 1.89 or later (the minimum, `rust-version` in `Cargo.toml`):
 
 ```sh
 git clone https://github.com/Arunjay4213/mosh-rs
@@ -128,7 +149,7 @@ To build the Windows client, see [Building for Windows](docs/ARCHITECTURE.md#bui
 mosh-rs builds the same three programs as mosh, with the same names and flags, so existing scripts keep working.
 
 ```sh
-mosh user@host                      # connect
+mosh user@host                      # connect; type Ctrl-^ then . to quit
 mosh host -- tmux attach            # run a command instead of a login shell
 mosh --ssh="ssh -p 2222" host       # custom ssh command
 mosh -p 60001 host                  # pin the server's UDP port (or a range: 60000:60010)
@@ -136,6 +157,10 @@ mosh --predict=always host          # local echo even on fast links
 mosh --local localhost              # run mosh-server locally, without ssh (a host argument is still required)
 mosh --scrollback host              # keep the session's output in your terminal's history (needs a mosh-rs server)
 ```
+
+The escape key is Ctrl-^, as in upstream: Ctrl-^ then `.` quits, and Ctrl-^ then Ctrl-Z suspends the client on Unix.
+In most terminals you type Ctrl-^ as Ctrl+6 or Ctrl+Shift+6.
+Set `MOSH_ESCAPE_KEY` to change it.
 
 The most used launcher flags ([PLAN.md](PLAN.md) section 8); `mosh --help` lists all of mosh.pl's options:
 
@@ -231,7 +256,11 @@ Full-screen programs like vim and less run in your terminal's own alternate scre
 The screen is always current; history follows a few seconds behind on a large burst (the history of `seq 1 50000` arrives in about 9 seconds on loopback), because the server sends at most a few packets of history per round trip so that it survives packet loss.
 The remote program is never paused for history: if more than 32 MiB of history is waiting (for example while your laptop sleeps during a long build), the oldest undelivered lines are dropped and a dim line in your history says how many.
 Known limit: changing the window height can lose or repeat a few rows, because terminals keep the bottom of the screen on resize while mosh's emulator keeps the top.
-Against an upstream server, `--scrollback` falls back to normal mosh behavior and shows a notice.
+Against an upstream server, `--scrollback` falls back to normal mosh behavior and shows the notice "mosh: Server does not support scrollback; using the alternate screen."
+Without `--scrollback`, the session keeps no local history, even with a mosh-rs server.
+
+To use it, install the mosh-rs `mosh-server` on the remote host with the same Linux or macOS steps, and check it with `ssh host mosh-server --version`, which prints `mosh-server (mosh-rs ...)`.
+If the mosh-rs server is not the first `mosh-server` on that host's `PATH`, point the launcher at it: `mosh --scrollback --server=/path/to/mosh-server host`.
 
 How this is checked: `tests/scrollback.sh` runs `seq 1 50000` through mosh in tmux with a 200,000-line history and compares the captured history with `seq` line by line, also through 30% packet loss, around vim, less and `clear`, across resizes, and against an upstream server.
 
@@ -245,7 +274,7 @@ It starts the server with the `ssh.exe` that ships with Windows 10 and later, an
 The escape key is Ctrl-^, as in upstream; in Windows Terminal you type it as Ctrl+6.
 So Ctrl+6 then `.` quits the session.
 
-Tested by hand on a Windows machine in Windows Terminal against a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)): connecting, typing, `ls --color`, vim, UTF-8 output, Ctrl-C, resizing and quitting all worked, and a session survived turning Wi-Fi off and on.
+Tested by hand in Windows Terminal on an ARM64 Windows 11 laptop (the x86_64 build under emulation) against a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)): connecting, typing, `ls --color`, vim, UTF-8 output, Ctrl-C, resizing and quitting all worked, and a session survived turning Wi-Fi off and on.
 The Wi-Fi off-and-on test was accepted as the network-loss check for the Windows client in place of a sleep-and-wake test, because both cut the network under a live session and mosh recovers from either the same way.
 Sleeping and waking the Windows machine has not been tested.
 Not tested yet: Ctrl-^ Ctrl-Z and idle CPU on Windows.
