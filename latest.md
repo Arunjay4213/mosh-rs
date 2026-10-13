@@ -1,7 +1,7 @@
 result: failure
-commit: 83eda176c56e75a07baf9e1be1f9976cafcad0e0
-subject: Fable review of terminal and transport ports; answer transport items; PLAN 9.6: generated terminfo table
-run: https://github.com/Arunjay4213/mosh-rs/actions/runs/38359427385
+commit: ed970c18508706df01fcef68ed5bdde8b6655716
+subject: INTERVENTIONS: launcher CI failures diagnosed, run-all not in CI
+run: https://github.com/Arunjay4213/mosh-rs/actions/runs/38359793421
 fmt: success
 clippy: success
 test: failure
@@ -9,17 +9,13 @@ test: failure
 ## log-clippy (last 80 lines)
 ```
     Updating crates.io index
- Downloading crates ...
-  Downloaded zeroize v1.9.1
-    Checking zeroize v1.9.1
     Checking mosh-platform v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/platform)
-    Checking aes v0.9.3
     Checking mosh-terminal v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/terminal)
     Checking mosh-network v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/network)
     Checking mosh-tools v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tools)
     Checking mosh v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/crates/mosh)
     Checking mosh-tests v0.1.0 (/home/runner/work/mosh-rs/mosh-rs/tests)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.49s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 6.56s
 ```
 
 ## log-fmt (last 80 lines)
@@ -48,7 +44,7 @@ c++ -std=gnu++17 -g -O2 -Wall -o ref-crypto ref-crypto.o ocb-aes.o test_utils.o 
 make: Leaving directory '/home/runner/work/mosh-rs/mosh-rs/ref/ref-crypto'
 test crypto_conformance ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.53s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.18s
 
      Running tests/launcher.rs (target/release/deps/launcher-28457c42d342bfd4)
 
@@ -66,13 +62,13 @@ stdout: stderr: TERM environment variable not set.
 Can't count colors: /usr/bin/mosh-client -c exited with exit status: 1
 
 
-thread 'missing_server_is_reported' (18483) panicked at tests/tests/launcher.rs:205:5:
+thread 'missing_server_is_reported' (18482) panicked at tests/tests/launcher.rs:205:5:
 missing mosh.pl error message
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
 ---- launches_session_on_localhost_with_command stdout ----
 
-thread 'launches_session_on_localhost_with_command' (18218) panicked at tests/tests/launcher.rs:116:13:
+thread 'launches_session_on_localhost_with_command' (18219) panicked at tests/tests/launcher.rs:116:13:
 timed out waiting for "LAUNCH_OK"; screen:
 
 
@@ -105,7 +101,7 @@ failures:
     launches_session_on_localhost_with_command
     missing_server_is_reported
 
-test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.38s
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.39s
 
 error: test failed, to rerun pass `-p mosh-tests --test launcher`
 ```
@@ -132,7 +128,7 @@ c++ -std=gnu++17 -g -O2 -Wall -o ref-crypto ref-crypto.o ocb-aes.o test_utils.o 
 make: Leaving directory '/home/runner/work/mosh-rs/mosh-rs/ref/ref-crypto'
 test crypto_conformance ... ok
 
-test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.45s
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 19.57s
 
      Running tests/launcher.rs (target/release/deps/launcher-92d422cdd2a3dec9)
 
@@ -150,13 +146,13 @@ stdout: stderr: TERM environment variable not set.
 Can't count colors: /usr/bin/mosh-client -c exited with exit status: 1
 
 
-thread 'missing_server_is_reported' (18561) panicked at tests/tests/launcher.rs:205:5:
+thread 'missing_server_is_reported' (18566) panicked at tests/tests/launcher.rs:205:5:
 missing mosh.pl error message
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
 ---- launches_session_on_localhost_with_command stdout ----
 
-thread 'launches_session_on_localhost_with_command' (18298) panicked at tests/tests/launcher.rs:116:13:
+thread 'launches_session_on_localhost_with_command' (18301) panicked at tests/tests/launcher.rs:116:13:
 timed out waiting for "LAUNCH_OK"; screen:
 
 
@@ -189,7 +185,7 @@ failures:
     launches_session_on_localhost_with_command
     missing_server_is_reported
 
-test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.51s
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 30.55s
 
 error: test failed, to rerun pass `-p mosh-tests --test launcher`
 ```
