@@ -214,6 +214,68 @@ pub struct UtmpxEntry {
 
 /// `while ( struct utmpx* entry = getutxent() )`, collected. As upstream,
 /// neither `setutxent` nor `endutxent` is called.
+///
+/// On Linux the utmp file is read directly instead of through `getutxent`:
+/// musl's `getutxent` is a stub that always returns NULL, so a static musl
+/// `mosh-server` would never see a detached session. Reading the file the
+/// same way in both builds keeps glibc and musl identical. Upstream's
+/// glibc reads `_PATH_UTMP`, `/var/run/utmp`, which is a link to
+/// `/run/utmp` on current systems.
+///
+/// Record layout, glibc `struct utmpx` from `<utmpx.h>`, measured on devbox
+/// with `offsetof`/`sizeof` (gcc for aarch64, x86_64-linux-gnu-gcc run under
+/// qemu-x86_64): `ut_type` short at 0, `ut_line` char[32] at 8, `ut_user`
+/// char[32] at 44, `ut_host` char[256] at 76, identical on both. The record
+/// size differs: x86_64 keeps 32-bit `ut_session` and `ut_tv` for
+/// compatibility with 32-bit programs (`__WORDSIZE_TIME64_COMPAT32`), so its
+/// record is 384 bytes; aarch64 has a 64-bit `long` session and `timeval`,
+/// so its record is 400 bytes (devbox's `/run/utmp` parses as 48 records of
+/// 400 bytes, all with a valid `ut_type`). The file is written in the
+/// machine's byte order.
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+pub fn getutxent_all() -> Vec<UtmpxEntry> {
+    #[cfg(target_arch = "x86_64")]
+    const RECORD: usize = 384;
+    #[cfg(target_arch = "aarch64")]
+    const RECORD: usize = 400;
+    const UT_TYPE: usize = 0;
+    const UT_LINE: (usize, usize) = (8, 32);
+    const UT_USER: (usize, usize) = (44, 32);
+    const UT_HOST: (usize, usize) = (76, 256);
+
+    fn field(record: &[u8], (at, len): (usize, usize)) -> String {
+        let bytes = &record[at..at + len];
+        let end = bytes.iter().position(|&b| b == 0).unwrap_or(len);
+        String::from_utf8_lossy(&bytes[..end]).into_owned()
+    }
+    // As getutxent, an unreadable file means no records.
+    let data = std::fs::read("/run/utmp")
+        .or_else(|_| std::fs::read("/var/run/utmp"))
+        .unwrap_or_default();
+    data.as_chunks::<RECORD>()
+        .0
+        .iter()
+        .map(|r| {
+            let ut_type = i16::from_ne_bytes([r[UT_TYPE], r[UT_TYPE + 1]]);
+            UtmpxEntry {
+                user_process: ut_type == libc::USER_PROCESS,
+                user: field(r, UT_USER),
+                host: field(r, UT_HOST),
+                line: field(r, UT_LINE),
+            }
+        })
+        .collect()
+}
+
+/// `while ( struct utmpx* entry = getutxent() )`, collected, on systems
+/// whose utmp file layout is not known here (see the Linux version above).
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
 pub fn getutxent_all() -> Vec<UtmpxEntry> {
     // c_char is i8 on x86_64 and u8 on aarch64, so the cast is needed on one.
     #[allow(clippy::unnecessary_cast)]

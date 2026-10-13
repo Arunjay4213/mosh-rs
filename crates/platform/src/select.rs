@@ -251,8 +251,8 @@ impl Select {
         let ts;
         let tsp = if timeout >= 0 {
             ts = libc::timespec {
-                tv_sec: (timeout / 1000) as libc::time_t,
-                tv_nsec: 1_000_000 * (timeout as libc::c_long % 1000),
+                tv_sec: (timeout / 1000).into(),
+                tv_nsec: (1_000_000 * (timeout % 1000)).into(),
             };
             &ts as *const libc::timespec
         } else {
