@@ -474,3 +474,15 @@ PLAN 6.2, 6.3 and 9.4 rewritten.
 - C++ server with the capability: 0 lines, correct final screen.
 - `scrollback_server`: old-peer diffs `digests_differing=0`, `capture_on_frame_mismatches=0`; simulated lossy link with partial acks: seq 1 50000 with no gap or duplicate, no diff over the window (largest 4856 bytes); also resizes, alternate screen (0 VIM lines), scroll region, a 16 KiB backlog overflowing while the client is away (27,800 lines dropped and counted, the newest 1,404 kept in order), 374 rendered lines cell-exact in ref-term.
 - `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client all --server all`: 120 of 120. `tests/upstream-check.sh --client cxx --server rust`: 30 PASS, 2 XFAIL, 0 FAIL, 0 ERROR. vt-fuzz 200,000 and 200,000 `--frames`: 0 mismatches. `cargo test --release --workspace`: all pass. fmt and clippy (native and Windows) clean.
+
+## 2026-10-13 Scrollback server half (agent S1) verified by the orchestrator
+
+Rerun by the orchestrator at 43c20ec or later:
+- Old peers untouched: replaying every corpus file (27 files, 108 cells, 23,868 steps) with scrollback off gives diff bytes identical to the commit before scrollback (`digests_differing=0`); with scrollback on, every diff minus the history instruction is the same bytes (`capture_on_frame_mismatches=0`).
+- Live `seq 1 50000` against our server with default settings, received by a probe client and compared with `seq`: identical on clean loopback (83 instructions), through a 10 s blackout (146 instructions), and through 30% loss with 100 ms delay (442 instructions). No instruction needed more than 2 packets (bound 7).
+- Rendered history lines checked cell by cell in upstream's emulator: 374 lines (wrapped, wide, colored, hyperlinked), 0 mismatches.
+- Quick interop matrix, all four client/server pairs: 120 of 120. Upstream's `make check` with our server: 30 PASS, 2 XFAIL, 0 FAIL.
+
+Known limit, for later: history arrives one 4,856-byte window per round trip plus the client's 100 ms delayed ack, so 50,000 lines take 9 s on loopback and about 17 s at 100 ms round trip (the screen itself is not delayed). Allowing more than one window in flight would speed this up; not needed for the PLAN gates.
+
+Spawn: agent S2 (Opus, medium effort, own worktree) builds the client half (PLAN 6.4 and 6.5) and oracle 6. One agent, because it depends on the server half's wire format, which is now fixed.
