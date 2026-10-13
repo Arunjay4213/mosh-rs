@@ -31,5 +31,6 @@
 // Ported from: upstream/src/frontend/mosh-client.cc
 
 fn main() {
+    mosh_platform::tty::default_term_if_unset(); /* PLAN 9.12; before any thread starts */
     std::process::exit(mosh::client::main());
 }

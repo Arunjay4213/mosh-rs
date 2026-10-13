@@ -173,6 +173,7 @@ Design, all gated on negotiation so old peers see byte-identical behavior:
 - ssh: spawn `ssh.exe` from the Windows OpenSSH that ships with Windows 10 and later.
 - Build: cross-compile on devbox for `x86_64-pc-windows-gnu` with the mingw package already available there, copy the exe to the laptop for testing. Releases use the MSVC target built on a Windows GitHub Actions runner.
 - `mosh-server` is unix only, as upstream.
+- TERM: Windows normally has none. If TERM is unset or empty when `mosh.exe` or `mosh-client.exe` starts, it sets `TERM=xterm-256color` for itself and its children (`mosh_platform::tty::default_term_if_unset`, section 9 item 12), which Windows Terminal and conhost with VT processing implement. On unix nothing changes.
 
 ## 8. Launcher
 
@@ -196,6 +197,7 @@ Supported flags for v0.1: `--server`, `--ssh`, `--port`, `--predict`, `--no-init
 9. Two places where upstream dereferences an erased iterator (undefined behavior) are made defined: `add_sent_state` moves `assumed_receiver_state` to the previous element when the assumed one is erased, and `Transport::recv` looks the reference state up again after `process_throwaway_until` and drops the instruction if it is gone.
 10. Withdrawn (was: the `State` trait omits upstream's `compare`). `compare` is back in the trait and the sender runs upstream's verbose round-trip check, so upstream's `make check` catches a wrong server diff in our binaries too. The number is kept so references to item 11 stay valid.
 11. Where upstream's client crashes or aborts with the terminal left raw, the client exits cleanly: if the window size cannot be read at startup it prints the error and exits 1 (upstream returns early from `STMClient::init` and then dereferences a missing network object, `stmclient.cc` lines 247-250), and a panic restores the terminal through the panic hook (section 5).
+12. On Windows only, `mosh` and `mosh-client` set `TERM=xterm-256color` for themselves when TERM is unset or empty at startup (section 7). Upstream's client prints "TERM environment variable not set." and exits 1 there, so the launcher stops with "Can't count colors" and a stock Windows Terminal could never connect. Unix keeps upstream's behavior.
 
 Anything else that differs from upstream is a bug.
 

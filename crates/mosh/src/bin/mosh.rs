@@ -32,5 +32,6 @@
 // mosh::launcher).
 
 fn main() {
+    mosh_platform::tty::default_term_if_unset(); /* PLAN 9.12; before any thread starts */
     mosh::launcher::main()
 }

@@ -401,3 +401,10 @@ Proof (driver: `mosh-server new -v -i 127.0.0.1 -- sh -c 'sleep 1; echo hello-fr
 ## 2026-10-13 Phase 4 started: scrollback, server side first
 
 Agent S1 (Opus, medium effort, own worktree) implements the server half of PLAN section 6: the capability negotiation, the alternate-screen flag, capture of scrolled-off rows into a ring, and the new wire field. One agent, because the client half depends on the server half's wire format, and PLAN 10 says the two run in sequence. Its gate proves old peers are untouched (full interop matrix, upstream's `make check`) and that a capable client receives every scrolled line exactly once.
+
+## 2026-10-13 Default TERM on Windows, PLAN 9.12 (agent F)
+
+`mosh_platform::tty::default_term_if_unset()`, called first in `mosh` and `mosh-client` `main`: on Windows sets `TERM=xterm-256color` when TERM is unset or empty; on unix does nothing.
+- Unix unchanged: `env -u TERM target/release/mosh-client -c` and `TERM= ... -c` print "TERM environment variable not set." and exit 1, the same as upstream's `mosh-client -c`. `client_e2e` 7, `launcher` 4, `terminfo_table` 2: all passed.
+- `cargo build --workspace --target x86_64-pc-windows-gnu` and the Windows clippy: clean.
+- Not run on Windows (devbox has no Windows or wine): the laptop check is in INTERVENTIONS.md.

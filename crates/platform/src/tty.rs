@@ -48,6 +48,29 @@ pub fn suspend_self() {
     }
 }
 
+/// On Windows, sets `TERM=xterm-256color` for this process (and so for
+/// the `ssh` and `mosh-client` it starts) when `TERM` is unset or empty
+/// (PLAN.md 9.12). Windows normally has no `TERM`, and without one the
+/// client's color count fails ("TERM environment variable not set.") and
+/// the launcher stops with "Can't count colors"; Windows Terminal and
+/// conhost with VT processing implement xterm-256color. On unix this does
+/// nothing: an unset `TERM` keeps upstream's behavior.
+///
+/// Call it first thing in `main`, before any thread starts: setting the
+/// environment is only sound while no other thread can read it.
+pub fn default_term_if_unset() {
+    #[cfg(windows)]
+    {
+        let unset = match std::env::var_os("TERM") {
+            None => true,
+            Some(term) => term.is_empty(),
+        };
+        if unset {
+            std::env::set_var("TERM", "xterm-256color");
+        }
+    }
+}
+
 #[cfg(unix)]
 pub use self::unix::*;
 #[cfg(windows)]

@@ -3,6 +3,11 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 PLAN 9.12: default TERM on Windows (agent F, coordinator request)
+
+- New deviation, PLAN section 7 and section 9 item 12: on Windows, `mosh.exe` and `mosh-client.exe` set `TERM=xterm-256color` when TERM is unset or empty at startup. Reason: Windows normally has no TERM, so upstream's `mosh-client -c` refuses ("TERM environment variable not set.", exit 1), the launcher stops with "Can't count colors", and `mosh.exe host` never connects from a stock Windows Terminal. Unix is unchanged.
+- NEEDS THE USER: verified on devbox only for unix behavior and the Windows cross-build (devbox has no Windows or wine). On the laptop, in a PowerShell without `$env:TERM`, `.\mosh-client.exe -c` must print 256 and `.\mosh.exe devbox` must connect.
+
 ## 2026-10-13 Phase 4 starts with Phase 2 and Phase 3 items outstanding
 
 - Decision: Phase 4 (scrollback) starts now, although the Phase 2 gate is not declared passed and Phase 3 has not been tested on Windows. Reason: everything still open needs the laptop (the overlay review, pushing `ci/terminfo`, the Windows test), and nothing devbox can run is failing. Scrollback is negotiated, so old peers see byte-identical behavior; its gate reruns the full interop matrix and upstream's `make check`, which re-verifies Phase 2 for old peers.
