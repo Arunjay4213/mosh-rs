@@ -65,4 +65,4 @@ Rust reimplementation of mosh (upstream master commit decd9b7; compatible with m
 ## Models and effort (updated 2026-10-13, user instruction)
 
 - The orchestrator session runs Opus 5.5 at effort high, with Opus as the advisor.
-- Every spawned agent is Opus 5.5 (model "opus") at effort "high". Fable agents are not spawned from devbox; Fable reviews are run from the laptop at gates.
+- Every spawned agent is Opus 5.5 (model "opus") at effort "medium". Only the orchestrator runs at high. Fable agents are not spawned from devbox; Fable reviews are run from the laptop at gates.

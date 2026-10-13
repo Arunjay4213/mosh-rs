@@ -210,16 +210,16 @@ A reviewer agent reads the port against upstream for the three hard modules (ter
 
 ### Phase 1: four agents in parallel
 
-- A. `crates/network`, high effort. First builds `ref-crypto`. Gate: RFC 7253 vectors, random differential encrypt/decrypt both ways against `ref-crypto`, fragment and instruction round trips, two Rust endpoints syncing a toy state over `udp-impair` with 30% loss and an address change.
-- B. `crates/terminal`, high effort. First builds `ref-term` and `vt-check`. Gate: cell-exact on every upstream `emulation-*.test` input and every corpus file, byte-exact `new_frame` on all corpus state pairs, one million differential fuzz cases with zero mismatches.
-- C. `crates/platform` and the launcher in `crates/mosh/src/launcher`, high effort. Gate: raw mode on and off on a real pty, resize detected, `ssh -G` parsing, `MOSH CONNECT` parsing against real `mosh-server new` output, Windows crate compiles for the gnu target.
-- H. `tools/`, high effort. Gate: `udp-impair` demonstrably drops, delays, reorders, and rebinds; corpus recorded; `make check` in `upstream/` runs green with upstream's own binaries so the harness is known good.
+- A. `crates/network`, medium effort. First builds `ref-crypto`. Gate: RFC 7253 vectors, random differential encrypt/decrypt both ways against `ref-crypto`, fragment and instruction round trips, two Rust endpoints syncing a toy state over `udp-impair` with 30% loss and an address change.
+- B. `crates/terminal`, medium effort. First builds `ref-term` and `vt-check`. Gate: cell-exact on every upstream `emulation-*.test` input and every corpus file, byte-exact `new_frame` on all corpus state pairs, one million differential fuzz cases with zero mismatches.
+- C. `crates/platform` and the launcher in `crates/mosh/src/launcher`, medium effort. Gate: raw mode on and off on a real pty, resize detected, `ssh -G` parsing, `MOSH CONNECT` parsing against real `mosh-server new` output, Windows crate compiles for the gnu target.
+- H. `tools/`, medium effort. Gate: `udp-impair` demonstrably drops, delays, reorders, and rebinds; corpus recorded; `make check` in `upstream/` runs green with upstream's own binaries so the harness is known good.
 
 ### Phase 2: state sync, server, client
 
 - B continues into `crates/mosh/src/statesync` (it knows the terminal API). Gate: `Complete` diff and apply round trips are cell-exact against `ref-term`.
-- D. server, high effort. Gate: C++ client connects to the Rust server and the interop matrix column passes.
-- E. client without prediction, then the prediction overlay, high effort. Gate: Rust client against C++ server passes the matrix column; prediction e2e shows the predicted character within 50 ms at 300 ms RTT and corrects on mismatch.
+- D. server, medium effort. Gate: C++ client connects to the Rust server and the interop matrix column passes.
+- E. client without prediction, then the prediction overlay, medium effort. Gate: Rust client against C++ server passes the matrix column; prediction e2e shows the predicted character within 50 ms at 300 ms RTT and corrects on mismatch.
 - Then the full matrix and upstream `make check` with our binaries. Fresh small agents per bug cluster.
 
 ### Phase 3: Windows
@@ -228,7 +228,7 @@ A reviewer agent reads the port against upstream for the three hard modules (ter
 
 ### Phase 4: scrollback
 
-- Server side, then client side, by two agents in sequence, high effort, following section 6 exactly. Gate: oracle 6, plus the full interop matrix still green (old peers unaffected).
+- Server side, then client side, by two agents in sequence, medium effort, following section 6 exactly. Gate: oracle 6, plus the full interop matrix still green (old peers unaffected).
 
 ### Phase 5: performance and release
 
