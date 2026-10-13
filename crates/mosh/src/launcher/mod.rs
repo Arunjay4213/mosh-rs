@@ -40,13 +40,14 @@
 //! the client is started with the same address: both always agree, also on
 //! hosts with IPv4 and IPv6 addresses.
 
-use mosh_platform::{errln, errp, outln, outp};
+use mosh_platform::{errln, errp, outp};
 use std::ffi::OsString;
 use std::io::{Read, Write};
-use std::net::{Shutdown, SocketAddr, TcpStream, ToSocketAddrs};
+use std::net::{Shutdown, SocketAddr, TcpStream};
 use std::process::{exit, Command, Stdio};
 
 use mosh_platform::locale::LOCALE_VARS;
+use mosh_platform::netdb;
 use mosh_platform::process;
 
 /// Perl `die` exits with `$!` when it is set, else 255. Before ssh runs that
@@ -56,6 +57,10 @@ const DIE: i32 = 255;
 /// waitpid fails with ECHILD and `$!` is 10. Real mosh 1.4.0 exits with 10
 /// for "Did not find mosh server startup message".
 const DIE_AFTER_WAIT: i32 = 10;
+/// Inside the `while ( <$pipe> )` loop Perl's `$!` is ESPIPE (29), left by
+/// its read buffering on the pipe; real mosh exits with 29 for "Bad MOSH
+/// CONNECT string" and the other dies in that loop.
+const DIE_IN_READ_LOOP: i32 = 29;
 
 fn die(msg: &str, code: i32) -> ! {
     let _ = std::io::stdout().flush();
@@ -103,6 +108,10 @@ fn usage(argv0: &str) -> String {
 
         --local              run mosh-server locally without using ssh
 
+        --experimental-remote-ip=(local|remote|proxy)  select the method for
+                             discovering the remote IP address to use for mosh
+                             (default: "proxy")
+
         --help               this message
         --version            version and copyright information
 
@@ -114,8 +123,9 @@ Mosh home page: https://mosh.org
 
 fn version_message() -> String {
     let v = env!("CARGO_PKG_VERSION");
+    let build = crate::BUILD_VERSION;
     format!(
-        "mosh-rs {v} [build mosh-rs {v}]
+        "mosh-rs {v} [build {build}]
 Copyright 2012 Keith Winstein <mosh-devel@mit.edu>
 License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.
 This is free software: you are free to change and redistribute it.
@@ -217,7 +227,7 @@ fn check_port_request(argv0: &str, port_request: &str) {
         );
     }
     // Perl compares numerically; f64 behaves like Perl for over-long digit strings.
-    let low_n: f64 = low.parse().unwrap();
+    let low_n: f64 = low.parse().expect("digits only, checked above");
     if !(0.0..=65535.0).contains(&low_n) {
         die(
             &format!(
@@ -227,7 +237,7 @@ fn check_port_request(argv0: &str, port_request: &str) {
         );
     }
     if let Some(high) = high {
-        let high_n: f64 = high.parse().unwrap();
+        let high_n: f64 = high.parse().expect("digits only, checked above");
         if high_n <= 0.0 || high_n > 65535.0 {
             die(&format!("{argv0}: Server-side high port ({high}) must be within valid range [1..65535].\n"), DIE);
         }
@@ -243,15 +253,64 @@ fn check_port_request(argv0: &str, port_request: &str) {
     }
 }
 
-/// `sub resolvename` (mosh.pl lines 484-538) with the system resolver.
-fn resolvename(argv0: &str, host: &str, port: u16, family: &str) -> Vec<SocketAddr> {
-    let mut res: Vec<SocketAddr> = match (host, port).to_socket_addrs() {
-        Ok(res) => res.collect(),
-        Err(err) => die(
-            &format!("{argv0}: could not get canonical name for {host}: {err}\n"),
-            DIE,
-        ),
+/// Perl's text for an OS error (`$!` in string context): the message
+/// without Rust's " (os error N)" suffix.
+fn perl_errstr(e: &std::io::Error) -> String {
+    let e = e.to_string();
+    e.split(" (os error").next().unwrap_or(&e).to_string()
+}
+
+/// `die` with a message that does not end in a newline: Perl appends
+/// " at SCRIPT line N.". The line numbers are those of mosh.pl.
+fn die_at(argv0: &str, msg: &str, line: u32, code: i32) -> ! {
+    die(&format!("{msg} at {argv0} line {line}.\n"), code)
+}
+
+/// `sub resolvename` (mosh.pl lines 484-538): first the host as a numeric
+/// address, else its canonical name (AI_CANONNAME) resolved again, then
+/// the family filter or order. A failed lookup dies with Perl's `$!` (the
+/// errno the resolver left) as the exit code, as `die` does.
+fn resolvename(argv0: &str, host: &str, port: &str, family: &str) -> Vec<SocketAddr> {
+    let gai_die = |msg: String, e: &netdb::GaiError| -> ! {
+        die(&msg, if e.errno != 0 { e.errno } else { DIE })
     };
+    /* If the user selected a specific family, parse it. */
+    let af = match family {
+        "inet" => Some(netdb::Family::Inet),
+        "inet6" => Some(netdb::Family::Inet6),
+        _ => None,
+    };
+
+    /* First try the address as a numeric. */
+    let mut res = match netdb::getaddrinfo(host, port, af, netdb::Flags::NumericHost) {
+        Ok(res) => res.addrs,
+        Err(_) => {
+            /* Get canonical name for this host. */
+            let canon =
+                netdb::getaddrinfo(host, port, af, netdb::Flags::CanonName).unwrap_or_else(|e| {
+                    gai_die(
+                        format!(
+                            "{argv0}: could not get canonical name for {host}: {}\n",
+                            e.message
+                        ),
+                        &e,
+                    )
+                });
+            /* Then get final resolution of the canonical name. */
+            let canonname = canon.canonname.unwrap_or_else(|| host.to_string());
+            match netdb::getaddrinfo(&canonname, port, af, netdb::Flags::None) {
+                Ok(res) => res.addrs,
+                Err(e) => gai_die(
+                    format!(
+                        "{argv0}: could not resolve canonical name {canonname} for {host}: {}\n",
+                        e.message
+                    ),
+                    &e,
+                ),
+            }
+        }
+    };
+
     let is_family = |a: &SocketAddr, fam: &str| {
         if fam == "inet" {
             a.is_ipv4()
@@ -259,7 +318,7 @@ fn resolvename(argv0: &str, host: &str, port: u16, family: &str) -> Vec<SocketAd
             a.is_ipv6()
         }
     };
-    if family == "inet" || family == "inet6" {
+    if af.is_some() {
         /* If v4 or v6 was specified, reduce the host list. */
         res.retain(|a| is_family(a, family));
     } else if let Some(prefer) = family.strip_prefix("prefer-") {
@@ -289,16 +348,32 @@ fn numeric_host(addr: &SocketAddr) -> String {
     }
 }
 
+/// `sub cat` of mosh.pl: copy until end of file or an error, retrying a
+/// read interrupted by a signal (`next if ( $n == -1 && $! == EINTR )`),
+/// flushing every chunk so the ssh protocol is never held back.
+fn cat(from: &mut impl Read, to: &mut impl Write) {
+    let mut buf = [0u8; 4096];
+    loop {
+        match from.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                if to.write_all(&buf[..n]).is_err() || to.flush().is_err() {
+                    break;
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => break,
+        }
+    }
+}
+
 /// `--fake-proxy -- HOST PORT` (mosh.pl lines 259-311): ssh runs this as its
 /// ProxyCommand. Connect to the first address of HOST that accepts a TCP
 /// connection on PORT, report it on stderr as `MOSH IP <addr>` (stderr goes
 /// into the launcher's pipe; stdout is the ssh protocol stream), then act
 /// like netcat between stdin/stdout and the socket.
 fn fake_proxy(argv0: &str, family: &str, host: &str, port: &str) -> ! {
-    let Ok(port_n) = port.parse::<u16>() else {
-        die(&format!("{argv0}: Bad port {port}\n"), DIE);
-    };
-    let res = resolvename(argv0, host, port_n, family);
+    let res = resolvename(argv0, host, port, family);
 
     /* Now try and connect to something. */
     let mut err = String::new();
@@ -312,11 +387,7 @@ fn fake_proxy(argv0: &str, family: &str, host: &str, port: &str) -> ! {
                 sock = Some(s);
                 break;
             }
-            Err(e) => {
-                // Perl's message has no " (os error N)" suffix.
-                let e = e.to_string();
-                err = e.split(" (os error").next().unwrap_or(&e).to_string();
-            }
+            Err(e) => err = perl_errstr(&e),
         }
     }
     let Some(sock) = sock else {
@@ -327,20 +398,12 @@ fn fake_proxy(argv0: &str, family: &str, host: &str, port: &str) -> ! {
     };
 
     /* Act like netcat */
-    fn cat(from: &mut impl Read, to: &mut impl Write) {
-        let mut buf = [0u8; 4096];
-        while let Ok(n) = from.read(&mut buf) {
-            if n == 0 || to.write_all(&buf[..n]).is_err() || to.flush().is_err() {
-                break;
-            }
-        }
-    }
     let socket_to_stdout = match sock.try_clone() {
         Ok(mut from) => std::thread::spawn(move || {
             cat(&mut from, &mut std::io::stdout().lock());
             let _ = from.shutdown(Shutdown::Read);
         }),
-        Err(e) => die(&format!("{argv0}: {e}\n"), DIE),
+        Err(e) => die(&format!("{argv0}: fork: {}\n", perl_errstr(&e)), DIE),
     };
     process::ignore_sighup();
     let mut to = &sock;
@@ -372,20 +435,154 @@ fn parse_mosh_ip(line: &str) -> Option<String> {
     (!ip.is_empty() && !ip.contains(char::is_whitespace)).then(|| ip.to_string())
 }
 
-/// `mosh-client` next to this executable, else `mosh-client` from PATH.
-fn default_client() -> String {
-    let name = format!("mosh-client{}", std::env::consts::EXE_SUFFIX);
-    if let Ok(exe) = std::env::current_exe() {
-        let sibling = exe.with_file_name(&name);
-        if sibling.is_file() {
-            return sibling.to_string_lossy().into_owned();
-        }
-    }
-    "mosh-client".to_string()
-}
-
 fn os(v: OsString) -> String {
     v.to_string_lossy().into_owned()
+}
+
+/// How a mosh.pl option takes its value (the GetOptions spec suffix).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Spec {
+    /// No suffix: a flag.
+    Flag,
+    /// `!`: a flag that also accepts `--noNAME` and `--no-NAME`.
+    Negatable,
+    /// `=s`: a mandatory string value.
+    Value,
+}
+
+/// mosh.pl lines 155-174 in order (names and aliases, lowercase), plus
+/// `--scrollback` (mosh-rs only, PLAN section 6).
+const OPTIONS: &[(&[&str], Spec)] = &[
+    (&["client"], Spec::Value),
+    (&["server"], Spec::Value),
+    (&["predict"], Spec::Value),
+    (&["predict-overwrite", "o"], Spec::Negatable),
+    (&["port"], Spec::Value),
+    (&["a"], Spec::Flag),
+    (&["n"], Spec::Flag),
+    (&["family"], Spec::Value),
+    (&["4"], Spec::Flag),
+    (&["6"], Spec::Flag),
+    (&["p"], Spec::Value),
+    (&["ssh"], Spec::Value),
+    (&["ssh-pty"], Spec::Negatable),
+    (&["init"], Spec::Negatable),
+    (&["local"], Spec::Flag),
+    (&["help"], Spec::Flag),
+    (&["version"], Spec::Flag),
+    (&["fake-proxy"], Spec::Negatable),
+    (&["bind-server"], Spec::Value),
+    (&["experimental-remote-ip"], Spec::Value),
+    (&["scrollback"], Spec::Flag),
+];
+
+/// One option from the command line: the first name of its spec, whether
+/// it was given as `--noNAME`/`--no-NAME`, and its value (empty for flags).
+struct Opt {
+    name: &'static str,
+    negated: bool,
+    value: String,
+}
+
+/// `GetOptions` with mosh.pl's configuration, which is Getopt::Long's
+/// default: options and arguments may be mixed (permute) until `--`; `-x`
+/// and `--x` are the same; long names match case-insensitively and by any
+/// unique prefix; no bundling, so `-an` is the option `an`; a mandatory
+/// value is `--name=value` or the next argument, whatever it looks like.
+/// Prints Getopt::Long's warnings and returns None if any option failed.
+fn get_options(args: &[String]) -> Option<(Vec<Opt>, Vec<String>)> {
+    let mut table: Vec<(String, usize, bool)> = Vec::new();
+    for (i, (names, spec)) in OPTIONS.iter().enumerate() {
+        for name in names.iter() {
+            table.push((name.to_string(), i, false));
+        }
+        if *spec == Spec::Negatable {
+            for name in names.iter() {
+                table.push((format!("no{name}"), i, true));
+                table.push((format!("no-{name}"), i, true));
+            }
+        }
+    }
+
+    let mut ok = true;
+    let mut opts = Vec::new();
+    let mut positional = Vec::new();
+    let mut it = args.iter();
+    while let Some(arg) = it.next() {
+        if arg == "--" {
+            positional.extend(it.by_ref().cloned());
+            break;
+        }
+        let body = match arg.strip_prefix("--").or_else(|| arg.strip_prefix('-')) {
+            Some(body) if arg != "-" => body,
+            _ => {
+                positional.push(arg.clone());
+                continue;
+            }
+        };
+        let (name, inline) = match body.split_once('=') {
+            Some((name, value)) => (name, Some(value)),
+            None => (body, None),
+        };
+        let lname = name.to_lowercase();
+        if lname.is_empty() {
+            errln!("Unknown option: {}", body.to_lowercase());
+            ok = false;
+            continue;
+        }
+        let hit = match table.iter().find(|e| e.0 == lname) {
+            Some(hit) => hit,
+            None => {
+                let hits: Vec<&(String, usize, bool)> =
+                    table.iter().filter(|e| e.0.starts_with(&lname)).collect();
+                let Some(&first) = hits.first() else {
+                    errln!("Unknown option: {lname}");
+                    ok = false;
+                    continue;
+                };
+                if hits.iter().any(|h| (h.1, h.2) != (first.1, first.2)) {
+                    let mut names: Vec<&str> = hits.iter().map(|h| h.0.as_str()).collect();
+                    names.sort_unstable();
+                    errln!("Option {lname} is ambiguous ({})", names.join(", "));
+                    ok = false;
+                    continue;
+                }
+                first
+            }
+        };
+        let (names, spec) = OPTIONS[hit.1];
+        let value = if spec == Spec::Value {
+            match inline {
+                Some(v) if !v.is_empty() => v.to_string(),
+                Some(_) => {
+                    errln!("Option {} requires an argument", hit.0);
+                    ok = false;
+                    continue;
+                }
+                None => match it.next() {
+                    Some(v) => v.clone(),
+                    None => {
+                        errln!("Option {} requires an argument", hit.0);
+                        ok = false;
+                        continue;
+                    }
+                },
+            }
+        } else {
+            if inline.is_some() {
+                errln!("Option {} does not take an argument", hit.0);
+                ok = false;
+                continue;
+            }
+            String::new()
+        };
+        opts.push(Opt {
+            name: names[0],
+            negated: hit.2,
+            value,
+        });
+    }
+    ok.then_some((opts, positional))
 }
 
 /// Run the launcher with the process arguments; never returns.
@@ -394,11 +591,12 @@ pub fn main() -> ! {
     let argv0 = args.next().map(os).unwrap_or_else(|| "mosh".to_string());
     let cmdline: Vec<String> = args.map(os).collect();
 
-    let mut client = default_client();
+    let mut client = process::default_client_program();
     let mut server = "mosh-server".to_string();
     let mut predict: Option<String> = None;
     let mut overwrite = false;
     let mut bind_ip: Option<String> = None;
+    let mut use_remote_ip = "proxy".to_string();
     let mut family = "prefer-inet".to_string();
     let mut port_request: Option<String> = None;
     let mut ssh = vec!["ssh".to_string()];
@@ -407,57 +605,37 @@ pub fn main() -> ! {
     let mut ssh_pty = true;
     let mut help = false;
     let mut version = false;
-    let mut positional: Vec<String> = Vec::new();
-    let mut fake_proxy_mode = false;
+    let mut fake_proxy_opt: Option<bool> = None;
     let mut scrollback = false;
 
-    // Getopt::Long in its default (permute) mode: options may follow the
-    // host; everything after "--" is positional.
-    let mut parser = lexopt::Parser::from_env();
-    let parsed: Result<(), lexopt::Error> = (|| {
-        use lexopt::Arg::{Long, Short, Value};
-        while let Some(arg) = parser.next()? {
-            match arg {
-                Long("client") => client = os(parser.value()?),
-                Long("server") => server = os(parser.value()?),
-                Long("predict") => predict = Some(os(parser.value()?)),
-                Long("predict-overwrite") | Short('o') | Long("o") => overwrite = true,
-                Long("no-predict-overwrite") | Long("nopredict-overwrite") => overwrite = false,
-                Long("port") | Short('p') | Long("p") => port_request = Some(os(parser.value()?)),
-                Short('a') | Long("a") => predict = Some("always".to_string()),
-                Short('n') | Long("n") => predict = Some("never".to_string()),
-                Long("family") => family = os(parser.value()?),
-                Short('4') | Long("4") => family = "inet".to_string(),
-                Short('6') | Long("6") => family = "inet6".to_string(),
-                Long("ssh") => ssh = shellwords(&os(parser.value()?)),
-                Long("ssh-pty") => ssh_pty = true,
-                Long("no-ssh-pty") | Long("nossh-pty") => ssh_pty = false,
-                Long("init") => term_init = true,
-                Long("no-init") | Long("noinit") => term_init = false,
-                Long("local") => localhost = true,
-                Long("help") => help = true,
-                Long("version") => version = true,
-                Long("fake-proxy") => fake_proxy_mode = true,
-                Long("no-fake-proxy") | Long("nofake-proxy") => fake_proxy_mode = false,
-                Long("bind-server") => bind_ip = Some(os(parser.value()?)),
-                Long("scrollback") => scrollback = true,
-                Value(v) => positional.push(os(v)),
-                _ => return Err(arg.unexpected()),
-            }
-        }
-        Ok(())
-    })();
-    if let Err(err) = parsed {
-        match err {
-            lexopt::Error::UnexpectedOption(o) => {
-                errln!("Unknown option: {}", o.trim_start_matches('-'))
-            }
-            lexopt::Error::MissingValue { option: Some(o) } => {
-                errln!("Option {} requires an argument", o.trim_start_matches('-'))
-            }
-            other => errln!("{other}"),
-        }
+    let Some((opts, mut positional)) = get_options(&cmdline) else {
         die(&usage(&argv0), DIE);
+    };
+    for opt in opts {
+        match opt.name {
+            "client" => client = opt.value,
+            "server" => server = opt.value,
+            "predict" => predict = Some(opt.value),
+            "predict-overwrite" => overwrite = !opt.negated,
+            "port" | "p" => port_request = Some(opt.value),
+            "a" => predict = Some("always".to_string()),
+            "n" => predict = Some("never".to_string()),
+            "family" => family = opt.value,
+            "4" => family = "inet".to_string(),
+            "6" => family = "inet6".to_string(),
+            "ssh" => ssh = shellwords(&opt.value),
+            "ssh-pty" => ssh_pty = !opt.negated,
+            "init" => term_init = !opt.negated,
+            "local" => localhost = true,
+            "help" => help = true,
+            "version" => version = true,
+            /* `\my $fake_proxy`: --nofake-proxy also defines it */
+            "fake-proxy" => fake_proxy_opt = Some(!opt.negated),
+            "bind-server" => bind_ip = Some(opt.value),
+            "experimental-remote-ip" => use_remote_ip = opt.value,
+            "scrollback" => scrollback = true,
+            other => unreachable!("option {other} is in OPTIONS but not handled"),
+        }
     }
 
     if help {
@@ -483,6 +661,15 @@ pub fn main() -> ! {
         },
     };
 
+    if !["local", "remote", "proxy"].contains(&use_remote_ip.as_str()) {
+        die_at(
+            &argv0,
+            &format!("Unknown parameter {use_remote_ip}"),
+            196,
+            DIE,
+        );
+    }
+
     family = family.to_lowercase();
     if overwrite {
         std::env::set_var("MOSH_PREDICTION_OVERWRITE", "yes");
@@ -494,8 +681,8 @@ pub fn main() -> ! {
 
     std::env::remove_var("MOSH_PREDICTION_DISPLAY");
 
-    if fake_proxy_mode {
-        let [host, port] = positional.as_slice() else {
+    if fake_proxy_opt.is_some() {
+        let [host, port, ..] = positional.as_slice() else {
             die(&usage(&argv0), DIE);
         };
         fake_proxy(&argv0, &family, host, port);
@@ -504,7 +691,7 @@ pub fn main() -> ! {
     if positional.is_empty() || ssh.is_empty() {
         die(&usage(&argv0), DIE);
     }
-    let userhost = positional.remove(0);
+    let mut userhost = positional.remove(0);
     let command = positional;
     let mut bind_arguments: Vec<String> = Vec::new();
     match bind_ip.as_deref() {
@@ -535,18 +722,28 @@ pub fn main() -> ! {
         .output()
     {
         Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).into_owned(),
-        Ok(out) => die(
-            &format!(
-                "Can't count colors: {client} -c exited with {}\n",
-                out.status
-            ),
-            DIE,
+        /* close COLORCOUNT or die: `die` exits with the child's status */
+        Ok(out) => die_at(
+            &argv0,
+            "Died",
+            320,
+            out.status.code().filter(|&c| c != 0).unwrap_or(DIE),
         ),
-        Err(e) => die(&format!("Can't count colors: {e}\n"), DIE),
+        Err(e) => {
+            errln!(
+                "Can't exec \"{client}\": {} at {argv0} line 314.",
+                perl_errstr(&e)
+            );
+            die(
+                &format!("Can't count colors: {}\n", perl_errstr(&e)),
+                e.raw_os_error().filter(|&c| c != 0).unwrap_or(DIE),
+            );
+        }
     };
+    /* chomp removes one newline; `$` in the check also matches before a final newline */
     let colors = colors.strip_suffix('\n').unwrap_or(&colors);
-    let colors = colors.strip_suffix('\n').unwrap_or(colors);
-    let colors = if !colors.is_empty() && colors.bytes().all(|b| b.is_ascii_digit()) {
+    let digits = colors.strip_suffix('\n').unwrap_or(colors);
+    let colors = if !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()) {
         colors.to_string()
     } else {
         "0".to_string()
@@ -554,7 +751,30 @@ pub fn main() -> ! {
 
     std::env::set_var("MOSH_CLIENT_PID", std::process::id().to_string()); /* We don't support this, but it's useful for test and debug. */
 
+    /* If we are using a locally-resolved address, we have to get it before we fork,
+    so both parent and child get it. */
     let mut ip: Option<String> = None;
+    if use_remote_ip == "local" {
+        /* "parse" the host from what the user gave us */
+        let (user, host) = match userhost.rfind('@') {
+            Some(at) => userhost.split_at(at + 1),
+            None => ("", userhost.as_str()),
+        };
+        /* get list of addresses */
+        let res = resolvename(&argv0, host, "22", &family);
+        /* Use only the first address as the Mosh IP */
+        let Some(hostaddr) = res.first() else {
+            die_at(
+                &argv0,
+                &format!("could not find address for {host}"),
+                343,
+                DIE,
+            );
+        };
+        let addr_string = numeric_host(hostaddr);
+        userhost = format!("{user}{addr_string}");
+        ip = Some(addr_string);
+    }
 
     let mut server_args = vec!["new".to_string(), "-c".to_string(), colors];
     server_args.extend(bind_arguments);
@@ -570,6 +790,8 @@ pub fn main() -> ! {
     }
     let server_command = format!("{server} {}", shell_quote(&server_args));
 
+    /* Lines the child prints before anything ssh prints. */
+    let mut first_lines: Vec<Vec<u8>> = Vec::new();
     let mut cmd;
     if localhost {
         cmd = Command::new("sh");
@@ -579,86 +801,145 @@ pub fn main() -> ! {
         if let Some(home) = std::env::var_os("HOME") {
             cmd.current_dir(home); /* chdir; # $HOME */
         }
-        /* print "MOSH IP ${userhost}\n" in the child; the parent reads it back. */
-        ip = Some(userhost.clone());
+        /* print "MOSH IP ${userhost}\n" */
+        first_lines.push(format!("MOSH IP {userhost}").into_bytes());
     } else {
         cmd = Command::new(&ssh[0]);
         cmd.args(&ssh[1..]).arg("-n");
         if ssh_pty {
             cmd.arg("-tt");
         }
-        /* Non-standard shells and broken shrc files cause the ssh
-        proxy to break mysteriously. */
-        cmd.env("SHELL", "/bin/sh");
-        let me =
-            std::env::current_exe().map_or(argv0.clone(), |p| p.to_string_lossy().into_owned());
-        // `shell_quote( $0, "--family=$family" )`, but quoted for how this
-        // system's ssh runs the ProxyCommand (no shell on Windows).
-        let quoted_proxy_command = [me, format!("--family={family}")]
-            .iter()
-            .map(|a| process::proxy_command_quote(a))
-            .collect::<Vec<_>>()
-            .join(" ");
-        cmd.args(["-S", "none", "-o"]).arg(format!(
-            "ProxyCommand={quoted_proxy_command} --fake-proxy -- %h %p"
-        ));
-        cmd.arg(&userhost).arg("--").arg(&server_command);
+        let mut ssh_connection = String::new();
+        if use_remote_ip == "remote" {
+            /* Ask the server for its IP.  The user's shell may not be
+            Posix-compatible so invoke sh explicitly. */
+            ssh_connection = format!(
+                "sh -c {} ; ",
+                shell_quote(&[
+                    r#"[ -n "$SSH_CONNECTION" ] && printf "\nMOSH SSH_CONNECTION %s\n" "$SSH_CONNECTION""#
+                        .to_string()
+                ])
+            );
+            /* Only with 'remote', we may need to tell SSH which protocol to use. */
+            if family == "inet" {
+                cmd.arg("-4");
+            } else if family == "inet6" {
+                cmd.arg("-6");
+            }
+        }
+        if use_remote_ip == "proxy" {
+            /* Non-standard shells and broken shrc files cause the ssh
+            proxy to break mysteriously. */
+            cmd.env("SHELL", "/bin/sh");
+            let me =
+                std::env::current_exe().map_or(argv0.clone(), |p| p.to_string_lossy().into_owned());
+            // `shell_quote( $0, "--family=$family" )`, but quoted for how this
+            // system's ssh runs the ProxyCommand (no shell on Windows).
+            let quoted_proxy_command = [me, format!("--family={family}")]
+                .iter()
+                .map(|a| process::proxy_command_quote(a))
+                .collect::<Vec<_>>()
+                .join(" ");
+            cmd.args(["-S", "none", "-o"]).arg(format!(
+                "ProxyCommand={quoted_proxy_command} --fake-proxy -- %h %p"
+            ));
+        }
+        cmd.arg(&userhost)
+            .arg("--")
+            .arg(format!("{ssh_connection}{server_command}"));
     }
 
+    let mut sship: Option<String> = None;
     let mut port_key: Option<(String, String)> = None;
     let mut bad_udp_port_warning = false;
-    match process::spawn_merged(&mut cmd) {
+    let mut child = match process::spawn_merged(&mut cmd) {
+        Ok(child) => Some(child),
         Err(e) => {
-            // The forked Perl child dies with this message into the pipe.
-            outln!(
-                "Cannot exec {}: {e}",
-                if localhost { server.as_str() } else { "ssh" }
-            );
-        }
-        Ok(mut child) => {
-            let stdout = std::io::stdout();
-            while let Ok(Some(raw)) = child.read_line() {
-                let line = String::from_utf8_lossy(&raw);
-                if line.starts_with("MOSH IP ") {
-                    if ip.is_some() {
-                        die(
-                            &format!("{argv0} error: detected attempt to redefine MOSH IP.\n"),
-                            DIE,
-                        );
-                    }
-                    ip = Some(
-                        parse_mosh_ip(&line)
-                            .unwrap_or_else(|| die(&format!("Bad MOSH IP string: {line}\n"), DIE)),
-                    );
-                } else if line.starts_with("MOSH CONNECT ") {
-                    match parse_mosh_connect(&line) {
-                        Some(pk) => {
-                            port_key = Some(pk);
-                            break;
-                        }
-                        None => die(&format!("Bad MOSH CONNECT string: {line}\n"), DIE),
-                    }
-                } else {
-                    if port_request.as_deref().is_some_and(|p| p.contains(':'))
-                        && line.contains("Bad UDP port")
-                    {
-                        bad_udp_port_warning = true;
-                    }
-                    let mut out = stdout.lock();
-                    let _ = out.write_all(&raw);
-                    let _ = out.write_all(b"\n");
-                    let _ = out.flush();
-                }
+            // The forked Perl child warns (`use warnings`) and dies into the
+            // pipe. With --local Perl execs through /bin/sh, which exists.
+            let what = if localhost { server.as_str() } else { "ssh" };
+            if !localhost {
+                first_lines.push(
+                    format!(
+                        "Can't exec \"{}\": {} at {argv0} line 410.",
+                        ssh[0],
+                        perl_errstr(&e)
+                    )
+                    .into_bytes(),
+                );
             }
-            let _ = child.finish();
+            first_lines.push(format!("Cannot exec {what}: {}", perl_errstr(&e)).into_bytes());
+            None
+        }
+    };
+    let mut first_lines = first_lines.into_iter();
+    let stdout = std::io::stdout();
+    loop {
+        let raw = match first_lines.next() {
+            Some(raw) => raw,
+            None => match child.as_mut().map(|c| c.read_line()) {
+                Some(Ok(Some(raw))) => raw,
+                _ => break,
+            },
+        };
+        let line = String::from_utf8_lossy(&raw);
+        if line.starts_with("MOSH IP ") {
+            if ip.is_some() {
+                die(
+                    &format!("{argv0} error: detected attempt to redefine MOSH IP.\n"),
+                    DIE_IN_READ_LOOP,
+                );
+            }
+            ip = Some(parse_mosh_ip(&line).unwrap_or_else(|| {
+                die(&format!("Bad MOSH IP string: {line}\n"), DIE_IN_READ_LOOP)
+            }));
+        } else if line.starts_with("MOSH SSH_CONNECTION ") {
+            let words: Vec<&str> = line.split_whitespace().collect();
+            if words.len() == 6 {
+                sship = Some(words[4].to_string());
+            } else {
+                die(
+                    &format!("Bad MOSH SSH_CONNECTION string: {line}\n"),
+                    DIE_IN_READ_LOOP,
+                );
+            }
+        } else if line.starts_with("MOSH CONNECT ") {
+            match parse_mosh_connect(&line) {
+                Some(pk) => {
+                    port_key = Some(pk);
+                    break;
+                }
+                None => die(
+                    &format!("Bad MOSH CONNECT string: {line}\n"),
+                    DIE_IN_READ_LOOP,
+                ),
+            }
+        } else {
+            if port_request.as_deref().is_some_and(|p| p.contains(':'))
+                && line.contains("Bad UDP port")
+            {
+                bad_udp_port_warning = true;
+            }
+            let mut out = stdout.lock();
+            let _ = out.write_all(&raw);
+            let _ = out.write_all(b"\n");
+            let _ = out.flush();
         }
     }
+    if let Some(child) = child {
+        let _ = child.finish();
+    }
 
-    let Some(ip) = ip else {
-        die(
+    let ip = match (ip, sship) {
+        (Some(ip), _) => ip,
+        (None, Some(sship)) => {
+            errp!("{argv0}: Using remote IP address {sship} from $SSH_CONNECTION for hostname {userhost}\n");
+            sship
+        }
+        (None, None) => die(
             &format!("{argv0}: Did not find remote IP address (is SSH ProxyCommand disabled?).\n"),
             DIE_AFTER_WAIT,
-        );
+        ),
     };
     let Some((port, key)) = port_key else {
         if bad_udp_port_warning {

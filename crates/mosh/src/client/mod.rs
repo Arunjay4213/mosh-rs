@@ -48,13 +48,15 @@ use mosh_platform::locale::set_native_locale;
 
 use stmclient::STMClient;
 
-/// `PACKAGE_STRING` and `BUILD_VERSION` of this port.
+use crate::BUILD_VERSION;
+
+/// `PACKAGE_STRING` of this port; `BUILD_VERSION` is `crate::BUILD_VERSION`.
 const PACKAGE_STRING: &str = concat!("mosh-rs ", env!("CARGO_PKG_VERSION"));
 
 fn print_version(file: &mut dyn Write) {
     let _ = write!(
         file,
-        "mosh-client ({PACKAGE_STRING}) [build {PACKAGE_STRING}]\n\
+        "mosh-client ({PACKAGE_STRING}) [build {BUILD_VERSION}]\n\
          Copyright 2012 Keith Winstein <mosh-devel@mit.edu>\n\
          License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.\n\
          This is free software: you are free to change and redistribute it.\n\

@@ -313,3 +313,281 @@ fn windows_proxy_command_quoting() {
         r#""C:\Program Files\mosh-rs\mosh.exe" --family=prefer-inet --fake-proxy -- %h %p"#
     );
 }
+
+/// Real mosh 1.4.0's Perl launcher, the oracle for the tests below.
+const MOSH_PL: &str = "/usr/bin/mosh";
+
+/// A scratch directory holding a fake `ssh` and a fake `mosh-client`, so
+/// both launchers can be run with the same arguments and compared without a
+/// network. The fake ssh records its argv and prints `FAKE_SSH_OUT`; the
+/// fake client answers `-c` with `FAKE_COLORS` and otherwise records its
+/// argv and `MOSH_*` environment.
+fn fake_tools() -> PathBuf {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let dir = std::env::temp_dir().join(format!("mosh-rs-launcher-fakes-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ssh = r#"#!/bin/sh
+for a in "$@"; do printf '%s\n' "$a"; done > "$FAKE_DIR/ssh.log"
+printf '%b' "${FAKE_SSH_OUT-MOSH IP 192.0.2.7\nMOSH CONNECT 60001 AAAAAAAAAAAAAAAAAAAAAA\n}"
+exit "${FAKE_SSH_EXIT:-0}"
+"#;
+        let client = r#"#!/bin/sh
+if [ "$1" = "-c" ]; then printf '%b' "${FAKE_COLORS-256\n}"; exit "${FAKE_COLORS_EXIT:-0}"; fi
+{ for a in "$@"; do printf 'arg %s\n' "$a"; done; env | grep '^MOSH_' | grep -v '^MOSH_CLIENT_PID=' | sort; } > "$FAKE_DIR/client.log"
+"#;
+        for (name, text) in [("fakessh", ssh), ("fakeclient", client)] {
+            let path = dir.join(name);
+            std::fs::write(&path, text).unwrap();
+            Command::new("chmod").arg("+x").arg(&path).status().unwrap();
+        }
+        dir
+    })
+    .clone()
+}
+
+/// Replace `$0` paths, Perl's `at SCRIPT line N.` numbers and the usage
+/// text (compared separately) so the two launchers' outputs can be diffed.
+fn normalize(text: &str, bin: &str) -> String {
+    let mut out = String::new();
+    for line in text.replace(bin, "$0").lines() {
+        if line.starts_with("Usage: ") {
+            out.push_str("[usage]\n");
+            break;
+        }
+        let line = match line.rfind(" at $0 line ") {
+            Some(i) if line.ends_with('.') => format!("{} at $0 line N.", &line[..i]),
+            _ => line.to_string(),
+        };
+        out.push_str(&line);
+        out.push('\n');
+    }
+    out
+}
+
+/// Run one launcher with the fakes and return everything observable:
+/// exit status, stdout, stderr, the ssh argv and the client argv and env.
+fn observe(bin: &str, args: &[&str], env: &[(&str, &str)], tag: &str) -> String {
+    let tools = fake_tools();
+    let out_dir = tools.join(tag);
+    let _ = std::fs::remove_dir_all(&out_dir);
+    std::fs::create_dir_all(&out_dir).unwrap();
+    let mut cmd = Command::new(bin);
+    cmd.arg(format!("--ssh={}", tools.join("fakessh").display()))
+        .arg(format!("--client={}", tools.join("fakeclient").display()))
+        .args(args)
+        .env("TERM", "xterm-256color")
+        .env("LANG", "C.UTF-8")
+        .env("FAKE_DIR", &out_dir)
+        .env_remove("MOSH_PREDICTION_DISPLAY")
+        .stdin(Stdio::null());
+    for name in ["LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES"] {
+        cmd.env_remove(name);
+    }
+    for (k, v) in env {
+        cmd.env(k, v);
+    }
+    let out = cmd.output().expect("run launcher");
+    let read = |name: &str| {
+        std::fs::read_to_string(out_dir.join(name)).unwrap_or_else(|_| "(none)\n".into())
+    };
+    format!(
+        "exit {:?}\n--- stdout\n{}--- stderr\n{}--- ssh argv\n{}--- client\n{}",
+        out.status.code(),
+        normalize(&String::from_utf8_lossy(&out.stdout), bin),
+        normalize(&String::from_utf8_lossy(&out.stderr), bin),
+        normalize(&read("ssh.log"), bin),
+        normalize(&read("client.log"), bin),
+    )
+}
+
+/// One differential case: launcher arguments and extra environment.
+type Case<'a> = (Vec<&'a str>, Vec<(&'a str, &'a str)>);
+
+/// Option parsing (Getopt::Long: unique prefixes, case-insensitive names,
+/// no bundling, negations, values from the next argument), the color count,
+/// `--experimental-remote-ip`, `--local`, the `MOSH ...` line parsing and
+/// every error message and exit code, compared with mosh.pl case by case:
+/// same arguments, same fake ssh and client, identical observable results.
+#[test]
+fn options_and_messages_match_mosh_pl() {
+    if !std::path::Path::new(MOSH_PL).exists() {
+        println!("SKIPPED: {MOSH_PL} (real mosh) is not installed");
+        return;
+    }
+    let ours = mosh_binary().display().to_string();
+    let connect = "MOSH CONNECT 60001 AAAAAAAAAAAAAAAAAAAAAA\n";
+    let fake_server = fake_tools().join("fakessh").display().to_string();
+    let plain: &[&[&str]] = &[
+        &["host"],
+        &["--pred=never", "host"],
+        &["--Predict=Always", "host"],
+        &["-an", "host"],
+        &["-AN", "host"],
+        &["-A", "host"],
+        &["-N", "host"],
+        &["-P", "60001", "host"],
+        &["-p60001", "host"],
+        &["-port=60001", "host"],
+        &["--po", "6", "host"],
+        &["--port", "--local", "host"],
+        &["--port=", "host"],
+        &["--port"],
+        &["--local=1", "host"],
+        &["--LOC=1", "host"],
+        &["-A=1", "host"],
+        &["--no-in", "host"],
+        &["--NO-INIT", "host"],
+        &["--no-INIT=1", "host"],
+        &["--nos", "host"],
+        &["--No-Ssh-Pty", "host"],
+        &["--no-pred", "host"],
+        &["--noo", "host"],
+        &["--no-a", "host"],
+        &["--no", "host"],
+        &["--o", "host"],
+        &["--4", "host"],
+        &["--4=1", "host"],
+        &["--fam=INET6", "host"],
+        &["--f=inet", "host"],
+        &["--ss=x", "host"],
+        &["--b=any", "host"],
+        &["--fake-p=x", "host"],
+        &["host", "-a"],
+        &["host", "cmd", "--foo"],
+        &["host", "--", "cmd", "--foo"],
+        &["--", "--local"],
+        &["-", "host"],
+        &["--=x", "host"],
+        &["---local", "host"],
+        &["--bogus", "--other", "host"],
+        &["-p", "1", "-p", "2", "host"],
+        &["host", "--server"],
+        &["--family=bogus", "host"],
+        &["--experimental-remote-ip=bogus", "host"],
+        &["-p", "99999", "host"],
+        &["-p", "0:5", "host"],
+        &["-p", "6:5", "host"],
+        &["-p", "6a", "host"],
+        &["user@host", "--", "sh", "-c", "echo \"a b\""],
+        &["--client=/nonexistent/client", "host"],
+        &["--ssh=/nonexistent/ssh", "host"],
+        &["--ssh=ssh -p 2222 -o Foo=\"a b\"", "host"],
+    ];
+    let mut cases: Vec<Case> = plain.iter().map(|a| (a.to_vec(), Vec::new())).collect();
+    let with_env: Vec<Case> = vec![
+        (vec!["host"], vec![("FAKE_COLORS_EXIT", "1")]),
+        (vec!["host"], vec![("FAKE_COLORS", "256\\n\\n")]),
+        (vec!["host"], vec![("FAKE_COLORS", "abc\\n")]),
+        (vec!["host"], vec![("FAKE_COLORS", "")]),
+        (vec!["host"], vec![("FAKE_SSH_OUT", "hello\\nMOSH CONNECT x y\\n")]),
+        (vec!["host"], vec![("FAKE_SSH_OUT", "MOSH IP a b\\n")]),
+        (vec!["host"], vec![("FAKE_SSH_OUT", "MOSH IP 192.0.2.7\\nMOSH IP 192.0.2.8\\n")]),
+        (vec!["host"], vec![("FAKE_SSH_OUT", connect)]),
+        (vec!["host"], vec![("FAKE_SSH_OUT", "MOSH IP 192.0.2.7\\n")]),
+        (vec!["host"], vec![("MOSH_PREDICTION_DISPLAY", "bogus")]),
+        (vec!["host"], vec![("MOSH_PREDICTION_DISPLAY", "never")]),
+        (
+            vec!["-p", "60001:60010", "host"],
+            vec![("FAKE_SSH_OUT", "MOSH IP 192.0.2.7\\nBad UDP port range\\n")],
+        ),
+        (
+            vec!["--experimental-remote-ip=remote", "host"],
+            vec![("FAKE_SSH_OUT", "MOSH SSH_CONNECTION 1 2 3\\n")],
+        ),
+        (
+            vec!["--experimental-remote-ip=remote", "-6", "host"],
+            vec![(
+                "FAKE_SSH_OUT",
+                "\\r\\nMOSH SSH_CONNECTION 192.0.2.1 5555 192.0.2.9 22\\r\\nMOSH CONNECT 60001 AAAAAAAAAAAAAAAAAAAAAA\\r\\n",
+            )],
+        ),
+        (vec!["--experimental-remote-ip=local", "me@127.0.0.1", "--", "ls"], vec![("FAKE_SSH_OUT", connect)]),
+        (vec!["--e=local", "a@b@127.0.0.1"], vec![("FAKE_SSH_OUT", connect)]),
+        (vec!["--experimental-remote-ip=local", "-6", "127.0.0.1"], vec![("FAKE_SSH_OUT", connect)]),
+        (vec!["--experimental-remote-ip=local", "nosuch.invalid"], vec![("FAKE_SSH_OUT", connect)]),
+    ];
+    cases.extend(with_env);
+    let local_server = format!("--server={fake_server}");
+    cases.push((
+        vec!["--local", &local_server, "127.0.0.1"],
+        vec![("FAKE_SSH_OUT", connect)],
+    ));
+
+    let mut failures = 0;
+    for (args, env) in &cases {
+        let want = observe(MOSH_PL, args, env, "real");
+        let got = observe(&ours, args, env, "ours");
+        if want == got {
+            println!(
+                "same: {args:?} {env:?} -> {}",
+                want.lines().next().unwrap_or("")
+            );
+        } else {
+            failures += 1;
+            println!("DIFFERENT: {args:?} {env:?}\n=== mosh.pl\n{want}=== ours\n{got}");
+        }
+    }
+    println!("{} cases, {failures} different", cases.len());
+    assert_eq!(failures, 0, "launcher differs from mosh.pl");
+
+    // The usage text differs only where PLAN allows: `--bind-server` takes
+    // ssh or any (PLAN 9.3), and `--scrollback` exists (PLAN section 6).
+    let help = |bin: &str| {
+        let out = Command::new(bin).arg("--help").output().unwrap();
+        String::from_utf8_lossy(&out.stdout).replace(bin, "$0")
+    };
+    let want = help(MOSH_PL)
+        .replace("--bind-server={ssh|any|IP}", "--bind-server={ssh|any}")
+        .replace(
+            "\n\n        --local ",
+            "\n\n        --scrollback         keep the session's output in this terminal's\n                                scrollback (needs a mosh-rs server)\n\n        --local ",
+        );
+    assert_eq!(
+        help(&ours),
+        want,
+        "usage text differs from mosh.pl beyond PLAN 9.3 and section 6"
+    );
+}
+
+/// `resolvename` (mosh.pl lines 484-538) asks for the canonical name of a
+/// host that is not a numeric address and resolves that name again. Devbox
+/// has `127.0.0.1 mosh-canon mosh-alias` and `::1 mosh-canon` in /etc/hosts
+/// (/etc/hosts cannot hold a CNAME; glibc reports the first name of the
+/// line as the canonical name): `mosh-alias` alone resolves to 127.0.0.1
+/// only, its canonical name to both families. The proxy must choose from
+/// the canonical name's addresses, as mosh.pl does.
+#[test]
+fn proxy_resolves_canonical_name_like_mosh_pl() {
+    let hosts = std::fs::read_to_string("/etc/hosts").unwrap_or_default();
+    if !hosts.contains("mosh-alias") || !std::path::Path::new(MOSH_PL).exists() {
+        println!("SKIPPED: needs /usr/bin/mosh and the mosh-alias/mosh-canon lines in /etc/hosts");
+        return;
+    }
+    let ours = mosh_binary().display().to_string();
+    for family in ["auto", "prefer-inet6", "prefer-inet", "all", "inet6"] {
+        let run = |bin: &str| {
+            let out = Command::new(bin)
+                .args([
+                    &format!("--family={family}"),
+                    "--fake-proxy",
+                    "--",
+                    "mosh-alias",
+                    "22",
+                ])
+                .stdin(Stdio::null())
+                .output()
+                .unwrap();
+            format!(
+                "exit {:?}: {}",
+                out.status.code(),
+                String::from_utf8_lossy(&out.stderr)
+                    .replace(bin, "$0")
+                    .trim_end()
+            )
+        };
+        let (want, got) = (run(MOSH_PL), run(&ours));
+        println!("--family={family}: mosh.pl {want} | ours {got}");
+        assert_eq!(got, want, "--family={family}");
+    }
+}

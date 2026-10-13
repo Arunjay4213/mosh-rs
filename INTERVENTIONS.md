@@ -3,6 +3,13 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 Review G6-G8, G10-G12: launcher (agent C)
+
+- Devbox change for the G11 test: `/etc/hosts` gained `127.0.0.1 mosh-canon mosh-alias` and `::1 mosh-canon` (added with `sudo sh -c 'grep -q mosh-canon /etc/hosts || printf ... >> /etc/hosts'`). /etc/hosts cannot hold a CNAME; glibc reports the first name of a line as the canonical name, so `mosh-alias` alone resolves to 127.0.0.1 while its canonical name has both families, which is the case where mosh.pl's canonical-name step changes the result. The test skips where these lines are absent (CI).
+- Correction to review G8: `chomp` plus mosh.pl's check `m{^[0-9]+$}` (where `$` also matches before a final newline) turns a color count of `256\n\n` into `256\n`, not 0; real mosh passes `-c '256<newline>'` to the server. The port reproduces that, checked against /usr/bin/mosh.
+- Perl's `die` exit code is `$!`. Measured on /usr/bin/mosh and reproduced: 255 before ssh, 29 (ESPIPE) for dies inside the `while ( <$pipe> )` loop, 10 (ECHILD) after `waitpid`, the resolver's errno after a failed `getaddrinfo` (22 for `nosuch.invalid` on devbox), the child's exit status when `mosh-client -c` fails, 2 (ENOENT) when it cannot be run.
+- `mosh-server new` with `--local --experimental-remote-ip=local` dies on the second `MOSH IP` in both launchers (same message, exit 29); whether the server child ran first is a race in mosh.pl too, so that combination is not in the differential test.
+
 
 ## 2026-10-13 Minimum Rust 1.89 verified; older toolchains installed on devbox (agent B, review G3)
 

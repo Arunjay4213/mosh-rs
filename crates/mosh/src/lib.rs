@@ -29,6 +29,11 @@
 // also delete it here.
 //
 // Ported from: (none; crate root)
+/// Upstream `BUILD_VERSION` (the `git describe` of the build there): the
+/// package version, shown as `[build ...]` by `mosh`, `mosh-client` and
+/// `mosh-server --version`.
+pub const BUILD_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod client;
 pub mod launcher;
 pub mod server;

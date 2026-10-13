@@ -87,6 +87,22 @@ impl LineProcess {
     }
 }
 
+/// The client the launcher runs by default. On unix this is `mosh-client`
+/// from PATH, as mosh.pl line 64. On Windows it is `mosh-client.exe` next to
+/// the launcher's own executable when that file exists (the release zip
+/// ships both side by side and is usually not on PATH), else `mosh-client`
+/// from PATH.
+pub fn default_client_program() -> String {
+    #[cfg(windows)]
+    if let Ok(exe) = std::env::current_exe() {
+        let sibling = exe.with_file_name("mosh-client.exe");
+        if sibling.is_file() {
+            return sibling.to_string_lossy().into_owned();
+        }
+    }
+    "mosh-client".to_string()
+}
+
 /// Quote one word of the ProxyCommand string for the way this system's ssh
 /// runs it. OpenSSH on unix runs ProxyCommand with `$SHELL -c` (mosh.pl
 /// sets SHELL=/bin/sh), so the word is single-quoted as mosh.pl's

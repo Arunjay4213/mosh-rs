@@ -604,3 +604,12 @@ The README performance table now holds these numbers. Also verified: `cargo chec
 
 Portable code instead of a pinned toolchain: the two field-level `non_snake_case` allows moved to their structs, and the vt-fuzz byte-string arrays are typed local consts.
 `rust-version = "1.89"` (forced by `aes` 0.9.3; cargo refuses 1.88.0). Verified: `cargo +1.89.0` and `cargo +1.91.1` `clippy --workspace --all-targets -- -D warnings` clean and `test --release --workspace --no-run` build, as does stable 1.99.
+
+## 2026-10-13 Review G6, G7, G8, G10, G11, G12: launcher and version strings (agent C)
+
+- G6: one `mosh::BUILD_VERSION` (the package version); `mosh --version` prints `mosh-rs 0.1.0 [build 0.1.0]`, `mosh-client --version` `mosh-client (mosh-rs 0.1.0) [build 0.1.0]`, `mosh-server --version` `mosh-server (mosh-rs 0.1.0) [build 0.1.0]`.
+- G7: default client is `mosh-client` from PATH on unix (mosh.pl); the sibling `mosh-client.exe` lookup is Windows-only (`mosh_platform::process::default_client_program`), PLAN section 8.
+- G8: Getopt::Long's parsing ported (prefixes, case-insensitive names, no bundling, negations, next-argument values), `--experimental-remote-ip` ported, `chomp` exact, Perl's messages and `$!` exit codes reproduced. New differential test `options_and_messages_match_mosh_pl`: 73 cases run through /usr/bin/mosh and ours with a fake ssh and client, 0 different; usage text differs only by PLAN 9.3 and `--scrollback`.
+- G10: the `--fake-proxy` relay retries interrupted reads. G12: `expect("digits only, checked above")`.
+- G11: `resolvename` ported (numeric first, then AI_CANONNAME and the canonical name) over `mosh_platform::netdb::getaddrinfo`. New test `proxy_resolves_canonical_name_like_mosh_pl`: for `mosh-alias` (devbox /etc/hosts) the proxy's choice and messages equal mosh.pl's for `--family` auto, prefer-inet6, prefer-inet, all and inet6; the previous launcher differed in 4 of the 5.
+- `cargo test --release -p mosh-tests --test launcher`: 7 passed, 3 runs in a row (dual-stack case included). `client_e2e`: 7 passed. fmt; clippy native, Windows and Rust 1.89: clean. Windows `mosh.exe` and `mosh-client.exe` build.

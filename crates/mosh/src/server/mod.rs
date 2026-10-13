@@ -73,8 +73,7 @@ type ServerConnection = Transport<Complete, UserStream>;
 
 /// Upstream `PACKAGE_STRING`, following the launcher's naming.
 const PACKAGE_STRING: &str = concat!("mosh-rs ", env!("CARGO_PKG_VERSION"));
-/// Upstream `BUILD_VERSION`.
-const BUILD_VERSION: &str = concat!("mosh-rs ", env!("CARGO_PKG_VERSION"));
+use crate::BUILD_VERSION;
 
 /// `_PATH_BSHELL`.
 const PATH_BSHELL: &str = "/bin/sh";

@@ -37,6 +37,7 @@
 
 pub mod coredump;
 pub mod locale;
+pub mod netdb;
 pub mod process;
 #[cfg(unix)]
 pub mod pty;
