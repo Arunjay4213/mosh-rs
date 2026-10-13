@@ -311,8 +311,10 @@ impl Session {
         let body_len = s.len() - 8;
         let pt_len = body_len - 16;
 
-        assert!(body_len <= Session::RECEIVE_MTU);
-        assert!(pt_len <= Session::RECEIVE_MTU);
+        /* upstream asserts body_len <= RECEIVE_MTU (PLAN.md section 9 item 8) */
+        if body_len > Session::RECEIVE_MTU {
+            return Err(CryptoError::new("Ciphertext too long."));
+        }
 
         let nonce = Nonce::from_bytes(&s[..8])?;
         match ae_decrypt(&self.ctx, nonce.data(), &s[8..], &[]) {

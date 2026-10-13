@@ -32,6 +32,7 @@
 use prost::Message as _;
 
 use super::compressor::{compress_str, uncompress_str};
+use super::dos_detected;
 use crate::crypto::CryptoError;
 use crate::proto::transport_buffers::Instruction;
 
@@ -70,23 +71,24 @@ impl Fragment {
     }
 
     /// `Fragment( const std::string& x )`: parse a received fragment.
-    pub fn from_bytes(x: &[u8]) -> Fragment {
-        assert!(
-            x.len() >= Fragment::FRAG_HEADER_LEN,
-            "x.size() >= frag_header_len"
-        );
+    /// Upstream aborts (`fatal_assert`) on a fragment shorter than the
+    /// header; here it is an error (PLAN.md section 9 item 8).
+    pub fn from_bytes(x: &[u8]) -> Result<Fragment, CryptoError> {
+        let (Some(id_bytes), Some(num_bytes)) = (x.first_chunk::<8>(), x.get(8..10)) else {
+            return Err(dos_detected("x.size() >= frag_header_len", "Fragment"));
+        };
         let contents = x[Fragment::FRAG_HEADER_LEN..].to_vec();
-        let id = u64::from_be_bytes(x[0..8].try_into().expect("8 bytes"));
-        let mut fragment_num = u16::from_be_bytes(x[8..10].try_into().expect("2 bytes"));
+        let id = u64::from_be_bytes(*id_bytes);
+        let mut fragment_num = u16::from_be_bytes([num_bytes[0], num_bytes[1]]);
         let final_ = ((fragment_num & 0x8000) >> 15) != 0;
         fragment_num &= 0x7FFF;
-        Fragment {
+        Ok(Fragment {
             id,
             fragment_num,
             final_,
             initialized: true,
             contents,
-        }
+        })
     }
 
     pub fn tostring(&self) -> Vec<u8> {
@@ -129,7 +131,26 @@ impl FragmentAssembly {
         }
     }
 
-    pub fn add_fragment(&mut self, frag: &Fragment) -> bool {
+    /// Adds a received fragment; returns true when the instruction is complete.
+    /// Input that upstream `assert`s on (a conflicting duplicate, a final
+    /// fragment below an index already stored) is an error here; the partial
+    /// instruction is discarded (PLAN.md section 9 item 8).
+    pub fn add_fragment(&mut self, frag: &Fragment) -> Result<bool, CryptoError> {
+        let ret = self.add_fragment_checked(frag);
+        if ret.is_err() {
+            self.reset();
+        }
+        ret
+    }
+
+    fn reset(&mut self) {
+        self.fragments.clear();
+        self.current_id = u64::MAX;
+        self.fragments_arrived = 0;
+        self.fragments_total = -1;
+    }
+
+    fn add_fragment_checked(&mut self, frag: &Fragment) -> Result<bool, CryptoError> {
         let num = frag.fragment_num as usize;
         /* see if this is a totally new packet */
         if self.current_id != frag.id {
@@ -144,10 +165,12 @@ impl FragmentAssembly {
             /* see if we already have this fragment */
             if self.fragments.len() > num && self.fragments[num].initialized {
                 /* make sure new version is same as what we already have */
-                assert!(
-                    self.fragments[num] == *frag,
-                    "fragments.at( frag.fragment_num ) == frag"
-                );
+                if self.fragments[num] != *frag {
+                    return Err(dos_detected(
+                        "fragments.at( frag.fragment_num ) == frag",
+                        "add_fragment",
+                    ));
+                }
             } else {
                 if self.fragments.len() < num + 1 {
                     self.fragments.resize(num + 1, Fragment::default());
@@ -158,18 +181,27 @@ impl FragmentAssembly {
         }
 
         if frag.final_ {
+            /* num < 0x8000, so the i32 cannot overflow */
             self.fragments_total = num as i32 + 1;
-            assert!(self.fragments.len() as i32 <= self.fragments_total);
+            if self.fragments.len() > num + 1 {
+                return Err(dos_detected(
+                    "(int)fragments.size() <= fragments_total",
+                    "add_fragment",
+                ));
+            }
             self.fragments
                 .resize(self.fragments_total as usize, Fragment::default());
         }
 
-        if self.fragments_total != -1 {
-            assert!(self.fragments_arrived <= self.fragments_total);
+        if self.fragments_total != -1 && self.fragments_arrived > self.fragments_total {
+            return Err(dos_detected(
+                "fragments_arrived <= fragments_total",
+                "add_fragment",
+            ));
         }
 
         /* see if we're done */
-        self.fragments_arrived == self.fragments_total
+        Ok(self.fragments_arrived == self.fragments_total)
     }
 
     pub fn get_assembly(&mut self) -> Result<Instruction, CryptoError> {
@@ -181,14 +213,21 @@ impl FragmentAssembly {
             encoded.extend_from_slice(&self.fragments[i].contents);
         }
 
-        let ret = Instruction::decode(uncompress_str(&encoded)?.as_slice())
-            .expect("ret.ParseFromString( get_compressor().uncompress_str( encoded ) )");
+        /* upstream: fatal_assert( ret.ParseFromString( ... ) ); an error here */
+        let ret = uncompress_str(&encoded).and_then(|raw| {
+            Instruction::decode(raw.as_slice()).map_err(|_| {
+                dos_detected(
+                    "ret.ParseFromString( get_compressor().uncompress_str( encoded ) )",
+                    "get_assembly",
+                )
+            })
+        });
 
         self.fragments.clear();
         self.fragments_arrived = 0;
         self.fragments_total = -1;
 
-        Ok(ret)
+        ret
     }
 }
 

@@ -35,7 +35,8 @@ use super::network::{timestamp, Connection, NetworkError, SocketHandle, MOSH_PRO
 use super::transportfragment::{Fragment, FragmentAssembly};
 use super::transportsender::TransportSender;
 use super::transportstate::{State, TimestampedState};
-use super::Error;
+use super::{dos_detected, Error};
+use crate::crypto::CryptoError;
 
 pub struct Transport<MyState: State, RemoteState: State> {
     /* the underlying, encrypted network connection */
@@ -118,9 +119,9 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
     /// Blocks waiting for a packet.
     pub fn recv(&mut self) -> Result<(), Error> {
         let s = self.connection.recv()?;
-        let frag = Fragment::from_bytes(&s);
+        let frag = Fragment::from_bytes(&s)?;
 
-        if self.fragments.add_fragment(&frag) {
+        if self.fragments.add_fragment(&frag)? {
             /* complete packet */
             let inst = self.fragments.get_assembly()?;
 
@@ -151,7 +152,7 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
             queue (as sender does), because we don't want to ACK a state
             and then discard it later. */
 
-            self.process_throwaway_until(inst.throwaway_num());
+            self.process_throwaway_until(inst.throwaway_num())?;
 
             if self.received_states.len() > 1024 {
                 /* limit on state queue */
@@ -236,13 +237,18 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
     }
 
     /// The sender uses throwaway_num to tell us the earliest received state that we need to keep around
-    fn process_throwaway_until(&mut self, throwaway_num: u64) {
+    /// Upstream `fatal_assert`s that a state survives; here a `throwaway_num`
+    /// above every received state is an error and nothing is erased
+    /// (PLAN.md section 9 item 8).
+    fn process_throwaway_until(&mut self, throwaway_num: u64) -> Result<(), CryptoError> {
+        if !self.received_states.iter().any(|i| i.num >= throwaway_num) {
+            return Err(dos_detected(
+                "received_states.size() > 0",
+                "process_throwaway_until",
+            ));
+        }
         self.received_states.retain(|i| i.num >= throwaway_num);
-
-        assert!(
-            !self.received_states.is_empty(),
-            "received_states.size() > 0"
-        );
+        Ok(())
     }
 
     /// Find diff between last receiver state and current remote state, then rationalize states.

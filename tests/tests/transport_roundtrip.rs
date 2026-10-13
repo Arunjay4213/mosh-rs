@@ -31,11 +31,11 @@
 
 //! Protocol buffers, zlib compression, and fragmentation round trips.
 
-use mosh_network::prost::Message;
+use mosh_network::prost::Message as _;
 use mosh_network::proto::{client_buffers, host_buffers, transport_buffers};
 use mosh_network::transport::compressor::{compress_str, uncompress_str, BUFFER_SIZE};
 use mosh_network::transport::transportfragment::{Fragment, FragmentAssembly, Fragmenter};
-use mosh_network::{Connection, Session};
+use mosh_network::{Connection, Error, Message, Nonce, Session, State, Transport};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
@@ -244,7 +244,7 @@ fn fragment_round_trip() {
             let num = u16::from_be_bytes([wire[8], wire[9]]);
             assert_eq!(num & 0x7fff, i as u16);
             assert_eq!(num & 0x8000 != 0, i == frags.len() - 1);
-            assert_eq!(&Fragment::from_bytes(&wire), f);
+            assert_eq!(&Fragment::from_bytes(&wire).unwrap(), f);
         }
 
         /* deliver over the wire format in reverse order; every fragment but the
@@ -253,7 +253,7 @@ fn fragment_round_trip() {
         let received: Vec<Fragment> = frags
             .iter()
             .rev()
-            .map(|f| Fragment::from_bytes(&f.tostring()))
+            .map(|f| Fragment::from_bytes(&f.tostring()).unwrap())
             .collect();
         let (completing, rest) = received.split_last().expect("at least one fragment");
         let mut deliveries: Vec<&Fragment> = rest.iter().flat_map(|f| [f, f]).collect();
@@ -263,7 +263,7 @@ fn fragment_round_trip() {
         deliveries.push(completing);
         let mut done = 0;
         for f in deliveries {
-            if assembly.add_fragment(f) {
+            if assembly.add_fragment(f).unwrap() {
                 done += 1;
                 assert_eq!(assembly.get_assembly().unwrap(), inst, "size {size}");
             }
@@ -273,7 +273,7 @@ fn fragment_round_trip() {
         /* a late duplicate of the completing fragment: upstream starts a new
         assembly, which completes again only for a one-fragment instruction
         (Transport::recv then drops it because new_num is already known) */
-        let again = assembly.add_fragment(completing);
+        let again = assembly.add_fragment(completing).unwrap();
         assert_eq!(again, frags.len() == 1, "size {size}: late duplicate");
         if again {
             assert_eq!(assembly.get_assembly().unwrap(), inst);
@@ -286,10 +286,10 @@ fn fragment_round_trip() {
     let frags = fragmenter.make_fragments(&inst, mtu).unwrap();
     assert!(frags.len() >= 3);
     let mut assembly = FragmentAssembly::new();
-    assert!(!assembly.add_fragment(&frags[0]));
-    assert!(!assembly.add_fragment(&frags[1]));
+    assert!(!assembly.add_fragment(&frags[0]).unwrap());
+    assert!(!assembly.add_fragment(&frags[1]).unwrap());
     for f in &frags {
-        if assembly.add_fragment(f) {
+        if assembly.add_fragment(f).unwrap() {
             assert_eq!(assembly.get_assembly().unwrap(), inst);
         }
     }
@@ -301,4 +301,159 @@ fn fragment_round_trip() {
         .make_fragments(&instruction(&mut rng, 101, 1), mtu)
         .unwrap();
     assert_eq!(next[0].id, frags[0].id + 1);
+}
+
+/// Malformed input from a peer that holds the key: upstream aborts the
+/// process; mosh-rs returns an error and drops it (PLAN.md section 9 item 8).
+#[test]
+fn malformed_fragments_are_errors() {
+    /* a fragment shorter than its 10-byte header */
+    assert!(Fragment::from_bytes(&[0, 0, 0, 0]).is_err());
+    assert!(Fragment::from_bytes(&[0; 9]).is_err());
+    assert_eq!(Fragment::from_bytes(&[0; 10]).unwrap().contents, b"");
+
+    /* a duplicate of fragment 0 with different contents */
+    let mut assembly = FragmentAssembly::new();
+    assert!(!assembly
+        .add_fragment(&Fragment::new(1, 0, false, b"a".to_vec()))
+        .unwrap());
+    assert!(assembly
+        .add_fragment(&Fragment::new(1, 0, false, b"b".to_vec()))
+        .is_err());
+
+    /* final fragment 2 after non-final fragment 5 of the same instruction */
+    let mut assembly = FragmentAssembly::new();
+    assert!(!assembly
+        .add_fragment(&Fragment::new(2, 5, false, b"x".to_vec()))
+        .unwrap());
+    assert!(assembly
+        .add_fragment(&Fragment::new(2, 2, true, b"y".to_vec()))
+        .is_err());
+
+    /* the assembly still works after an error */
+    let mtu = fragment_mtu();
+    let inst = instruction(&mut StdRng::seed_from_u64(3), 7, 10);
+    let frags = Fragmenter::new().make_fragments(&inst, mtu).unwrap();
+    assert!(assembly.add_fragment(&frags[0]).unwrap());
+    assert_eq!(assembly.get_assembly().unwrap(), inst);
+
+    /* a valid zlib stream wrapping bytes that are not a protobuf
+    (field 1, length 5, but only one byte follows) */
+    let garbage = compress_str(b"\x0a\x05x").unwrap();
+    let mut assembly = FragmentAssembly::new();
+    assert!(assembly
+        .add_fragment(&Fragment::new(3, 0, true, garbage))
+        .unwrap());
+    assert!(assembly.get_assembly().is_err());
+
+    /* not zlib at all */
+    assert!(assembly
+        .add_fragment(&Fragment::new(4, 0, true, b"junk".to_vec()))
+        .unwrap());
+    assert!(assembly.get_assembly().is_err());
+
+    /* Session::decrypt on more than RECEIVE_MTU bytes of ciphertext */
+    let key = mosh_network::Base64Key::from_printable("AAAAAAAAAAAAAAAAAAAAAA").unwrap();
+    let session = Session::new(key);
+    assert!(session
+        .decrypt(&vec![0u8; 8 + Session::RECEIVE_MTU + 1])
+        .is_err());
+    let mut enc = Session::new(key);
+    let wire = enc
+        .encrypt(&Message::new(Nonce::new(1), vec![1, 2, 3, 4]))
+        .unwrap();
+    assert_eq!(session.decrypt(&wire).unwrap().text, vec![1, 2, 3, 4]);
+}
+
+/// A state with no content, enough to drive `Transport::recv`.
+#[derive(Clone, PartialEq, Default)]
+struct Empty;
+
+impl State for Empty {
+    fn diff_from(&self, _existing: &Empty) -> Vec<u8> {
+        Vec::new()
+    }
+    fn init_diff(&self) -> Vec<u8> {
+        Vec::new()
+    }
+    fn apply_string(&mut self, _diff: &[u8]) {}
+    fn subtract(&mut self, _prefix: &Empty) {}
+    fn reset_input(&mut self) {}
+}
+
+/// `Transport::recv` on the next datagram, waiting up to 2 s for it to arrive.
+fn recv_next(server: &mut Transport<Empty, Empty>) -> Result<(), Error> {
+    let start = std::time::Instant::now();
+    loop {
+        match server.recv() {
+            Err(Error::Network(e)) if e.function == "No packet received" => {
+                assert!(start.elapsed().as_secs() < 2, "datagram never arrived");
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            r => return r,
+        }
+    }
+}
+
+/// The same malformed input, sent by a peer with the key to a real server
+/// `Transport` over loopback: every case is an `Err` from `recv`, and the
+/// server keeps working afterwards.
+#[test]
+fn malformed_packets_through_transport() {
+    let mut server: Transport<Empty, Empty> =
+        Transport::new_server(&Empty, &Empty, Some("127.0.0.1"), None).unwrap();
+    let port = server.port().unwrap();
+    let mut peer = Connection::new_client(&server.get_key(), "127.0.0.1", &port).unwrap();
+    let mtu = fragment_mtu();
+    let mut fragmenter = Fragmenter::new();
+    let mut send_inst = |peer: &mut Connection, old: u64, new: u64, throwaway: u64| {
+        let inst = transport_buffers::Instruction {
+            protocol_version: Some(2),
+            old_num: Some(old),
+            new_num: Some(new),
+            ack_num: Some(0),
+            throwaway_num: Some(throwaway),
+            diff: Some(Vec::new()),
+            chaff: Some(Vec::new()),
+        };
+        for f in fragmenter.make_fragments(&inst, mtu).unwrap() {
+            peer.send(&f.tostring()).unwrap();
+        }
+    };
+
+    /* 4-byte fragment */
+    peer.send(&[1, 2, 3, 4]).unwrap();
+    assert!(matches!(recv_next(&mut server), Err(Error::Crypto(_))));
+
+    /* conflicting duplicate */
+    peer.send(&Fragment::new(9, 0, false, b"a".to_vec()).tostring())
+        .unwrap();
+    assert!(recv_next(&mut server).is_ok());
+    peer.send(&Fragment::new(9, 0, false, b"b".to_vec()).tostring())
+        .unwrap();
+    assert!(matches!(recv_next(&mut server), Err(Error::Crypto(_))));
+
+    /* final fragment 2 after non-final fragment 5 */
+    peer.send(&Fragment::new(10, 5, false, b"x".to_vec()).tostring())
+        .unwrap();
+    assert!(recv_next(&mut server).is_ok());
+    peer.send(&Fragment::new(10, 2, true, b"y".to_vec()).tostring())
+        .unwrap();
+    assert!(matches!(recv_next(&mut server), Err(Error::Crypto(_))));
+
+    /* zlib around bytes that are not a protobuf */
+    let garbage = compress_str(b"\x0a\x05x").unwrap();
+    peer.send(&Fragment::new(11, 0, true, garbage).tostring())
+        .unwrap();
+    assert!(matches!(recv_next(&mut server), Err(Error::Crypto(_))));
+
+    /* throwaway_num above every received state (only state 0 exists) */
+    send_inst(&mut peer, 0, 1, 5);
+    assert!(matches!(recv_next(&mut server), Err(Error::Crypto(_))));
+    assert_eq!(server.get_remote_state_num(), 0);
+
+    /* a valid instruction is still accepted */
+    send_inst(&mut peer, 0, 1, 0);
+    assert!(recv_next(&mut server).is_ok());
+    assert_eq!(server.get_remote_state_num(), 1);
 }
