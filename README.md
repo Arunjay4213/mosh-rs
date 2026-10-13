@@ -15,7 +15,7 @@
   <img src="docs/assets/demo.gif" alt="mosh-rs keeping a session alive across a network change, with scrollback" width="720">
 -->
 
-[Install](#install) · [Status](#status) · [Usage](#usage) · [Compatibility](#compatibility) · [How it works](#how-it-works) · [How this was built](#how-this-was-built) · [Contributing](CONTRIBUTING.md)
+[Install](#install) · [Known limitations](#known-limitations) · [Usage](#usage) · [Compatibility](#compatibility) · [How it works](#how-it-works) · [How this was built](#how-this-was-built) · [Contributing](CONTRIBUTING.md)
 
 </div>
 
@@ -34,48 +34,20 @@ The Linux release binaries are single static binaries.
 
 **Status: pre-alpha.**
 v0.1.0 is the first pre-release: download it from the [Releases page](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.0) and see [Install](#install).
-The [Status](#status) list says what has been tested and what has not.
+The [Known limitations](#known-limitations) list says what has been tested and what has not.
 Every number and every compatibility result in this README was measured, and anything not yet tested is marked as such.
 
 Found a bug or something that behaves differently from mosh?
 Please [open an issue](https://github.com/Arunjay4213/mosh-rs/issues).
 For security problems, follow [SECURITY.md](SECURITY.md) instead.
 
-## Status
+## Known limitations
 
-An item is checked only after its tests passed; the commands and results are recorded in [STATUS.md](STATUS.md).
-The work follows the order in [PLAN.md](PLAN.md) section 10.
-
-### Foundations
-
-- [x] Cargo workspace with four crates, release profile, and Windows cross target
-- [x] `crates/network`: AES-128-OCB3 crypto, protobuf messages, and SSP transport, differential-tested against upstream
-- [x] `crates/terminal`: emulator and `Display::new_frame`, cell-exact against upstream on fuzz and corpus inputs
-- [x] `crates/platform` and the `mosh` launcher: raw mode, resize, pty, `--fake-proxy` address discovery as in mosh.pl
-- [x] `tools/`: `udp-impair` network impairment proxy, session corpus recorder
-
-### State sync, server, and client
-
-- [x] State objects (`UserStream`, `Complete`) round-trip against upstream
-- [x] `mosh-server`: upstream `mosh-client` connects and survives loss and roaming
-- [x] `mosh-client`: connects to upstream `mosh-server`, with the prediction overlay
-- [x] Full interop matrix and upstream `make check` pass with mosh-rs binaries
-
-### Windows client
-
-- [x] `mosh.exe` runs in Windows Terminal against a Linux server and survives losing the network (tested by turning Wi-Fi off and on)
-- [ ] Sleep and wake, Ctrl-^ Ctrl-Z, and idle CPU tested on Windows
-
-### Scrollback feature
-
-- [x] Server-side capture and the `ScrolledLines` wire extension
-- [x] Client-side injection into the local terminal's history, with old peers unaffected
-
-### Performance and release
-
-- [x] Benchmarks against C++ mosh 1.4.0, published under [Performance](#performance)
-- [x] v0.1.0 pre-release with static Linux (x86_64, arm64), macOS arm64, and Windows x86_64 binaries
-- [x] macOS binary used for a real session on a Mac (built from source after v0.1.0; the v0.1.0 macOS launcher cannot resolve addresses, see below)
+- Pre-alpha: expect rough edges, and report them in the issue tracker.
+- The v0.1.0 macOS client cannot connect (an address lookup bug on macOS, fixed on main); the v0.1.0 macOS server works. Use v0.1.1 or later on a Mac.
+- Windows: sleeping and waking the machine, Ctrl-^ Ctrl-Z, and idle CPU have not been tested; losing and regaining the network has.
+- `mosh-server` is Unix-only, as in upstream.
+- No X forwarding, port forwarding, or SOCKS; mosh never had them.
 
 ## Why a rewrite
 
@@ -92,7 +64,7 @@ New features are additive protobuf fields that existing peers ignore, so mixed o
 
 Pre-built binaries are attached to the [v0.1.0 release](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.0).
 Each archive has a `.sha256` file next to it for checking the download.
-v0.1.0 is a pre-release; the [Status](#status) list says what has been tested.
+v0.1.0 is a pre-release; the [Known limitations](#known-limitations) list says what has been tested.
 
 mosh-rs works with the `mosh-server` already on your hosts (mosh 1.4), so you can install only the client side.
 The `--scrollback` feature needs the mosh-rs `mosh-server` on the remote host.
