@@ -66,3 +66,8 @@ Rust reimplementation of mosh (upstream master commit decd9b7; compatible with m
 
 - The orchestrator session runs Opus 5.5 at effort high, with Opus as the advisor.
 - Every spawned agent is Opus 5.5 (model "opus") at effort "medium". Only the orchestrator runs at high. Fable agents are not spawned from devbox; Fable reviews are run from the laptop at gates.
+
+## Things devbox cannot do (hand to the laptop via INTERVENTIONS.md "NEEDS THE USER")
+
+- The deploy key cannot push changes under `.github/workflows/`. Put such changes on a branch named `ci/<topic>`, commit, and log "NEEDS THE USER: push branch ci/<topic>" in INTERVENTIONS.md. The laptop fetches it from devbox, reviews, merges and pushes.
+- Reference decision (2026-10-13): the upstream reference is mosh master at commit decd9b7 (2026-03-22, 39 commits after the 1.4.0 tag), because that is what the oracles and interop were built against and it carries fixes 1.4.0 lacks. Describe the project everywhere as "ported from mosh master (decd9b7, March 2026), wire-compatible with mosh 1.4.0". Update README, PLAN and module docs accordingly.
