@@ -19,6 +19,11 @@ The emulator size is fixed; no resize is applied.
 - `dump W H < input`: one `Terminal::Emulator(W, H)` is fed all of stdin, then the dump below is printed.
 - `batch W H < records`: stdin is a sequence of records, each a big-endian `u32` length followed by that many bytes.
   For each record a fresh emulator is fed the bytes, the dump is printed, then a line `=====`.
+- `steps W H < records`: one emulator; each record starts with a tag byte.
+  `B` + bytes: feed the bytes as above.
+  `R` + big-endian `u32` width + big-endian `u32` height (9 bytes in all): apply a `Parser::Resize` action, as `Terminal::Complete::act(const Action&)` does.
+  After the last record the dump is printed.
+  This lets a test replay exactly what a `Complete` was fed, resizes included.
 - `frame W H OLDFILE NEWFILE [initialized]`: one emulator is fed the bytes of OLDFILE; a copy of its framebuffer is `last`.
   The same emulator (same parser state) is then fed the bytes of NEWFILE, giving `f`.
   The raw bytes of `Display(false).new_frame(initialized, last, f)` are written to stdout.

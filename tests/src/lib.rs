@@ -29,3 +29,8 @@
 // also delete it here.
 //
 // Ported from: (none; crate root)
+
+//! Shared code for the mosh-rs end-to-end and conformance tests.
+
+pub mod dump;
+pub mod oracle;

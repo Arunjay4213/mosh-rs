@@ -439,6 +439,77 @@ impl Cell {
         output.push_str(&self.contents);
     }
 
+    /// Debug form of the contents: `'_' ()` when empty, else the grapheme and its bytes.
+    pub fn debug_contents(&self) -> String {
+        if self.contents.is_empty() {
+            return "'_' ()".to_string();
+        }
+        let mut chars = String::from("'");
+        self.print_grapheme(&mut chars);
+        chars.push_str("' [");
+        let mut lazycomma = "";
+        for b in self.contents.bytes() {
+            chars.push_str(&format!("{}0x{:02x}", lazycomma, b));
+            lazycomma = ", ";
+        }
+        chars.push(']');
+        chars
+    }
+
+    /// Diagnostics: prints differences to stderr; returns true if the
+    /// grapheme, width, renditions or wrap differ (contents and fallback
+    /// differences are printed but, as upstream, do not count).
+    pub fn compare(&self, other: &Cell) -> bool {
+        let mut ret = false;
+
+        let mut grapheme = String::new();
+        let mut other_grapheme = String::new();
+
+        self.print_grapheme(&mut grapheme);
+        other.print_grapheme(&mut other_grapheme);
+
+        if grapheme != other_grapheme {
+            ret = true;
+            eprintln!("Graphemes: '{}' vs. '{}'", grapheme, other_grapheme);
+        }
+
+        if !self.contents_match(other) {
+            // ret = true;
+            eprintln!(
+                "Contents: {} ({}) vs. {} ({})",
+                self.debug_contents(),
+                self.contents.len(),
+                other.debug_contents(),
+                other.contents.len()
+            );
+        }
+
+        if self.fallback != other.fallback {
+            // ret = true;
+            eprintln!(
+                "fallback: {} vs. {}",
+                self.fallback as i32, other.fallback as i32
+            );
+        }
+
+        if self.wide != other.wide {
+            ret = true;
+            eprintln!("width: {} vs. {}", self.wide as i32, other.wide as i32);
+        }
+
+        if !(self.renditions == other.renditions) {
+            ret = true;
+            eprintln!("renditions differ");
+        }
+
+        if self.wrap != other.wrap {
+            ret = true;
+            eprintln!("wrap: {} vs. {}", self.wrap as i32, other.wrap as i32);
+        }
+
+        ret
+    }
+
     /* Other accessors */
     /// The hyperlink.
     pub fn get_hyperlink(&self) -> &Hyperlink {

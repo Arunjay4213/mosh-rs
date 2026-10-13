@@ -31,129 +31,10 @@
 // vt-check: feeds bytes to the mosh-rs terminal emulator and prints the same
 // dump / new_frame bytes as ref/ref-term/ref-term. See ref/ref-term/README.md.
 
-use std::fmt::Write as _;
 use std::io::{Read, Write};
 
-use mosh_terminal::terminalframebuffer::{Framebuffer, Hyperlink, Renditions};
-use mosh_terminal::{Actions, Display, Emulator, UTF8Parser};
-
-fn hex(s: &[u8]) -> String {
-    let mut out = String::with_capacity(s.len() * 2);
-    for b in s {
-        let _ = write!(out, "{:02x}", b);
-    }
-    out
-}
-
-fn wlist(v: &[u32]) -> String {
-    let mut out = String::new();
-    for (i, c) in v.iter().enumerate() {
-        let _ = write!(out, "{}{:x}", if i > 0 { "," } else { "" }, c);
-    }
-    out
-}
-
-fn link(h: &Hyperlink) -> String {
-    match &h.rep {
-        None => "none".to_string(),
-        Some(rep) => format!("{}|{}", hex(rep.params.as_bytes()), hex(rep.url.as_bytes())),
-    }
-}
-
-fn rend(r: &Renditions) -> String {
-    format!(
-        "{} {} {}",
-        r.attributes, r.foreground_color, r.background_color
-    )
-}
-
-fn dump(fb: &Framebuffer, to_host: &[u8], o: &mut String) {
-    let ds = &fb.ds;
-    let b = |x: bool| x as i32;
-    let _ = writeln!(o, "size {} {}", ds.width, ds.height);
-    let _ = writeln!(
-        o,
-        "cursor {} {} visible {} next_print_will_wrap {}",
-        ds.cursor_row,
-        ds.cursor_col,
-        b(ds.cursor_visible),
-        b(ds.next_print_will_wrap)
-    );
-    let _ = writeln!(
-        o,
-        "combining {} {}",
-        ds.combining_char_row, ds.combining_char_col
-    );
-    let _ = writeln!(
-        o,
-        "origin {} autowrap {} insert {} cursor_keys_app {} reverse_video {} bracketed_paste {}",
-        b(ds.origin_mode),
-        b(ds.auto_wrap_mode),
-        b(ds.insert_mode),
-        b(ds.application_mode_cursor_keys),
-        b(ds.reverse_video),
-        b(ds.bracketed_paste)
-    );
-    let _ = writeln!(
-        o,
-        "mouse mode {} focus {} altscroll {} encoding {}",
-        ds.mouse_reporting_mode as i32,
-        b(ds.mouse_focus_event),
-        b(ds.mouse_alternate_scroll),
-        ds.mouse_encoding_mode as i32
-    );
-    let _ = writeln!(
-        o,
-        "scroll_region {} {}",
-        ds.scrolling_region_top_row, ds.scrolling_region_bottom_row
-    );
-    let tabs: Vec<String> = ds
-        .tabs
-        .iter()
-        .enumerate()
-        .filter(|(_, &t)| t)
-        .map(|(i, _)| i.to_string())
-        .collect();
-    let _ = writeln!(
-        o,
-        "default_tabs {} tabs {}",
-        b(ds.default_tabs),
-        tabs.join(",")
-    );
-    let _ = writeln!(o, "renditions {}", rend(&ds.renditions));
-    let _ = writeln!(o, "hyperlink {}", link(&ds.hyperlink));
-    let _ = writeln!(
-        o,
-        "saved {} {} autowrap {} origin {} renditions {}",
-        ds.save.cursor_row,
-        ds.save.cursor_col,
-        b(ds.save.auto_wrap_mode),
-        b(ds.save.origin_mode),
-        rend(&ds.save.renditions)
-    );
-    let _ = writeln!(o, "title_initialized {}", b(fb.title_initialized));
-    let _ = writeln!(o, "icon {}", wlist(&fb.icon_name));
-    let _ = writeln!(o, "title {}", wlist(&fb.window_title));
-    let _ = writeln!(o, "clipboard {}", wlist(&fb.clipboard));
-    let _ = writeln!(o, "bell_count {}", fb.bell_count);
-    let _ = writeln!(o, "to_host {}", hex(to_host));
-    for (r, row) in fb.rows.iter().enumerate() {
-        let _ = writeln!(o, "row {} gen {} wrap {}", r, row.gen, b(row.get_wrap()));
-        for (c, cell) in row.cells.iter().enumerate() {
-            let _ = writeln!(
-                o,
-                "  cell {} contents={} wide {} fallback {} wrap {} renditions {} link={}",
-                c,
-                hex(cell.contents.as_bytes()),
-                b(cell.wide),
-                b(cell.fallback),
-                b(cell.wrap),
-                rend(&cell.renditions),
-                link(&cell.hyperlink)
-            );
-        }
-    }
-}
+use mosh_terminal::{Actions, Display, Emulator, Resize, UTF8Parser};
+use mosh_tests::dump::dump;
 
 /// Feed bytes exactly as Terminal::Complete::act does.
 fn feed(parser: &mut UTF8Parser, emu: &mut Emulator, s: &[u8], to_host: &mut Vec<u8>) {
@@ -192,7 +73,33 @@ fn do_dump(w: usize, h: usize, input: &[u8]) -> String {
     let mut to_host = Vec::new();
     let mut o = String::new();
     feed(&mut parser, &mut emu, input, &mut to_host);
-    dump(emu.get_fb(), &to_host, &mut o);
+    dump(emu.get_fb(), &to_host, true, &mut o);
+    o
+}
+
+/// `steps`: one emulator, records tagged 'B' (bytes to feed) or 'R' (u32 BE
+/// width, u32 BE height: a Resize action, as Terminal::Complete::act(Action)).
+fn do_steps(w: usize, h: usize, recs: &[&[u8]]) -> String {
+    let mut emu = Emulator::new(w, h);
+    let mut parser = UTF8Parser::new();
+    let mut to_host = Vec::new();
+    for r in recs {
+        match r.first() {
+            Some(b'B') => feed(&mut parser, &mut emu, &r[1..], &mut to_host),
+            Some(b'R') if r.len() == 9 => {
+                let nw = u32::from_be_bytes([r[1], r[2], r[3], r[4]]) as usize;
+                let nh = u32::from_be_bytes([r[5], r[6], r[7], r[8]]) as usize;
+                if nw < 1 || nh < 1 {
+                    die("vt-check: resize to zero");
+                }
+                Resize::new(nw, nh).act_on_terminal(&mut emu);
+                to_host.extend_from_slice(&emu.read_octets_to_host());
+            }
+            _ => die("vt-check: bad steps record"),
+        }
+    }
+    let mut o = String::new();
+    dump(emu.get_fb(), &to_host, true, &mut o);
     o
 }
 
@@ -213,7 +120,7 @@ fn die(msg: &str) -> ! {
 }
 
 fn usage() -> ! {
-    die("usage: vt-check dump W H < input\n       vt-check batch W H < records\n       vt-check frame W H OLDFILE NEWFILE [initialized]\n       vt-check frame-batch W H [initialized] < record pairs")
+    die("usage: vt-check dump W H < input\n       vt-check steps W H < tagged records\n       vt-check batch W H < records\n       vt-check frame W H OLDFILE NEWFILE [initialized]\n       vt-check frame-batch W H [initialized] < record pairs")
 }
 
 fn read_stdin() -> Vec<u8> {
@@ -256,6 +163,10 @@ fn main() {
                 let _ = out.write_all(do_dump(w, h, r).as_bytes());
                 let _ = out.write_all(b"=====\n");
             }
+        }
+        ("steps", 4) => {
+            let input = read_stdin();
+            let _ = out.write_all(do_steps(w, h, &records(&input)).as_bytes());
         }
         ("frame", 6) | ("frame", 7) => {
             let initialized = if args.len() == 7 {

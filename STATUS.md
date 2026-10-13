@@ -59,3 +59,21 @@ What failed:
 Gate not yet declared: waiting on the Fable line-by-line review of the terminal and transport ports (`reviews/phase1-*.md`) and on green CI, as CLAUDE.md requires.
 
 Next: B is porting statesync (Phase 2 first step). Then agents D (server) and E (client).
+
+## 2026-10-13 Phase 2: statesync port (agent B)
+
+What changed: `crates/mosh/src/statesync` ports upstream `user.{h,cc}` and `completeterminal.{h,cc}` (`UserStream`, `Complete`, both implementing the transport `State` trait).
+`ref-term` and `vt-check` gained a `steps` mode (byte records plus resize records), so a test can replay exactly what a `Complete` was fed through upstream's C++ emulator.
+
+Measured (`cargo test --release -p mosh-tests --test statesync_roundtrip -- --nocapture`):
+- `files=27 steps=2214 upstream_identical_divergences=1 mismatches=0`. Every corpus file at 80x24 and 132x43, 41 chunks each, one resize mid-run.
+- After every step the client shows what the server shows (every field `new_frame` transmits).
+- At the end, the server's full dump equals ref-term replaying the server's input, and the client's full dump equals ref-term replaying exactly the host bytes and resizes the client applied.
+- The one divergence (bash-colors 80x24 step 18, client cursor one column left of the server's) is upstream behavior: ref-term replays show the same server and client states. Its cause is `new_frame` backspacing from a believed column 80 while the real cursor waits at column 79 to wrap.
+- UserStream: diff, apply, subtract and init_diff round-trip; an instruction carrying only an unknown field 4 is ignored.
+
+Facts for later phases:
+- `Complete == Complete` compares framebuffer row pointers, as upstream: a client built from diffs never equals the server object; only copies compare equal.
+- Full dumps of client and server differ by design (tabs, scroll region, saved cursor and the bell count are not transmitted).
+
+Re-run after the move of the dump code into `tests/src/dump.rs`: terminal_conformance passes; vt-fuzz 100,000 cases (seed 21) and 100,000 `--frames` pairs (seed 22), 0 mismatches.

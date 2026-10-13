@@ -34,122 +34,21 @@
 // upstream's emulation test streams (tests/corpus/emulation) and recorded
 // real sessions (tests/corpus/sessions, when present).
 
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::path::PathBuf;
+
+use mosh_tests::oracle::{
+    build_ref_term, corpus_files, first_difference, prefix_offsets, record, run, split_records,
+};
 
 const SIZES: [(usize, usize); 2] = [(80, 24), (132, 43)];
 const PREFIXES: usize = 40;
 
-fn root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("workspace root")
-        .to_path_buf()
-}
-
-fn run(prog: &Path, args: &[String], stdin: &[u8]) -> Vec<u8> {
-    let mut child = Command::new(prog)
-        .args(args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .unwrap_or_else(|e| panic!("spawn {}: {}", prog.display(), e));
-    let mut sin = child.stdin.take().expect("stdin");
-    let input = stdin.to_vec();
-    let writer = std::thread::spawn(move || {
-        let _ = sin.write_all(&input);
-    });
-    let out = child.wait_with_output().expect("wait");
-    writer.join().expect("stdin writer");
-    assert!(
-        out.status.success(),
-        "{} {:?} exited with {}",
-        prog.display(),
-        args,
-        out.status
-    );
-    out.stdout
-}
-
-fn corpus_files() -> Vec<PathBuf> {
-    let mut files = Vec::new();
-    for dir in ["tests/corpus/emulation", "tests/corpus/sessions"] {
-        let dir = root().join(dir);
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for e in entries {
-            let p = e.expect("dir entry").path();
-            if p.extension().is_some_and(|x| x == "bin") {
-                files.push(p);
-            }
-        }
-    }
-    files.sort();
-    files
-}
-
-fn record(out: &mut Vec<u8>, bytes: &[u8]) {
-    out.extend_from_slice(&(bytes.len() as u32).to_be_bytes());
-    out.extend_from_slice(bytes);
-}
-
-fn split_records(mut b: &[u8]) -> Vec<&[u8]> {
-    let mut v = Vec::new();
-    while !b.is_empty() {
-        let n = u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize;
-        v.push(&b[4..4 + n]);
-        b = &b[4 + n..];
-    }
-    v
-}
-
-/// splitmix64, so the prefix offsets are the same on every run.
-struct Rng(u64);
-impl Rng {
-    fn next(&mut self) -> u64 {
-        self.0 = self.0.wrapping_add(0x9E3779B97F4A7C15);
-        let mut z = self.0;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
-        z ^ (z >> 31)
-    }
-}
-
-fn first_difference(a: &[u8], b: &[u8]) -> String {
-    let (la, lb): (Vec<&[u8]>, Vec<&[u8]>) = (
-        a.split(|&c| c == b'\n').collect(),
-        b.split(|&c| c == b'\n').collect(),
-    );
-    for i in 0..la.len().max(lb.len()) {
-        let x = la.get(i).copied().unwrap_or(b"<eof>");
-        let y = lb.get(i).copied().unwrap_or(b"<eof>");
-        if x != y {
-            return format!(
-                "line {}:\n    ref-term: {}\n    vt-check: {}",
-                i + 1,
-                String::from_utf8_lossy(x).escape_debug(),
-                String::from_utf8_lossy(y).escape_debug()
-            );
-        }
-    }
-    "identical".to_string()
-}
-
 #[test]
 fn terminal_conformance() {
-    let status = Command::new("make")
-        .arg("-C")
-        .arg(root().join("ref/ref-term"))
-        .status()
-        .expect("run make");
-    assert!(status.success(), "make -C ref/ref-term FAILED");
-    let ref_term = root().join("ref/ref-term/ref-term");
+    let ref_term = build_ref_term();
     let vt_check = PathBuf::from(env!("CARGO_BIN_EXE_vt-check"));
 
-    let files = corpus_files();
+    let files = corpus_files(&["tests/corpus/emulation", "tests/corpus/sessions"]);
     assert!(!files.is_empty(), "no corpus files");
     let mut failures = 0usize;
     let mut dumps = 0usize;
@@ -157,22 +56,14 @@ fn terminal_conformance() {
 
     for file in &files {
         let name = file
-            .strip_prefix(root())
+            .strip_prefix(mosh_tests::oracle::root())
             .unwrap_or(file)
             .display()
             .to_string();
         let data = std::fs::read(file).expect("read corpus file");
 
         // Cumulative prefixes at seeded random offsets, plus the whole file.
-        let seed = data.iter().fold(0xcbf29ce484222325u64, |h, &b| {
-            (h ^ b as u64).wrapping_mul(0x100000001b3)
-        });
-        let mut rng = Rng(seed);
-        let mut offsets: Vec<usize> = (0..PREFIXES)
-            .map(|_| (rng.next() % (data.len() as u64 + 1)) as usize)
-            .collect();
-        offsets.sort();
-        offsets.push(data.len());
+        let offsets = prefix_offsets(&data, PREFIXES);
 
         // (old, new) pairs: old = bytes up to offset i, new = bytes from offset i to offset i+1.
         let mut pairs = Vec::new();

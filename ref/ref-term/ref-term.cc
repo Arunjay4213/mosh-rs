@@ -255,6 +255,36 @@ static std::string do_dump( int w, int h, const std::string& input )
   return o;
 }
 
+/* steps: one emulator; records tagged 'B' (bytes to feed) or 'R' (u32 BE
+   width, u32 BE height: a Parser::Resize action, as Complete::act(Action)). */
+static std::string do_steps( int w, int h, const std::vector<std::string>& recs )
+{
+  Emulator emu( w, h );
+  Parser::UTF8Parser parser;
+  std::string to_host, o;
+  for ( const std::string& r : recs ) {
+    if ( r.size() >= 1 && r[0] == 'B' ) {
+      feed( parser, emu, r.substr( 1 ), to_host );
+    } else if ( r.size() == 9 && r[0] == 'R' ) {
+      const unsigned char* p = (const unsigned char*)r.data() + 1;
+      size_t nw = ( (size_t)p[0] << 24 ) | ( (size_t)p[1] << 16 ) | ( (size_t)p[2] << 8 ) | p[3];
+      size_t nh = ( (size_t)p[4] << 24 ) | ( (size_t)p[5] << 16 ) | ( (size_t)p[6] << 8 ) | p[7];
+      if ( nw < 1 || nh < 1 ) {
+        fprintf( stderr, "ref-term: resize to zero\n" );
+        exit( 2 );
+      }
+      Parser::Resize act( nw, nh );
+      act.act_on_terminal( &emu );
+      to_host += emu.read_octets_to_host();
+    } else {
+      fprintf( stderr, "ref-term: bad steps record\n" );
+      exit( 2 );
+    }
+  }
+  dump( emu.get_fb(), to_host, o );
+  return o;
+}
+
 static std::string do_frame( int w, int h, const std::string& oldb, const std::string& newb, bool initialized )
 {
   Emulator emu( w, h );
@@ -276,6 +306,7 @@ static void usage( void )
 {
   fprintf( stderr,
            "usage: ref-term dump W H < input\n"
+           "       ref-term steps W H < tagged records\n"
            "       ref-term batch W H < records\n"
            "       ref-term frame W H OLDFILE NEWFILE [initialized]\n"
            "       ref-term frame-batch W H [initialized] < record pairs\n" );
@@ -304,6 +335,8 @@ int main( int argc, char** argv )
       out( do_dump( w, h, r ) );
       out( "=====\n" );
     }
+  } else if ( mode == "steps" && argc == 4 ) {
+    out( do_steps( w, h, records( read_all( std::cin ) ) ) );
   } else if ( mode == "frame" && ( argc == 6 || argc == 7 ) ) {
     bool initialized = argc == 7 ? atoi( argv[6] ) != 0 : true;
     out( do_frame( w, h, read_file( argv[4] ), read_file( argv[5] ), initialized ) );
