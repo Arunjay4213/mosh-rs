@@ -1,7 +1,7 @@
 # STATUS
 
 Plain-English progress log for mosh-rs, written by the orchestrator at each gate.
-Newest entry first.
+Entries are in time order: newest at the bottom.
 
 ## 2026-10-13 Phase 0 started
 

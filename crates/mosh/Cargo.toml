@@ -15,3 +15,11 @@ libc.workspace = true
 [[bin]]
 name = "mosh"
 path = "src/bin/mosh.rs"
+
+[[bin]]
+name = "mosh-server"
+path = "src/bin/mosh-server.rs"
+
+[[bin]]
+name = "mosh-client"
+path = "src/bin/mosh-client.rs"
