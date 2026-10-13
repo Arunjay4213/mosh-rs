@@ -49,11 +49,19 @@ Rust reimplementation of mosh (upstream master commit decd9b7; compatible with m
 - Integer casts between signed and unsigned mirror upstream exactly and get a comment where the value could be negative or exceed the range.
 - Independent code reviews land in `reviews/`. Before a gate is declared passed, every item in every `reviews/*.md` file is either fixed or answered in that file, with the commit hash.
 
-## CI feedback
+## CI feedback (nothing lands on main without green CI)
 
-- CI runs on every push to main and writes its result, including the last 80 lines of each job's log, to the `ci-status` branch.
-- After every push, run `scripts/ci-status.sh --wait 15` to get the result for HEAD (exit 0 pass, 1 fail, 2 no result yet). Read the log excerpts on failure.
-- Red CI is fixed before any new work starts, and no gate is declared passed while CI is red. Record each CI failure and its fix in INTERVENTIONS.md.
+- Never push to main.
+  Main is protected and only moves when CI is green.
+- Work on a branch named `agent/<topic>` (the laptop uses `laptop/<topic>`), commit, and push the branch.
+- The push opens a PR against main by itself, and CI runs on the pushed commit (about 20 minutes).
+- When CI is green, main is fast-forwarded to that exact commit, the PR shows as merged, and the branch is deleted.
+- Check whether your commit landed with `scripts/landed.sh <sha>` (exit 0 landed, 1 not yet).
+- If CI is red, read the failures with `scripts/ci-status.sh --pr <branch>` (add `--wait 25` to wait for the result), fix on the same branch, and push again.
+- If the PR gets the comment "Rebase onto main and push again", main moved while CI ran: run `git pull --rebase origin main` on the branch and push again (`--force-with-lease`).
+- `scripts/ci-status.sh <sha>` prints the result for any commit, including commits on main.
+- Red CI is fixed before any new work starts, and no gate is declared passed while CI is red.
+  Record each CI failure and its fix in INTERVENTIONS.md.
 
 ## Keeping the markdown current (stale information is the main agent failure)
 
@@ -70,5 +78,7 @@ Rust reimplementation of mosh (upstream master commit decd9b7; compatible with m
 
 ## Things devbox cannot do (hand to the laptop via INTERVENTIONS.md "NEEDS THE USER")
 
-- The deploy key cannot push changes under `.github/workflows/`. Put such changes on a branch named `ci/<topic>`, commit, and log "NEEDS THE USER: push branch ci/<topic>" in INTERVENTIONS.md. The laptop fetches it from devbox, reviews, merges and pushes.
+- The deploy key cannot push changes under `.github/workflows/`.
+  Commit such changes on a local branch named `ci/<topic>` and log "NEEDS THE USER: push branch ci/<topic>" in INTERVENTIONS.md.
+  The laptop fetches it from devbox, reviews it, and pushes it as `laptop/<topic>`, which goes through the same PR and CI gate.
 - Reference decision (2026-10-13): the upstream reference is mosh master at commit decd9b7 (2026-03-22, 39 commits after the 1.4.0 tag), because that is what the oracles and interop were built against and it carries fixes 1.4.0 lacks. Describe the project everywhere as "ported from mosh master (decd9b7, March 2026), wire-compatible with mosh 1.4.0". Update README, PLAN and module docs accordingly.

@@ -1,0 +1,46 @@
+name: Auto-merge
+
+# When CI is green on an agent/ or laptop/ branch, fast-forward main to the tested commit and
+# delete the branch. GitHub then marks the PR as merged. A fast-forward keeps the commit sha, so
+# main holds exactly the commit CI tested and `scripts/landed.sh <sha>` works. ("Rebase and merge"
+# would rewrite every sha.) If main has moved on, the PR gets a comment asking for a rebase.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    name: merge green PR
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      (startsWith(github.event.workflow_run.head_branch, 'agent/') ||
+       startsWith(github.event.workflow_run.head_branch, 'laptop/'))
+    runs-on: ubuntu-latest
+    concurrency:
+      group: auto-merge
+    steps:
+      - name: Fast-forward main to the tested commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --base main --state open \
+            --json number,headRefOid --jq ".[] | select(.headRefOid == \"$SHA\") | .number")
+          if [ -z "$pr" ]; then
+            echo "no open PR from $BRANCH at $SHA (newer push or no PR); nothing to do"; exit 0
+          fi
+          if gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/heads/main" -f sha="$SHA" -F force=false > /dev/null; then
+            echo "main fast-forwarded to $SHA (PR #$pr)"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH"
+          else
+            gh pr comment "$pr" --repo "$GITHUB_REPOSITORY" --body "Rebase onto main and push again"
+          fi

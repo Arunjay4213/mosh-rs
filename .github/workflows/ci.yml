@@ -1,16 +1,19 @@
 name: CI
 
+# Every branch push runs CI on its exact head commit. Agent and laptop work lands on main only by
+# auto-merge.yml fast-forwarding main to a commit whose run here was green, so the commit on main
+# is the commit that was tested. There is no pull_request trigger: a PR opened by pr-open.yml with
+# GITHUB_TOKEN would not start one, and the push run already reports its checks on the PR.
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches-ignore: [ci-status]
 
-# Pull requests: one run per branch, newest wins. Pushes to main: every commit gets its own
-# run (group keyed by sha), because GitHub keeps only one queued run per group and would
-# otherwise cancel queued main runs whenever the next push arrives.
+# main: every commit gets its own run (group keyed by sha), because GitHub keeps only one queued
+# run per group and would otherwise cancel queued main runs whenever the next push arrives.
+# Other branches: one run per branch, newest push wins.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -100,10 +103,11 @@ jobs:
   report:
     name: write result to ci-status branch
     needs: [fmt, clippy, test]
-    if: always() && github.event_name == 'push'
+    if: always()
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -114,21 +118,31 @@ jobs:
           R_FMT: ${{ needs.fmt.result }}
           R_CLIPPY: ${{ needs.clippy.result }}
           R_TEST: ${{ needs.test.result }}
+          BRANCH: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           short=$(git rev-parse --short=7 HEAD)
           overall=success
           for r in "$R_FMT" "$R_CLIPPY" "$R_TEST"; do [ "$r" = success ] || overall=failure; done
+          pr=""
+          if [ "$BRANCH" != main ]; then
+            pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$BRANCH" --state open --json number --jq '.[0].number // empty' || true)
+          fi
           {
             echo "result: $overall"
             echo "commit: $(git rev-parse HEAD)"
+            echo "branch: $BRANCH"
+            echo "pr: ${pr:-none}"
             echo "subject: $(git log -1 --format=%s)"
-            echo "run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo "fmt: $R_FMT"; echo "clippy: $R_CLIPPY"; echo "test: $R_TEST"
             for d in logs/*/; do
+              [ -d "$d" ] || continue
               n=$(basename "$d"); f=$(ls "$d" | head -1)
               echo; echo "## $n: failures"; echo '```'
-              sed 's/\x1b\[[0-9;]*m//g' "$d/$f" | grep -E -A4 'FAILED|panicked at|^run-all:|^error(\[E[0-9]+\])?:|SKIPPED|FAIL:' | head -n 200
+              # grep exits 1 when a log has no failures; that is the passing case, not an error.
+              sed 's/\x1b\[[0-9;]*m//g' "$d/$f" | grep -E -A4 'FAILED|panicked at|^run-all:|^error(\[E[0-9]+\])?:|SKIPPED|FAIL:' | head -n 200 || true
               echo '```'
               echo; echo "## $n (last 80 lines)"; echo '```'
               tail -n 80 "$d/$f" | sed 's/\x1b\[[0-9;]*m//g'
@@ -136,14 +150,23 @@ jobs:
             done
           } > report.md
           mkdir -p out/runs && cp report.md "out/runs/$short.md" && cp report.md out/latest.md
+          if [ -n "$pr" ]; then mkdir -p out/prs && cp report.md "out/prs/$pr.md"; fi
+          echo "short=$short" >> "$GITHUB_ENV"
       - name: Push to ci-status branch
         shell: bash
         run: |
           git config user.name "ci-status bot"; git config user.email "ci-status@users.noreply.github.com"
-          if git fetch -q origin ci-status; then
-            git worktree add -q st origin/ci-status
-          else
-            git worktree add -q --detach st && (cd st && git checkout -q --orphan ci-status && git rm -rqf . 2>/dev/null || true)
-          fi
-          mkdir -p st/runs && cp out/latest.md st/latest.md && cp out/runs/*.md st/runs/
-          cd st && git add -A && git commit -q -m "ci result for $(git -C .. rev-parse --short=7 HEAD)" && git push -q origin HEAD:ci-status
+          # Parallel runs push here at the same time. Each attempt starts again from the newest
+          # ci-status, copies this run's files on top, and pushes; a rejected push just retries.
+          for attempt in 1 2 3 4 5; do
+            rm -rf st && git worktree prune
+            if git fetch -q origin ci-status; then
+              git worktree add -q --detach st origin/ci-status
+            else
+              git worktree add -q --detach st && (cd st && git checkout -q --orphan ci-status && { git rm -rqf . 2>/dev/null || true; })
+            fi
+            cp -r out/. st/
+            (cd st && git add -A && git commit -q -m "ci result for $short" && git push -q origin HEAD:refs/heads/ci-status) && exit 0
+            echo "push attempt $attempt rejected, retrying"; sleep $((attempt * 3))
+          done
+          echo "could not push to ci-status after 5 attempts"; exit 1
