@@ -57,14 +57,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm]
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v4
       # mosh/tmux/ssh for tests/tests/launcher.rs; the rest builds upstream for the ref/ oracles.
       - name: Install packages
         run: |
           sudo apt-get update
-          sudo apt-get install -y mosh tmux openssh-server libssl-dev zlib1g-dev libncurses-dev \
+          sudo apt-get install -y mosh tmux vim ncurses-term kitty-terminfo sysstat openssh-server libssl-dev zlib1g-dev libncurses-dev \
             libprotobuf-dev protobuf-compiler pkg-config autoconf automake build-essential locales
       - name: Cache upstream build
         uses: actions/cache@v4
