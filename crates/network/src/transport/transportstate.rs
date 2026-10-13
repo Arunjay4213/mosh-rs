@@ -39,6 +39,15 @@ pub trait State: PartialEq + Clone {
     fn apply_string(&mut self, diff: &[u8]);
     /// Drop the part of `self` that `prefix` already contains.
     fn subtract(&mut self, prefix: &Self);
+    /// `subtract` with `self` as the prefix. Upstream passes the same object
+    /// as both (`UserStream::subtract` clears on `this == prefix`); Rust
+    /// borrows cannot alias, so this is its own method. The default is
+    /// exactly that call on a copy; an implementation overrides it to skip
+    /// the copy (`UserStream`: clear, `Complete`: nothing).
+    fn subtract_self(&mut self) {
+        let prefix = self.clone();
+        self.subtract(&prefix);
+    }
     /// Called on the new current state by `set_current_state`.
     fn reset_input(&mut self);
 }

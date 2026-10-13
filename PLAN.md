@@ -58,7 +58,7 @@ One Cargo workspace, four crates, plus tooling that is not shipped.
   Ported from `upstream/src/terminal`.
   Type and method names mirror upstream (`Complete`, `Framebuffer`, `DrawState`, `Cell`, `Row`, `Display`) so the frontend port can follow upstream line by line.
 - `crates/network`: `crypto` (OCB3 session, key, nonce), `proto` (hand-written `prost` structs, no `.proto` compilation, no build script), `transport` (fragments, compression, sender, receiver, connection, timing, roaming).
-  Transport is generic over a `State` trait with exactly the methods upstream's template requires: `diff_from`, `init_diff`, `apply_string`, `subtract`, `reset_input`, and equality (not `compare`, section 9 item 10).
+  Transport is generic over a `State` trait with exactly the methods upstream's template requires: `diff_from`, `init_diff`, `apply_string`, `subtract`, `reset_input`, and equality (not `compare`, section 9 item 10), plus `subtract_self` for upstream's `subtract( this )` call on the front state, which Rust borrows cannot express as aliasing (default: subtract a copy; `UserStream` overrides with clear, `Complete` with nothing).
   Sockets via `mosh-platform` (`mosh_platform::socket`); the crate itself has no `unsafe` and no `#[cfg]` platform code (`#![forbid(unsafe_code)]`).
   Ported from `upstream/src/crypto` and `upstream/src/network`.
 - `crates/platform`: the only crate with `#[cfg(unix)]` and `#[cfg(windows)]` code.

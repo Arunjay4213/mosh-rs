@@ -87,6 +87,10 @@ impl State for Log {
         self.bytes.drain(..prefix.bytes.len());
     }
 
+    fn subtract_self(&mut self) {
+        self.bytes.clear();
+    }
+
     fn reset_input(&mut self) {}
 }
 

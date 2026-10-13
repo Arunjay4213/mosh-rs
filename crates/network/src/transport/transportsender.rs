@@ -328,13 +328,18 @@ impl<MyState: State> TransportSender<MyState> {
     }
 
     fn rationalize_states(&mut self) {
-        let known_receiver_state = self.sent_states[0].state.clone();
+        let (known_receiver_state, rest) = self
+            .sent_states
+            .split_first_mut()
+            .expect("sent_states always holds the acknowledged state");
 
-        self.current_state.subtract(&known_receiver_state);
+        self.current_state.subtract(&known_receiver_state.state);
 
-        for i in self.sent_states.iter_mut().rev() {
-            i.state.subtract(&known_receiver_state);
+        for i in rest.iter_mut().rev() {
+            i.state.subtract(&known_receiver_state.state);
         }
+        /* last in upstream's reverse loop: the known state itself */
+        known_receiver_state.state.subtract_self();
     }
 
     fn make_chaff(&mut self) -> Result<Vec<u8>, CryptoError> {

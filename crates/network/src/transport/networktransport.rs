@@ -260,10 +260,15 @@ impl<MyState: State, RemoteState: State> Transport<MyState, RemoteState> {
             .state
             .diff_from(&self.last_receiver_state);
 
-        let oldest_receiver_state = self.received_states[0].state.clone();
-        for i in self.received_states.iter_mut().rev() {
-            i.state.subtract(&oldest_receiver_state);
+        let (oldest_receiver_state, rest) = self
+            .received_states
+            .split_first_mut()
+            .expect("received_states always holds a state");
+        for i in rest.iter_mut().rev() {
+            i.state.subtract(&oldest_receiver_state.state);
         }
+        /* last in upstream's reverse loop: the oldest state itself */
+        oldest_receiver_state.state.subtract_self();
 
         self.last_receiver_state = self
             .received_states
