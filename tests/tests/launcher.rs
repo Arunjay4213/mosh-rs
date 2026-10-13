@@ -72,6 +72,26 @@ fn mosh_binary() -> PathBuf {
     .clone()
 }
 
+/// A real (upstream, C++ and Perl) mosh 1.4.0 program, found on PATH:
+/// apt installs them in /usr/bin on Linux, Homebrew in /opt/homebrew/bin on
+/// macOS. Falls back to /usr/bin so a missing install fails visibly.
+fn real_mosh(name: &str) -> String {
+    let paths = std::env::var_os("PATH").unwrap_or_default();
+    std::env::split_paths(&paths)
+        .map(|dir| dir.join(name))
+        .find(|p| p.is_file())
+        .map_or_else(|| format!("/usr/bin/{name}"), |p| p.display().to_string())
+}
+
+/// `--client=<real mosh-client> --server=<real mosh-server>`.
+fn real_client_server() -> String {
+    format!(
+        "--client={} --server={}",
+        real_mosh("mosh-client"),
+        real_mosh("mosh-server")
+    )
+}
+
 fn require_ssh_localhost() {
     let ok = Command::new("ssh")
         .args(["-o", "BatchMode=yes", "localhost", "true"])
@@ -180,9 +200,10 @@ fn launches_session_on_localhost_with_command() {
     require_ssh_localhost();
     let tmux = Tmux::start(
         "localhost",
-        &session(
-            "--client=/usr/bin/mosh-client --server=/usr/bin/mosh-server -p 60500 localhost -- sh -c 'echo LAUNCH_OK; sleep 1'",
-        ),
+        &session(&format!(
+            "{} -p 60500 localhost -- sh -c 'echo LAUNCH_OK; sleep 1'",
+            real_client_server()
+        )),
     );
     let live = tmux.wait_for("LAUNCH_OK", Duration::from_secs(30));
     println!("live session screen:\n{}", live.trim_end());
@@ -205,7 +226,8 @@ fn launches_session_with_user_at_ip_literal() {
     let tmux = Tmux::start(
         "userip",
         &session(&format!(
-            "--client=/usr/bin/mosh-client --server=/usr/bin/mosh-server {user}@127.0.0.1 -- true"
+            "{} {user}@127.0.0.1 -- true",
+            real_client_server()
         )),
     );
     let done = tmux.wait_exit(Duration::from_secs(30));
@@ -225,7 +247,7 @@ fn missing_server_is_reported() {
     require_ssh_localhost();
     let out = Command::new(mosh_binary())
         .args([
-            "--client=/usr/bin/mosh-client",
+            &format!("--client={}", real_mosh("mosh-client")),
             "--server=/bin/false",
             "localhost",
         ])
@@ -268,7 +290,8 @@ fn launches_session_on_dual_stack_name() {
         let tmux = Tmux::start(
             &format!("dualstack{family}"),
             &session(&format!(
-                "{family} --client=/usr/bin/mosh-client --server=/usr/bin/mosh-server mosh-dualstack -- sh -c 'echo LAUNCH_OK; sleep 1'"
+                "{family} {} mosh-dualstack -- sh -c 'echo LAUNCH_OK; sleep 1'",
+                real_client_server()
             )),
         );
         tmux.wait_for("LAUNCH_OK", Duration::from_secs(30));
@@ -340,9 +363,6 @@ fn windows_proxy_command_quoting() {
         r#""C:\Program Files\mosh-rs\mosh.exe" --family=prefer-inet --fake-proxy -- %h %p"#
     );
 }
-
-/// Real mosh 1.4.0's Perl launcher, the oracle for the tests below.
-const MOSH_PL: &str = "/usr/bin/mosh";
 
 /// A scratch directory holding a fake `ssh` and a fake `mosh-client`, so
 /// both launchers can be run with the same arguments and compared without a
@@ -457,8 +477,9 @@ type Case<'a> = (Vec<&'a str>, Vec<(&'a str, &'a str)>);
 /// same arguments, same fake ssh and client, identical observable results.
 #[test]
 fn options_and_messages_match_mosh_pl() {
-    if !std::path::Path::new(MOSH_PL).exists() {
-        println!("SKIPPED: {MOSH_PL} (real mosh) is not installed");
+    let mosh_pl = &real_mosh("mosh");
+    if !std::path::Path::new(mosh_pl).exists() {
+        println!("SKIPPED: {mosh_pl} (real mosh) is not installed");
         return;
     }
     let ours = mosh_binary().display().to_string();
@@ -563,7 +584,7 @@ fn options_and_messages_match_mosh_pl() {
     let mut failures = 0;
     let mut report = String::new();
     for (args, env) in &cases {
-        let want = observe(MOSH_PL, args, env, "real");
+        let want = observe(mosh_pl, args, env, "real");
         let got = observe(&ours, args, env, "ours");
         if want == got {
             println!(
@@ -594,7 +615,7 @@ fn options_and_messages_match_mosh_pl() {
         let out = Command::new(bin).arg("--help").output().unwrap();
         String::from_utf8_lossy(&out.stdout).replace(bin, "$0")
     };
-    let want = help(MOSH_PL)
+    let want = help(mosh_pl)
         .replace("--bind-server={ssh|any|IP}", "--bind-server={ssh|any}")
         .replace(
             "\n\n        --local ",
@@ -617,8 +638,11 @@ fn options_and_messages_match_mosh_pl() {
 #[test]
 fn proxy_resolves_canonical_name_like_mosh_pl() {
     let hosts = std::fs::read_to_string("/etc/hosts").unwrap_or_default();
-    if !hosts.contains("mosh-alias") || !std::path::Path::new(MOSH_PL).exists() {
-        println!("SKIPPED: needs /usr/bin/mosh and the mosh-alias/mosh-canon lines in /etc/hosts");
+    let mosh_pl = &real_mosh("mosh");
+    if !hosts.contains("mosh-alias") || !std::path::Path::new(mosh_pl).exists() {
+        println!(
+            "SKIPPED: needs real mosh on PATH and the mosh-alias/mosh-canon lines in /etc/hosts"
+        );
         return;
     }
     let ours = mosh_binary().display().to_string();
@@ -643,7 +667,7 @@ fn proxy_resolves_canonical_name_like_mosh_pl() {
                     .trim_end()
             )
         };
-        let (want, got) = (run(MOSH_PL), run(&ours));
+        let (want, got) = (run(mosh_pl), run(&ours));
         println!("--family={family}: mosh.pl {want} | ours {got}");
         assert_eq!(got, want, "--family={family}");
     }
@@ -658,10 +682,16 @@ fn proxy_resolves_canonical_name_like_mosh_pl() {
 /// address, port, scope id and flow information.
 #[test]
 fn numeric_addresses_resolve_the_same_in_both_paths() {
+    // The loopback interface, index 1 on Linux (`lo`) and macOS (`lo0`).
+    const LOOPBACK: &str = if cfg!(target_os = "linux") {
+        "lo"
+    } else {
+        "lo0"
+    };
     // `lo` is interface 1 on Linux; the numeric zone works everywhere.
     let cases = [
         ("fe80::1%1", "60001"),
-        ("fe80::1%lo", "60001"),
+        (&*format!("fe80::1%{LOOPBACK}"), "60001"),
         ("fe80::abcd:1234%1", "22"),
         ("::1", "60001"),
         ("127.0.0.1", "60001"),
@@ -686,7 +716,7 @@ fn numeric_addresses_resolve_the_same_in_both_paths() {
                 assert_eq!(
                     a.scope_id(),
                     1,
-                    "{host}: the zone must become scope id 1 (lo)"
+                    "{host}: the zone must become scope id 1 (the loopback interface)"
                 );
             }
             // getaddrinfo never sets a flow label; both paths read the raw

@@ -131,6 +131,13 @@ pub use unix::{bind, new_socket, recv_raw, resolve};
 #[cfg(windows)]
 pub use windows::{bind, new_socket, recv_raw, resolve};
 
+/// The one decoder of a C socket address into a `SocketAddr`, used here
+/// and by `netdb.rs`, so the two cannot read a `sockaddr` differently.
+#[cfg(unix)]
+pub(crate) use unix::from_sockaddr;
+#[cfg(windows)]
+pub(crate) use windows::from_sockaddr;
+
 #[cfg(unix)]
 mod unix {
     use super::{last_errno, SysError};
@@ -271,9 +278,16 @@ mod unix {
         (ss, len)
     }
 
+    /// Decodes a `sockaddr_in` or `sockaddr_in6` through libc's structs, so
+    /// the family is read from `sa_family` wherever the platform puts it
+    /// (after `sa_len` on macOS and the BSDs, first on Linux).
+    ///
     /// # Safety
     /// `sa` must point to a socket address of at least `len` readable bytes.
-    unsafe fn from_sockaddr(sa: *const libc::sockaddr, len: libc::socklen_t) -> Option<SocketAddr> {
+    pub(crate) unsafe fn from_sockaddr(
+        sa: *const libc::sockaddr,
+        len: libc::socklen_t,
+    ) -> Option<SocketAddr> {
         let len = usize::try_from(len).ok()?;
         // SAFETY: the caller guarantees sa points to len readable bytes; the
         // family is read first and the length checked before each cast.
@@ -488,6 +502,44 @@ mod unix {
 mod windows {
     use super::SysError;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV6, UdpSocket};
+
+    /// Decodes a WinSock `SOCKADDR_IN` or `SOCKADDR_IN6` through its typed
+    /// fields (Windows has no `sa_len`; the family is the first field).
+    ///
+    /// # Safety
+    /// `sa` must point to a socket address of at least `len` readable bytes.
+    pub(crate) unsafe fn from_sockaddr(
+        sa: *const windows_sys::Win32::Networking::WinSock::SOCKADDR,
+        len: usize,
+    ) -> Option<SocketAddr> {
+        use std::net::SocketAddrV4;
+        use windows_sys::Win32::Networking::WinSock::{
+            AF_INET, AF_INET6, SOCKADDR_IN, SOCKADDR_IN6,
+        };
+        // SAFETY: the caller guarantees sa points to len readable bytes; the
+        // family is read first and the length checked before each cast.
+        unsafe {
+            match (*sa).sa_family {
+                AF_INET if len >= size_of::<SOCKADDR_IN>() => {
+                    let sin = &*sa.cast::<SOCKADDR_IN>();
+                    Some(SocketAddr::V4(SocketAddrV4::new(
+                        Ipv4Addr::from(sin.sin_addr.S_un.S_addr.to_ne_bytes()),
+                        u16::from_be(sin.sin_port),
+                    )))
+                }
+                AF_INET6 if len >= size_of::<SOCKADDR_IN6>() => {
+                    let sin6 = &*sa.cast::<SOCKADDR_IN6>();
+                    Some(SocketAddr::V6(SocketAddrV6::new(
+                        Ipv6Addr::from(sin6.sin6_addr.u.Byte),
+                        u16::from_be(sin6.sin6_port),
+                        sin6.sin6_flowinfo,
+                        sin6.Anonymous.sin6_scope_id,
+                    )))
+                }
+                _ => None,
+            }
+        }
+    }
 
     const WSAEWOULDBLOCK: i32 = 10035;
     const WSAEMSGSIZE: i32 = 10040;

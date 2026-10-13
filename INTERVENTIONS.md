@@ -3,6 +3,16 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 macOS launcher resolver fixed and verified on the Mac (agent C)
+
+- Cause of the blocking macOS item ("Could not connect to 172.31.37.176, last tried :"): `netdb.rs` (my code, review G11) decoded `getaddrinfo` results from raw bytes with the address family as a 16-bit value at byte 0. On macOS and the BSDs byte 0 is `sa_len` and the family is the byte after it, so every result was dropped. Not the hints. `socket.rs` was right because it reads `sa_family` through libc's struct, which is why our client and server worked on the Mac and only the launcher failed.
+- Fix: one decoder, `socket::from_sockaddr` (libc's `sockaddr` on unix, WinSock's typed `SOCKADDR` on Windows), used by both `socket.rs` and `netdb.rs`; the byte decoder is gone.
+- Mac used over ssh from devbox (`ec2-user@172.31.40.101`): a copy of the branch in `~/agentc-macos-netdb` (the laptop's `~/mosh-rs` and its tmux sessions untouched; my tmux session `agentc` is killed after each run). Nothing installed: Rust, Homebrew tmux and mosh, and `ssh localhost` were already there.
+- Before (`~/mosh-rs` build of bf05b67): `mosh --fake-proxy -- 127.0.0.1 22` printed "Could not connect to 127.0.0.1, last tried :", `--experimental-remote-ip=local 127.0.0.1` printed "could not find address for 127.0.0.1"; Homebrew's mosh.pl printed `MOSH IP 127.0.0.1`. After: `MOSH IP 127.0.0.1` and the sshd banner; `localhost` with `--family=all` and `::1` give `MOSH IP ::1`.
+- Real session from the Mac: our `mosh` and `mosh-client` (built on the Mac) to devbox, with our `mosh-server` built on devbox: motd, prompt, typed `echo TYPED_FROM_MAC_$((6*7)) on $(hostname)` answered `TYPED_FROM_MAC_42 on ip-172-31-37-176`, `exit`, `[mosh is exiting.]`, exit 0. `mosh --local` on the Mac with our server: `LOCAL_OK_Darwin`, `[mosh is exiting.]`, exit 0.
+- Tests on the Mac: `platform_tty` 1 passed; `launcher` 8 passed after making it find the real mosh programs on PATH (they were hard-coded at /usr/bin, Homebrew's are in /opt/homebrew/bin) and the loopback interface by name (`lo0` on macOS); `options_and_messages_match_mosh_pl` compared 73 cases with Homebrew's mosh.pl, 0 different; the two /etc/hosts-based cases skip with their reasons. `client_e2e`: 1 passed, 6 failed, all because that file hard-codes `/usr/bin/mosh-client` and `/usr/bin/mosh-server` for its C++ comparison runs ("Can't exec /usr/bin/mosh-client"); not my file, so not changed. The same PATH lookup would fix it.
+- Follow-up: the v0.1.0 macOS release asset still has the bug; it needs a rebuild from main once this lands (the README says so).
+
 ## 2026-10-13 Devbox: the rustup binary disappeared at 18:47 UTC; reinstalled
 
 - `~/.cargo/bin/rustup` vanished at 18:47 UTC (every tool in `~/.cargo/bin` is a symlink to it, so `cargo` stopped working); the toolchains under `~/.rustup` (stable 1.99.0, 1.91.1, 1.89.0, 1.88.0) were intact. Agent S2 noticed it; no agent reports deleting it, and the orchestrator does not know the cause.

@@ -36,7 +36,7 @@
 //! AI_CANONNAME flags, and the canonical name of the first result. Unix
 //! calls libc; Windows calls WinSock's `getaddrinfo`.
 
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::SocketAddr;
 
 /// Address family hint, as mosh.pl's `--family=inet` / `inet6`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -76,32 +76,6 @@ pub struct AddrInfo {
     pub addrs: Vec<SocketAddr>,
     /// `ai_canonname` of the first result, when AI_CANONNAME was asked for.
     pub canonname: Option<String>,
-}
-
-/// Decode a `sockaddr_in` or `sockaddr_in6` from its bytes. The layout is
-/// the same on Linux and Windows: a 16-bit family, the port in network
-/// order, then the IPv4 address, or the flow info, IPv6 address and scope.
-fn sockaddr_from_bytes(b: &[u8], af_inet: i32, af_inet6: i32) -> Option<SocketAddr> {
-    let family = i32::from(u16::from_ne_bytes([*b.first()?, *b.get(1)?]));
-    let port = u16::from_be_bytes([*b.get(2)?, *b.get(3)?]);
-    if family == af_inet && b.len() >= 8 {
-        let ip = Ipv4Addr::new(b[4], b[5], b[6], b[7]);
-        Some(SocketAddr::V4(SocketAddrV4::new(ip, port)))
-    } else if family == af_inet6 && b.len() >= 28 {
-        // The raw field, as std and `socket.rs` keep it (`SocketAddrV6::flowinfo`).
-        let flowinfo = u32::from_ne_bytes([b[4], b[5], b[6], b[7]]);
-        let mut octets = [0u8; 16];
-        octets.copy_from_slice(&b[8..24]);
-        let scope_id = u32::from_ne_bytes([b[24], b[25], b[26], b[27]]);
-        Some(SocketAddr::V6(SocketAddrV6::new(
-            Ipv6Addr::from(octets),
-            port,
-            flowinfo,
-            scope_id,
-        )))
-    } else {
-        None
-    }
 }
 
 /// `getaddrinfo( host, port, { socktype => SOCK_STREAM, protocol =>
@@ -160,11 +134,8 @@ pub fn getaddrinfo(
         }
         if !ai.ai_addr.is_null() {
             // SAFETY: ai_addr points to ai_addrlen bytes owned by the list.
-            let bytes = unsafe {
-                std::slice::from_raw_parts(ai.ai_addr.cast::<u8>(), ai.ai_addrlen as usize)
-            };
             out.addrs
-                .extend(sockaddr_from_bytes(bytes, libc::AF_INET, libc::AF_INET6));
+                .extend(unsafe { crate::socket::from_sockaddr(ai.ai_addr, ai.ai_addrlen) });
         }
         p = ai.ai_next;
     }
@@ -243,13 +214,8 @@ pub fn getaddrinfo(
         }
         if !ai.ai_addr.is_null() {
             // SAFETY: ai_addr points to ai_addrlen bytes owned by the list.
-            let bytes =
-                unsafe { std::slice::from_raw_parts(ai.ai_addr.cast::<u8>(), ai.ai_addrlen) };
-            out.addrs.extend(sockaddr_from_bytes(
-                bytes,
-                i32::from(ws::AF_INET),
-                i32::from(ws::AF_INET6),
-            ));
+            out.addrs
+                .extend(unsafe { crate::socket::from_sockaddr(ai.ai_addr, ai.ai_addrlen) });
         }
         p = ai.ai_next;
     }
