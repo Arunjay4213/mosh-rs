@@ -631,9 +631,15 @@ pub struct Row {
     pub gen: u64,
     /// mosh-rs scrollback (PLAN.md 6.2, 9.4), not in upstream and not part
     /// of row equality: the row was created or last written while
-    /// `DrawState::alternate_screen` was on. Such a row is not history, so
-    /// `Framebuffer::scroll` does not capture it even after the program left
-    /// the alternate screen (upstream keeps that screen's rows on display).
+    /// `DrawState::alternate_screen` was on, so it is never captured as
+    /// history. In scrollback mode the alternate screen is a separate set
+    /// of rows, discarded when the program leaves it, and `scroll` captures
+    /// nothing while the flag is on. The mark is kept for the one case where
+    /// such rows stay on screen after the flag goes off: capture switched on
+    /// (the client's capability arrived) while a program was already on the
+    /// alternate screen, so no main screen was put aside and the program's
+    /// last frame remains when it leaves, as upstream keeps it; those rows
+    /// must not scroll into history.
     pub alternate: bool,
 }
 

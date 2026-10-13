@@ -147,25 +147,37 @@ const ERASE_SCREEN_KEEP_HISTORY: &[u8] = b"\x1b[0m\x1b[H\x1b[K\x1b[2;1H\x1b[J\x1
 /// of `width` columns. It is fed to a one-row emulator, so every row that
 /// leaves it (a line wider than the host wraps) and the last row come out of
 /// mosh's own renderer: nothing the server sends reaches the host terminal
-/// unparsed.
-fn host_rows(line: &[u8], width: usize) -> Vec<String> {
+/// unparsed. At most `max_rows` rows are kept: the server's renderer never
+/// writes a line feed, so a real line only wraps, but a hostile one could
+/// make a row per byte (review G1). Returns the rows and whether the line
+/// was cut.
+fn host_rows(line: &[u8], width: usize, max_rows: usize) -> (Vec<String>, bool) {
     let mut emulator = Emulator::new(width.max(1), 1);
     emulator.get_fb_mut().set_scroll_capture(true);
     let mut parser = UTF8Parser::new();
     let mut actions = Actions::new();
+    let mut rows = Vec::new();
+    let mut cut = false;
     for &c in line {
         parser.input(c, &mut actions);
         for act in actions.iter() {
             act.act_on_terminal(&mut emulator);
         }
         actions.clear();
+        rows.extend(emulator.get_fb_mut().take_scrolled_rows());
+        if rows.len() >= max_rows {
+            cut = true;
+            break;
+        }
     }
     /* replies (a line holding a terminal query) go nowhere */
     emulator.read_octets_to_host();
-    let fb = emulator.get_fb_mut();
-    let mut rows = fb.take_scrolled_rows();
-    rows.push(fb.get_rows()[0].clone());
-    rows.iter().map(Display::render_scrolled_row).collect()
+    if cut {
+        rows.truncate(max_rows);
+    } else {
+        rows.push(emulator.get_fb_mut().get_rows()[0].clone());
+    }
+    (rows.iter().map(Display::render_scrolled_row).collect(), cut)
 }
 
 /// What one pass of the main loop asks `main` to do next.
@@ -380,25 +392,37 @@ impl STMClient {
         let width = usize::from(self.window_size.0);
         // Dim (SGR 2), which mosh's emulator drops, so written directly:
         // ASCII, cut to the width, the rest of the row erased.
-        let notice = |n: u64| {
-            let mut text = format!("[mosh: {n} lines of history were dropped]");
+        let notice = |text: String| {
+            let mut text = text;
             text.truncate(width.max(1));
             format!("\x1b[2m{text}\x1b[m\x1b[K")
         };
+        let dropped = |n: u64| notice(format!("[mosh: {n} lines of history were dropped]"));
+        // A line the server rendered at the frame's width wraps into at most
+        // ceil(frame width / host width) + 1 host rows; at least 4, for lines
+        // from before a resize to a narrower frame, and at most 1024.
+        let frame_width = self.local_framebuffer.ds.get_width().max(1) as usize;
+        let max_rows = (frame_width.max(width).div_ceil(width.max(1)) + 1).clamp(4, 1024);
         let mut rows: Vec<String> = Vec::new();
         for (index, line) in pending {
             if index > self.next_line {
                 let n = index - self.next_line;
-                rows.push(notice(n));
+                rows.push(dropped(n));
                 self.lost_shown += n;
             }
-            rows.extend(host_rows(&line, width));
+            let (line_rows, cut) = host_rows(&line, width, max_rows);
+            rows.extend(line_rows);
+            if cut {
+                rows.push(notice(
+                    "[mosh: the rest of a history line was dropped (too many rows)]".to_string(),
+                ));
+            }
             self.next_line = index + 1;
         }
         if lost > self.lost_shown {
             /* lines lost after the last one received */
             let n = lost - self.lost_shown;
-            rows.push(notice(n));
+            rows.push(dropped(n));
             self.lost_shown = lost;
             self.next_line += n;
         }

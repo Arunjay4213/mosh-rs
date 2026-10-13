@@ -121,6 +121,20 @@ pub struct ScrolledRing {
     limit: usize,
 }
 
+/// mosh-rs scrollback: the longest rendered line the server sends and the
+/// client accepts (review G1). `render_scrolled_row` writes per cell at most
+/// a 50-byte SGR, a grapheme of up to 32 bytes plus a 4-byte character, and
+/// an OSC 8 link of up to 16 KiB (the parser's OSC limit); 256 KiB is a row
+/// of 1000 columns with truecolor and a new 200-byte link in every cell, far
+/// above what programs write. The server records a longer row as a dropped
+/// line, so a client can treat a longer line as malformed (PLAN.md 9.8).
+pub const MAX_SCROLLED_LINE: usize = 256 * 1024;
+
+/// mosh-rs scrollback: line numbers above this are malformed (a session
+/// cannot scroll 2^63 lines), so the client's numbering never overflows
+/// (review G2).
+const MAX_FIRST_INDEX: u64 = 1 << 63;
+
 impl ScrolledRing {
     /// Bytes of rendered lines published beyond the client's acknowledged
     /// count: the payload of four fragments at upstream's IPv4 MTU
@@ -139,6 +153,14 @@ impl ScrolledRing {
             bytes: 0,
             limit,
         }
+    }
+
+    /// A captured row too long to send (`MAX_SCROLLED_LINE`): counted as a
+    /// dropped line in its place. Never merged into an earlier dropped run,
+    /// which may already be published.
+    fn push_dropped(&mut self) {
+        self.captured += 1;
+        self.entries.push_back(Backlog::Dropped(1));
     }
 
     fn push(&mut self, line: Vec<u8>) {
@@ -436,7 +458,12 @@ impl Complete {
             let rows = self.terminal.get_fb_mut().take_scrolled_rows();
             let mut ring = ring.borrow_mut();
             for row in &rows {
-                ring.push(Display::render_scrolled_row(row).into_bytes());
+                let line = Display::render_scrolled_row(row).into_bytes();
+                if line.len() > MAX_SCROLLED_LINE {
+                    ring.push_dropped();
+                } else {
+                    ring.push(line);
+                }
             }
         }
         terminal_to_host
@@ -728,6 +755,15 @@ impl State for Complete {
                 if first_index == 0 || end - 1 < self.scrolled_total {
                     return Err(dos_detected(
                         "scrolled lines do not go backwards",
+                        "Complete::apply_string",
+                    ));
+                }
+                // Review G1, G2: bounded lines and line numbers.
+                if first_index > MAX_FIRST_INDEX
+                    || sl.line.iter().any(|l| l.len() > MAX_SCROLLED_LINE)
+                {
+                    return Err(dos_detected(
+                        "scrolled line number or length in range",
                         "Complete::apply_string",
                     ));
                 }

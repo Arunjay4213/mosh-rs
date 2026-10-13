@@ -29,6 +29,16 @@
 // also delete it here.
 //
 // Ported from: (none; crate root)
+
+//! The mosh programs: `statesync` (the synchronized states, upstream
+//! `src/statesync`), `client` and `server` (upstream `src/frontend`), and
+//! `launcher` (upstream `scripts/mosh.pl`), plus the mosh-rs scrollback
+//! extension (PLAN.md section 6). The executables `mosh`, `mosh-client` and
+//! `mosh-server` are thin wrappers in `src/bin`.
+
+#![forbid(unsafe_code)]
+#![deny(missing_docs)]
+
 /// Upstream `BUILD_VERSION` (the `git describe` of the build there): the
 /// package version, shown as `[build ...]` by `mosh`, `mosh-client` and
 /// `mosh-server --version`.

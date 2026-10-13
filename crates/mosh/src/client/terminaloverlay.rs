@@ -553,7 +553,9 @@ impl NotificationEngine {
                     }
                 }
                 -1 => { /* unprintable character */ }
-                _ => panic!("unexpected character width from wcwidth()"),
+                _ => unreachable!(
+                    "unexpected character width from wcwidth(): the table holds only -1, 0, 1, 2"
+                ),
             }
         }
     }
