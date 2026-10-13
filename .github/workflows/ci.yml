@@ -14,6 +14,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  LANG: C.UTF-8
+  LC_ALL: C.UTF-8
 
 jobs:
   fmt:
@@ -58,8 +60,30 @@ jobs:
         os: [ubuntu-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v4
-      - name: Install tmux
-        run: sudo apt-get update && sudo apt-get install -y tmux
+      # mosh/tmux/ssh for tests/tests/launcher.rs; the rest builds upstream for the ref/ oracles.
+      - name: Install packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mosh tmux openssh-server libssl-dev zlib1g-dev libncurses-dev \
+            libprotobuf-dev protobuf-compiler pkg-config autoconf automake build-essential locales
+      - name: Cache upstream build
+        uses: actions/cache@v4
+        with:
+          path: ~/src/mosh
+          key: upstream-decd9b7-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/build-upstream.sh') }}
+      - name: Build upstream
+        run: scripts/build-upstream.sh
+      - name: Set up ssh localhost
+        run: |
+          chmod go-w ~
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          [ -f ~/.ssh/id_ed25519 ] || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519
+          cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+          sudo systemctl start ssh || sudo service ssh start
+          ssh-keyscan localhost 127.0.0.1 >> ~/.ssh/known_hosts
+          ssh -o BatchMode=yes localhost true
+          ssh -o BatchMode=yes 127.0.0.1 true
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: (cargo build --release --workspace && cargo test --release --workspace) 2>&1 | tee test.log; exit ${PIPESTATUS[0]}

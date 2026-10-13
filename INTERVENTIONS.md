@@ -12,6 +12,11 @@ Newest entry first.
 
 - NEEDS THE USER. The CI fix (local branch `ci-upstream-build`, commit a3f29e9) cannot be pushed: GitHub rejects workflow changes from the `github-moshrs` deploy key ("refusing to allow an OAuth App to create or update workflow .github/workflows/ci.yml without workflow scope"). No `gh` CLI or token exists on devbox. To land it, run from `~/mosh-rs` with credentials that have the `workflow` scope: `git rebase origin/main ci-upstream-build && git push <https-url-with-token> ci-upstream-build:main`, or grant the key workflow permission. CI stays red until then; work continues because the fix is ready and verified locally (both oracle tests pass against a from-scratch upstream build).
 - The upstream tree on devbox (`~/src/mosh`) is mosh master at commit decd9b7 (2026-03-22), 39 commits after the `mosh-1.4.0` tag, not the 1.4.0 release. The Phase 1 ports and oracles were therefore built against master, which among other things has OSC 8 hyperlink support that 1.4.0 lacks. Decision by the orchestrator: the port target is upstream commit decd9b7, and compatibility is proven against the apt mosh 1.4.0 binaries in the interop matrix. PLAN.md now says so. Re-targeting to the 1.4.0 tag would mean redoing verified work for an older emulator.
+## 2026-10-13 CI
+
+- Failure: CI on d9c8289 could not build `ref/ref-crypto` because the GitHub runner had no built upstream tree at `upstream/`, and also lacked apt mosh and `ssh localhost` for the launcher test.
+- Fix: `scripts/build-upstream.sh` builds upstream (cached by `actions/cache`) and links `upstream/`, and the CI test job installs mosh, tmux, sshd and build deps, sets `LANG=C.UTF-8`, and authorizes a key for `ssh localhost`.
+- Deviation found: devbox's `~/src/mosh` is not the mosh-1.4.0 tag but master commit decd9b7 (39 commits later, includes OSC 8 hyperlinks), and `ref/ref-term` does not compile against the 1.4.0 tag, so the script pins decd9b7; PLAN.md still says 1.4.0 and needs the orchestrator's decision.
 
 ## 2026-10-13 Phase 1 review and PLAN section 9 additions
 
