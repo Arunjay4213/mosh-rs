@@ -29,3 +29,8 @@ Rust reimplementation of mosh 1.4.0. Read `PLAN.md` first. Section numbers below
 - Real mosh 1.4.0 from apt is on PATH.
 - tmux 3.4 is on PATH and is the host-terminal oracle.
 - Windows cross target: `x86_64-pc-windows-gnu` with the mingw linker from apt.
+
+## Status, interventions, and GitHub
+
+- Append to STATUS.md at every gate and to INTERVENTIONS.md every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
+- The remote is origin (private repo github.com/Arunjay4213/mosh-rs). Push to main after every commit. The user reviews progress on GitHub.
