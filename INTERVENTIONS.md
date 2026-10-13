@@ -3,6 +3,13 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 CI now builds upstream; launcher fails on the runner
+
+- The user pushed the CI fix (a3f29e9). CI now builds upstream and the oracle tests run there. It is still red because two launcher tests fail on the GitHub runners (first seen on cc19759):
+  - `missing_server_is_reported`: the runner has no TERM, and `mosh-client -c` needs it. Test environment problem; the test will set TERM itself.
+  - `launches_session_on_localhost_with_command`: a real launcher bug on dual-stack hosts. ssh reached the server over one address family, mosh-server bound that address, and our launcher resolved the name separately and sent the client to the other one. A side effect of PLAN 9.1 (`ssh -G` instead of mosh.pl's proxy). Assigned to agent C.
+- NEEDS THE USER (low priority). CI runs `cargo test`, not `tests/run-all.sh`, so the shell drivers (`tests/transport-impaired.sh` and later the interop matrix) never run in CI. Changing `.github/workflows/ci.yml` needs a push with `workflow` scope, which devbox does not have. The orchestrator will batch this with any other workflow change and hand it to the user as a ready branch.
+
 ## 2026-10-13 Fable review of terminal and transport, PLAN 9.6 widened
 
 - The line-by-line Fable review (`reviews/phase1-terminal.md`, `reviews/phase1-transport.md`) found 1 high and 6 low items. The five transport items were already fixed or covered by PLAN section 9 items 8 and 9; the orchestrator answered them in the files.
