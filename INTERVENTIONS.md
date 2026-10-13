@@ -3,6 +3,10 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 Phase 5 bench tooling started early
+
+- Decision: agent P builds `tools/bench` and the static musl release build now, during Phase 4, instead of after it. Reason: it touches only `tools/` and a release script, shares no files with the scrollback work, and one PLAN 5 measurement (memory after a 1-hour session) takes an hour per run, so having the tool ready shortens Phase 5. The numbers that go into the README are measured again after scrollback lands.
+
 ## 2026-10-13 PLAN 9.12: default TERM on Windows (agent F, coordinator request)
 
 - New deviation, PLAN section 7 and section 9 item 12: on Windows, `mosh.exe` and `mosh-client.exe` set `TERM=xterm-256color` when TERM is unset or empty at startup. Reason: Windows normally has no TERM, so upstream's `mosh-client -c` refuses ("TERM environment variable not set.", exit 1), the launcher stops with "Can't count colors", and `mosh.exe host` never connects from a stock Windows Terminal. Unix is unchanged.

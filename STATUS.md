@@ -419,3 +419,7 @@ Rerun by the orchestrator at 6589529:
 - Windows binaries rebuilt from 6589529 with new checksums in INTERVENTIONS.md.
 
 Answers to agent F: the extra "generated diff does not apply" warning stays (it is what replaces upstream's abort under PLAN 9.8); the one direct stderr write in the terminal crate stays (the terminal crate must not depend on the platform crate).
+
+## 2026-10-13 Spawn: agent P, performance bench and static release build
+
+Agent P (Opus, medium effort, own worktree) builds `tools/bench` (every PLAN section 5 target, measured side by side with C++ mosh 1.4.0) and the static musl Linux build. Started during Phase 4 because it shares no files with scrollback and the 1-hour memory run is slow; see INTERVENTIONS.md.
