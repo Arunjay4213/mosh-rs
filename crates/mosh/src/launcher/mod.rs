@@ -29,14 +29,16 @@
 // also delete it here.
 //
 // Ported from: upstream/scripts/mosh.pl
-//
-// Like mosh.pl, the launcher runs ssh with itself as the ProxyCommand
-// (`mosh --fake-proxy -- %h %p`). The proxy resolves the host ssh would have
-// connected to, opens the TCP connection to the first address that accepts
-// it, reports that address as `MOSH IP` on stderr and relays the ssh session
-// over it. So mosh-server sees that address in SSH_CONNECTION, binds it, and
-// the client is started with the same address: both always agree, also on
-// hosts with IPv4 and IPv6 addresses.
+
+//! The `mosh` launcher, ported from upstream `scripts/mosh.pl`.
+//!
+//! Like mosh.pl, the launcher runs ssh with itself as the ProxyCommand
+//! (`mosh --fake-proxy -- %h %p`). The proxy resolves the host ssh would have
+//! connected to, opens the TCP connection to the first address that accepts
+//! it, reports that address as `MOSH IP` on stderr and relays the ssh session
+//! over it. So mosh-server sees that address in SSH_CONNECTION, binds it, and
+//! the client is started with the same address: both always agree, also on
+//! hosts with IPv4 and IPv6 addresses.
 
 use std::ffi::OsString;
 use std::io::{Read, Write};
