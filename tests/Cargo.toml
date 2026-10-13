@@ -8,10 +8,10 @@ repository.workspace = true
 publish = false
 
 [dependencies]
-mosh-terminal = { path = "../crates/terminal" }
-mosh-network = { path = "../crates/network" }
-mosh-platform = { path = "../crates/platform" }
-mosh = { path = "../crates/mosh" }
+mosh-terminal.workspace = true
+mosh-network.workspace = true
+mosh-platform.workspace = true
+mosh.workspace = true
 rand.workspace = true
 libc.workspace = true
 

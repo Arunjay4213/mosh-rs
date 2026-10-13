@@ -16,8 +16,16 @@ edition = "2021"
 rust-version = "1.89"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/Arunjay4213/mosh-rs"
+homepage = "https://github.com/Arunjay4213/mosh-rs"
+readme = "README.md"
 
 [workspace.dependencies]
+# The publishable crates. crates.io needs a version on every path dependency;
+# keep it equal to workspace.package.version when bumping.
+mosh-terminal = { path = "crates/terminal", version = "0.1.1" }
+mosh-network = { path = "crates/network", version = "0.1.1" }
+mosh-platform = { path = "crates/platform", version = "0.1.1" }
+mosh = { package = "mosh", path = "crates/mosh", version = "0.1.1" }
 aes = "^0.9.3"
 ocb3 = "^0.2.0"
 rand = "^0.10.3"

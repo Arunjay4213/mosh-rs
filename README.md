@@ -85,7 +85,8 @@ Download `mosh-rs-v0.1.0-aarch64-apple-darwin.tar.gz` and install it the same wa
 The v0.1.0 macOS `mosh` launcher cannot connect: it finds no address for any host, so it stops with "Could not connect to HOST, last tried :" and "Did not find remote IP address".
 The cause was reading the address family at the Linux position of a C socket address; macOS puts a length byte first.
 It is fixed on main, and the fix was used for a real session from an Apple silicon Mac (macOS 15.8) to a Linux server over the network, typing a command and quitting with `[mosh is exiting.]` ([STATUS.md](STATUS.md)).
-Until the macOS release asset is rebuilt, build from source on the Mac (`cargo build --release -p mosh`); v0.1.1 carries the fix once it is tagged. The v0.1.0 `mosh-server` was verified on macOS separately: a Linux client ran a full session against it ([INTERVENTIONS.md](INTERVENTIONS.md)).
+Until the macOS release asset is rebuilt, build from source on the Mac (`cargo build --release -p mosh`); v0.1.1 carries the fix once it is tagged.
+The v0.1.0 `mosh-server` was verified on macOS separately: a Linux client ran a full session against it ([INTERVENTIONS.md](INTERVENTIONS.md)).
 
 ### Windows (x86_64)
 
@@ -97,6 +98,17 @@ The launcher uses the OpenSSH client that ships with Windows 10 and later.
 There is no Windows server; the remote host needs `mosh-server` from mosh-rs or mosh 1.4.
 The escape key is Ctrl-^, which you type as Ctrl+6 in Windows Terminal, so Ctrl+6 then `.` quits a session.
 See [Windows](#windows) for what has been tested.
+
+### From crates.io
+
+Install with Cargo, which builds from source and needs Rust 1.89 or later:
+
+```sh
+cargo install mosh
+```
+
+This installs `mosh`, `mosh-client`, and `mosh-server` into `~/.cargo/bin`.
+On Windows the installed `mosh-server.exe` only prints that the server is not supported there, as described under [Windows (x86_64)](#windows-x86_64).
 
 ### From source
 

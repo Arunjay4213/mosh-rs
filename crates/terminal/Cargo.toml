@@ -5,5 +5,11 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+description = "Terminal emulator and display diff engine of mosh-rs, a Rust port of mosh (the mobile shell)"
+keywords = ["mosh", "terminal", "emulator", "vt100", "ansi"]
+categories = ["command-line-interface", "parser-implementations"]
+include = ["src/**/*.rs", "LICENSE"]
 
 [dependencies]
