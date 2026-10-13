@@ -408,3 +408,14 @@ Agent S1 (Opus, medium effort, own worktree) implements the server half of PLAN 
 - Unix unchanged: `env -u TERM target/release/mosh-client -c` and `TERM= ... -c` print "TERM environment variable not set." and exit 1, the same as upstream's `mosh-client -c`. `client_e2e` 7, `launcher` 4, `terminfo_table` 2: all passed.
 - `cargo build --workspace --target x86_64-pc-windows-gnu` and the Windows clippy: clean.
 - Not run on Windows (devbox has no Windows or wine): the laptop check is in INTERVENTIONS.md.
+
+## 2026-10-13 Phase 2 cleanup (agent F) verified by the orchestrator
+
+Rerun by the orchestrator at 6589529:
+- `tests/upstream-check.sh --client rust --server rust`: upstream's own `make check` with both of our binaries, 32 tests, 30 PASS, 2 XFAIL, 0 FAIL, 0 ERROR, 0 XPASS. Upstream's round-trip comparison check is restored (PLAN 9.10 withdrawn); agent F showed it now fails the suite (25 ERROR) when the server sends a wrong screen update.
+- `cargo build --workspace --target x86_64-pc-windows-gnu` succeeds: unix-only test tools are gated.
+- On unix, `mosh-client -c` without TERM still prints upstream's "TERM environment variable not set." and exits 1. On Windows both binaries default TERM to xterm-256color (PLAN 9.12); only the laptop test can confirm that.
+- Output to a closed or failing stdout/stderr no longer panics (one shared helper in the platform crate).
+- Windows binaries rebuilt from 6589529 with new checksums in INTERVENTIONS.md.
+
+Answers to agent F: the extra "generated diff does not apply" warning stays (it is what replaces upstream's abort under PLAN 9.8); the one direct stderr write in the terminal crate stays (the terminal crate must not depend on the platform crate).
