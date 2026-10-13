@@ -41,3 +41,21 @@ Agent spawns and why (all Opus, medium effort):
 
 Decision for B: character widths come from a table generated from glibc's `wcwidth` on devbox, not from the `unicode-width` crate.
 Reason: upstream calls glibc `wcwidth`, and the client's emulator must agree with the server's emulator about every character width or the screen mirror drifts. Different Unicode tables would make the fuzz oracle fail on emoji and East Asian characters.
+
+## 2026-10-13 Phase 1: all four oracles pass, gate pending review and CI
+
+Every number below comes from the orchestrator rerunning the command, not from an agent's report.
+
+What passed:
+- A, network. 2000 random packets encrypt byte-identically in Rust and in upstream's C++ (`ref-crypto`), decrypt cross-ways, and both reject tampered packets; 14 malformed keys rejected by both. RFC 7253 vectors pass. Fragment, compressor and protobuf round trips pass, including a message with an unknown field. Two Rust endpoints synced a toy state over loopback in 10 s, and through `udp-impair` with 30% loss, 100-150 ms delay, 10% reordering and a client address change at 5 s: the server re-attached to the new address and the state converged in 10.5 s. Windows cross-build compiles.
+- B, terminal. 27 corpus files (17 extracted from upstream's own emulation tests, 10 recorded sessions) are cell-exact against upstream at 80x24 and 132x43 (54 dumps). 2268 `new_frame` redraws are byte-exact. Differential fuzzing: 1,000,000 cases (seed 1) and 200,000 (seed 2) by the agent, 200,000 (seed 11) by the orchestrator, all zero mismatches, and 300,000 random frame pairs zero mismatches. Planted bugs were caught and minimized (wrong 16-colour mapping -> `ESC[97m`, broken UTF-8 lead byte -> single byte `f8`).
+- C, platform and launcher. Raw mode on a real pty shows `-icanon -echo -isig`, a resize to 120x40 is detected through SIGWINCH, 1 MB written through the pty arrives complete, raw mode restores. The `mosh` launcher starts a session end to end over `ssh localhost` with real mosh 1.4.0 binaries, including the `user@host` form and an IP literal; a missing server exits 10 with upstream's message. `mosh.exe` cross-compiles for Windows.
+- H, tools. `udp-impair` drops (1012 of 2000 pass at 50%), delays (median RTT 450 ms at 200 ms + jitter each way), reorders (568 of 2000), rebinds (server sees a new source port), and blacks out (0 replies for 2 s, then resumes). Ten sessions recorded, 752 KB. Upstream's own `make check`: 32 tests, 30 PASS, 2 XFAIL (expected), 0 FAIL.
+- Code quality bar: `cargo fmt --all --check` and `cargo clippy --workspace --all-targets -- -D warnings` clean at commit d9c8289.
+
+What failed:
+- CI on d9c8289: the GitHub runner has no upstream C++ tree, so `ref-crypto` cannot build. Not a code failure. One agent is making CI build mosh 1.4.0 from source and install mosh, tmux and ssh on the runner so the same oracles run there.
+
+Gate not yet declared: waiting on the Fable line-by-line review of the terminal and transport ports (`reviews/phase1-*.md`) and on green CI, as CLAUDE.md requires.
+
+Next: B is porting statesync (Phase 2 first step). Then agents D (server) and E (client).
