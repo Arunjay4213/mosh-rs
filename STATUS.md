@@ -301,3 +301,12 @@ Rerun by the orchestrator at 058508b, not taken from the agent's report:
 - `mosh-client -c` matches upstream for every terminal type devbox knows (2832 cases); an unknown TERM prints xterm's 8 per PLAN 9.6.
 
 Not yet passed: the line-by-line review of the prediction overlay, which now runs from the laptop (NEEDS THE USER in INTERVENTIONS.md).
+
+## 2026-10-13 Setup under loss (agent M)
+
+`tests/interop-setup-loss.sh --run` (opt-in; `tests/run-all.sh` runs it only with `INTEROP_FULL=1`): 40 setups per pair through 30% loss, 200 ms delay, 50 ms jitter, 10% reordering from the first packet, 20 s budget each. Result, 73 s wall:
+- cxx client x cxx server: 40/40, median first frame 1867 ms, first contact 724 ms, 1 client packet before contact.
+- rust client x cxx server: 40/40, 1398 ms, 686 ms, 1 packet. Fisher p=1.000 against the baseline.
+- cxx client x rust server: 40/40, 1347 ms, 716 ms, 1 packet. Fisher p=1.000.
+- With no contact for 12 s: both clients sent 4 packets in each of 5 runs (one every 3 s, upstream ACK_INTERVAL; both give up at 15 s with a burst of shutdown packets).
+Harness bug found and fixed in `tests/interop.sh` too: teardown killed the client's tmux, the SIGHUPed mosh-client kept sending shutdown packets for seconds, and they reached the next cell's proxy on the same port, which then sent the server's replies to the dead client. Before the fix the same driver gave 1 rust-client failure in 40 and median packets before contact of 3, and blackhole counts swung between 5 and 21. The rust x rust loss30 vim failure reported above (proxy saw 1 server packet in 15.8 s) fits this bug but is not proven to be it. After the fix: `INTEROP_BLACKOUT_MS=10000 tests/interop.sh --client all --server all` 120/120, and the full cxx x cxx matrix with the 120 s blackout 30/30.
