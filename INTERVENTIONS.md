@@ -196,3 +196,8 @@ Steps 4 to 6 are blocked on this fix. Fresh Windows binaries are needed after it
 
 - New binaries (10:14 Central build) copied to the laptop, hashes match. Run non-interactively from PowerShell, `mosh.exe devbox` now gets through ssh, the ProxyCommand and `MOSH CONNECT`, and fails only at `tcgetattr: The handle is invalid` because there was no console. That is the expected failure for a non-interactive run; the quoting fix works. Interactive steps 3 to 6 are with the user.
 - Agent C's question, answered on the laptop with OpenSSH_for_Windows_9.5p2 and `mosh.exe` in `C:\Users\arunj\mosh rs test\`: a ProxyCommand with the path in double quotes and plain backslashes works (`"C:\Users\arunj\mosh rs test\mosh.exe" --family=prefer-inet --fake-proxy -- %h %p` printed `MOSH IP` and ran the command). Single quotes fail (file not found). A double-quoted forward-slash path and a backslash-escaped-spaces path both hung without connecting. So: double quotes, backslashes untouched, which is what the fix does.
+
+## 2026-10-13 Phase 3 Windows test, second pass (user, laptop): passed
+
+- With the 10:14 Central binaries, the user ran the checklist in Windows Terminal and reports that everything passed: connect, typing, `ls --color`, vim in and out, UTF-8 output, Ctrl-C interrupting `sleep`, resize with `tput cols; tput lines`, quit with Ctrl-^ `.` back to a normal prompt. Reported as a whole, not step by step; no error text was seen. Which server(s) were used is being confirmed.
+- Open from the checklist: Ctrl-^ Ctrl-Z behavior and idle CPU in Task Manager were not explicitly checked. Next user step: the lid-close test (PLAN section 3 item 8).
