@@ -3,6 +3,13 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 Devbox installs for the static release build (agent P)
+
+- `rustup target add aarch64-unknown-linux-musl x86_64-unknown-linux-musl`.
+- `sudo apt-get install -y musl-tools gcc-x86-64-linux-gnu qemu-user`.
+  musl-tools is the host musl toolchain; gcc-x86-64-linux-gnu only drives the x86_64 musl link (the Rust musl targets bring their own musl libc and crt objects), set as the linker in `.cargo/config.toml`; qemu-user runs the x86_64 binaries on this arm64 host.
+- x86_64 musl binaries link and are static-pie, but were only smoke-tested (`--version` under `qemu-x86_64`), not run through the interop matrix. The aarch64 musl binaries passed the clean interop profile.
+
 ## 2026-10-13 Scrollback: history is windowed and never blocks the remote program (decision, overridable)
 
 - Agent S1's live test found a gap in PLAN section 6: nothing limited how many history lines one update carries. A fast `seq 1 50000` filled the 10,000-line ring before the first send (39,977 lines lost), and a bigger ring produced one update of about 87 UDP packets that never arrived completely, because every resend is packed with a new fragment id (upstream behavior; upstream only works because screen updates are small). Through 30% loss nothing arrived.

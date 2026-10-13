@@ -1,2 +1,8 @@
 [target.x86_64-pc-windows-gnu]
 linker = "x86_64-w64-mingw32-gcc"
+
+# Static Linux release builds (scripts/build-release.sh). The Rust musl
+# targets ship musl's libc and crt objects themselves (self-contained
+# linking), so any gcc for the right architecture can drive the link.
+[target.x86_64-unknown-linux-musl]
+linker = "x86_64-linux-gnu-gcc"
