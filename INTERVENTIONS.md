@@ -3,6 +3,11 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 NEEDS THE USER: push branch ci/release-dry-run, then run the release workflow by hand
+
+- The release workflow only runs on a `v*` tag and uploads straight to a GitHub release, so the macOS arm64, Windows MSVC and cross-built aarch64 musl builds have never run. Branch `ci/release-dry-run` (2 commits on top of 026eadb, ending acebd95) adds a manual trigger (`workflow_dispatch`) that builds every target, smoke-tests the binaries the runner can execute (`mosh --version`, `mosh-client --version`, `mosh-client -c` must print 256, `mosh-server --version`, and the x86_64 musl binaries must not be dynamically linked), packages them, and uploads them as workflow artifacts. The upload to a release now happens only for tags, so a manual run publishes nothing.
+- Laptop: push it as `laptop/release-dry-run` through the PR gate; after it lands, start the "Release" workflow by hand on main (Actions tab, Run workflow) and record the per-target result here. This is the last check before the v0.1.0 tag, which waits for the user's publishing decision.
+
 ## 2026-10-13 Resolved: overlay review; Phase 1, 2 and 4 gates declared
 
 - The "NEEDS THE USER" request for a line-by-line review of the prediction overlay is resolved: the laptop's review `reviews/2026-10-13-phase2-4-client-server-scrollback.md` walked `terminaloverlay.rs` and `stmclient.rs` against upstream and found 0 deviations; its 13 other findings are fixed.
