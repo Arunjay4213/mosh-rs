@@ -92,3 +92,18 @@ Control actions are timed from the moment the test starts its session, and the d
 A first version timed them from script start; `cargo test` took about 7 s to start, so the rebind landed before any traffic and the server saw only one address.
 
 Checks that it can fail: with `MOSH_SYNC_SERVER_PORT` pointed at 60799 (proxy still targets 60701) all three runs time out at 60 s and the script exits 1; with the test executable replaced by `false` it exits 1 in 8 s, naming the unacknowledged control commands, instead of hanging.
+
+## 2026-10-13 Phase 1 review fixes: terminal (agent B)
+
+Review findings for the terminal crate are fixed or answered in `reviews/2026-10-13-phase1-terminal-network.md` (F1, F2, F4-F8, F18, F21, F22, F24-F26), plus T-1 from the local `reviews/phase1-terminal.md`.
+Main changes: framebuffer fields have upstream's visibility (F7), the TERM capability table is copied from infocmp (F25, T-1), and dispatch looks up its key without allocating (F18).
+
+New oracle coverage: `new_frame` across a resize (`frame-resize-batch` in ref-term and vt-check).
+
+Measured:
+- `cargo test --release -p mosh-tests --test terminal_conformance`: `corpus files=27 dumps compared=54 frames compared=3024 (resize frames 756) mismatches=0`.
+- `vt-fuzz --cases 200000 --jobs 8 --seed 31`: `cases=200000 mismatches=0`.
+- `vt-fuzz --cases 200000 --jobs 8 --seed 32 --frames` (half the batches resize between old and new): `cases=200000 mismatches=0`.
+- Planted-bug check: breaking the size-change branch of `new_frame` gave 1,997 mismatches in 4,000 `--frames` cases, so the resize frames reach that code.
+
+Found while testing: when the size changes, upstream `new_frame` forces `initialized = false` and never compares old cells. The contents of its row-extension code therefore cannot affect output; a planted bug there was correctly not reported.

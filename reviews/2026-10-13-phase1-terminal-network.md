@@ -223,19 +223,20 @@ What is missing or broken:
   Resolved by tests/transport-impaired.sh, commit 60ef500.
 - The `new_frame` oracle compares frames between prefixes of one input stream; it never compares a frame across a resize (different widths), which `Display::new_frame` handles in the row-extension code at `terminaldisplay.rs:270-285`.
   `resize.bin` only exercises that path if `vt-check` and `ref-term` apply the recorded resizes, which the `dump` mode (fixed W H) does not.
+  Resolved in c182b85: `frame-resize-batch` in both programs; terminal_conformance compares 756 resize frames (7 targets x 2 sizes x 2 initialized values x 27 files) and `vt-fuzz --frames` resizes in every other batch.
 
 ## Resolution log
 
 | Finding | Status | Commit | Note |
 |---------|--------|--------|------|
-| F1 | | | |
-| F2 | | | |
+| F1 | fixed | d9c8289 | 0xF8 lead restored (the planted mutation was in the 451b2ce snapshot); model matches glibc on 12,779,136 reachable buffers; 1M-case fuzz seed 1: 0 mismatches |
+| F2 | fixed | d9c8289 | terminal: no crate-level allows; 64 item-level allows, each with a one-line reason above (`rg -n 'allow\(' crates/terminal/src | wc -l` = 64) |
 | F3 | | | |
-| F4 | | | |
-| F5 | | | |
-| F6 | | | |
-| F7 | | | |
-| F8 | | | |
+| F4 | fixed | d9c8289 | terminal: `cargo fmt --all --check` clean |
+| F5 | fixed | d9c8289 | terminal: `cargo clippy --workspace --all-targets -- -D warnings` clean |
+| F6 | fixed | d9c8289 | terminal: `#![deny(missing_docs)]`, `#![forbid(unsafe_code)]`, `//!` doc on every module |
+| F7 | fixed | f01fc0d | private fields as upstream (Row::cells/gen, SavedCursor, Framebuffer::ds and DrawState mode flags stay public, as upstream); dump uses getters plus `debug_*` accessors |
+| F8 | fixed | d9c8289 | vt-fuzz builds; also `--frames` with resizes (c182b85) |
 | F9 | | | |
 | F10 | | | |
 | F11 | | | |
@@ -245,12 +246,12 @@ What is missing or broken:
 | F15 | | | |
 | F16 | | | |
 | F17 | | | |
-| F18 | | | |
+| F18 | fixed | eda88ae | map key borrowed from dispatch_chars or a 1-byte stack array; vt-fuzz 100,000 cases seed 21: 0 mismatches |
 | F19 | | | |
 | F20 | | | |
-| F21 | | | |
-| F22 | | | |
+| F21 | fixed | f01fc0d | `unreachable!` with the reason |
+| F22 | answered | f01fc0d | Rc kept to match shared_ptr copy-on-write in a single-threaded program; doc note on Framebuffer |
 | F23 | | | |
-| F24 | | | |
-| F25 | | | |
-| F26 | | | |
+| F24 | fixed | f01fc0d | terminal: `append_string` merged into `append`, uncalled `name()` removed |
+| F25 | fixed | eda88ae, f01fc0d | TERM table rows copied from `infocmp -1 <name>` (ncurses 6.4), 30 entries plus screen/tmux/rxvt family fallback |
+| F26 | fixed | f01fc0d | terminal: index casts go through a commented `idx()`; true-color and cmd_num casts commented |
