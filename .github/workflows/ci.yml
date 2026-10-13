@@ -26,7 +26,7 @@ env:
 jobs:
   fmt:
     name: rustfmt
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ARM64]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -42,7 +42,7 @@ jobs:
 
   clippy:
     name: clippy
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, ARM64]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -63,11 +63,14 @@ jobs:
   # shards that run in parallel; the conformance shard fails if a tests/tests/*.rs file is in no shard.
   test:
     name: test (${{ matrix.shard }}, ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    # The arm rows run on the self-hosted devbox runner (no Actions minutes); the job name keeps
+    # the ubuntu-24.04-arm label because branch protection requires these exact check names.
+    # The hosted x86 rows cost minutes, so they run only after a merge, on main.
+    runs-on: ${{ matrix.os == 'ubuntu-24.04-arm' && fromJSON('["self-hosted","linux","ARM64"]') || matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, ubuntu-24.04-arm]
+        os: ${{ github.ref == 'refs/heads/main' && fromJSON('["ubuntu-24.04","ubuntu-24.04-arm"]') || fromJSON('["ubuntu-24.04-arm"]') }}
         shard: [conformance, client, server, scrollback-sh]
     steps:
       - uses: actions/checkout@v4
