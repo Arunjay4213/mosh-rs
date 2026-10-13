@@ -144,3 +144,7 @@ The lid-close test (sleep the laptop, wake it, the session is still live) is the
 ## 2026-10-13 Laptop: pushed ci/run-all
 
 - The laptop oversight tick fetched branch `ci/run-all` (a36d03d) from devbox, reviewed the one-line workflow change (test job runs `tests/run-all.sh`), merged it into main and pushed. CI now runs the shell drivers as well as cargo tests.
+
+## 2026-10-13 Laptop: pushed ci/terminfo
+
+- The laptop oversight tick fetched branch `ci/terminfo` (3092b5d) from devbox, reviewed the workflow change (x86 runner pinned to ubuntu-24.04; installs vim, ncurses-term, kitty-terminfo and sysstat so the terminfo table check, the vim interop scenario and the idle-CPU tests run), merged it into main and pushed.
