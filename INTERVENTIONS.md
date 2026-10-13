@@ -3,6 +3,12 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 Resolved: overlay review; Phase 1, 2 and 4 gates declared
+
+- The "NEEDS THE USER" request for a line-by-line review of the prediction overlay is resolved: the laptop's review `reviews/2026-10-13-phase2-4-client-server-scrollback.md` walked `terminaloverlay.rs` and `stmclient.rs` against upstream and found 0 deviations; its 13 other findings are fixed.
+- First green CI on main at c64e97d. With every review item closed, the orchestrator declared the Phase 1 and Phase 2 gates passed (STATUS.md). Phase 3 waits for the lid-close test; Phase 4 is declared passed at green CI 157a55a, after agent S2 fixed the test race behind the intermittent vim/less failure on the runners.
+- The watchdog prompt still says "git push origin main"; CLAUDE.md now forbids that, and the orchestrator follows CLAUDE.md (branches `agent/<topic>`, merged by CI).
+
 ## 2026-10-13 CI: scrollback.sh altscreen failed on the runners (agent S2)
 
 - CI (PR #6, run 38432847587, shard scrollback-sh): `FAIL altscreen (122 s): screen differs from direct-vim.txt`. After vim exited, mosh's screen started at 2978 and ended with `$ $`, instead of `$ vim -u NONE -N` and `$`.

@@ -632,3 +632,32 @@ Portable code instead of a pinned toolchain: the two field-level `non_snake_case
 ## 2026-10-13 CI altscreen failure fixed in the test (agent S2)
 
 - `tests/scrollback.sh altscreen` typed the vim command before `seq 1 3000` had finished on slow links, because the first prompt already satisfied its wait. It now waits for the line 3000 and then the prompt. Reproduced through udp-impair with 100 ms delay (4 of 4 failed before the fix, 5 of 5 passed after it). Details in INTERVENTIONS.md. All 10 variants pass on devbox.
+
+## 2026-10-13 Phase 1 gate: PASSED
+
+Green CI at c64e97d (run 38435551993, fmt, clippy and every test shard on x86_64 and arm64), which contains all Phase 1 work and every Phase 1 review fix. Every number below was rerun by the orchestrator (entries above give the full output):
+- Crypto: `cargo test --release -p mosh-tests --test crypto_conformance`: 2000 random packets byte-identical between Rust and upstream's C++ in both directions, tampered packets rejected by both, 14 malformed keys rejected by both, RFC 7253 vectors pass.
+- Transport: `transport_roundtrip` 5 passed (including every malformed fragment and diff a keyed peer can send: error, no crash); `tests/transport-impaired.sh`: sync converges with 30% loss and an address change (server re-attached to the new port), with 5% loss, and through a 3 s blackout.
+- Terminal: `terminal_conformance`: 27 corpus files cell-exact at two sizes, 3024 screen redraws byte-exact including 756 across a resize, 0 mismatches. Differential fuzzing: 1,000,000 cases (seed 1), 200,000 (seeds 2, 11, 31, 77), 200,000 `--frames` cases: 0 mismatches. `terminfo_table`: 2830 terminal names, 0 mismatches; color counts for 2832 cases match upstream.
+- Platform and launcher: `platform_tty` 1 passed, `launcher` 7 passed (73 option and message cases identical to the real mosh.pl, dual-stack names, canonical-name resolution); Windows cross-build of the shipped crates.
+- Tools: `udp_impair` 6 passed; upstream's own `make check` with upstream's binaries 30 PASS, 2 XFAIL.
+- Reviews: every item in `reviews/2026-10-13-phase1-terminal-network.md`, `reviews/phase1-terminal.md`, `reviews/phase1-transport.md` fixed or answered with its commit.
+
+## 2026-10-13 Phase 2 gate: PASSED
+
+Same green CI run at c64e97d. Rerun by the orchestrator:
+- `INTEROP_FULL=1 tests/interop.sh --client all --server all`: 120 of 120 cells (C++ and Rust clients x C++ and Rust servers x clean, 5% loss, 30% loss with 200 ms delay and reordering, 2-minute blackout, client address change x six screen scenarios), 401 s.
+- `tests/upstream-check.sh` (upstream's own `make check`, 32 tests) with our server, our client, and both: 30 PASS, 2 XFAIL, 0 FAIL, 0 ERROR each; the restored round-trip check makes it fail (25 ERROR) on a deliberately wrong server diff.
+- `tests/interop-setup-loss.sh --run`: session setup with 30% loss from the first packet, 40/40 for each Rust pair (C++ pair 39/40); both clients send 4 packets in 12 s with no server.
+- `statesync_roundtrip`: 27 files, 2214 steps, 0 mismatches; 7 malformed diffs rejected without a crash.
+- `client_e2e` 7 passed, `server_e2e` 4 passed, `prediction_e2e` 3 passed: typed characters appear in 2 ms at 300 ms round trip with prediction (C++ 2 ms), about 313 ms without; wrong predictions removed after 373 ms (C++ 368 ms). `detached_warning`: identical text from the C++, glibc and musl servers.
+- Idle CPU 0.00% for our client and server.
+- Reviews: the line-by-line review of the client, prediction overlay, statesync and server (`reviews/2026-10-13-phase2-4-client-server-scrollback.md`, run from the laptop) found 0 deviations from upstream in those files; all 13 findings fixed (G1 to G13, resolution log filled).
+
+## 2026-10-13 Phase 4 gate: PASSED
+
+Green CI at 157a55a (PR #12; fmt, clippy and every test shard on x86_64 and arm64), which contains all scrollback work and the fixes for every review finding. Rerun by the orchestrator (entries above give the full output):
+- Oracle 6, `tests/scrollback.sh` (tmux with a 200,000-line history, `mosh --scrollback`), all 10 variants: `seq 1 50000` exact on a clean link and through 30% loss; vim, `clear`, and vim plus less each leave history exact with nothing from the full-screen programs, and the host shows the pre-vim screen after vim exits; width resize exact; old C++ server falls back with a notice; backlog overflow shows the dropped-lines line in place. Height shrink and grow keep their documented limit (PLAN 6.4). The altscreen variant passed 3 of 3 on main after the test race fix (agent S2 reproduced the CI failure 4 of 4 with a 100 ms link delay: the test typed `vim` before `seq` output had arrived).
+- Old peers untouched: corpus replay with scrollback off byte-identical to before scrollback (`digests_differing=0`, `capture_on_frame_mismatches=0`).
+- Full interop matrix with 2-minute blackouts still green: 120 of 120 (default clients), 60 of 60 (Rust client in scrollback mode against both servers).
+- Hostile server (`scrollback_hostile`): a history line of 1,000,000 line feeds is rejected with the client at 6.2 MB peak and alive (before the fix: over 2.1 GB); a line numbered u64::MAX is rejected at 3.1 MB.

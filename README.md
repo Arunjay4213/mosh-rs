@@ -47,17 +47,17 @@ A box is checked only when its gate has passed and the result is recorded in [ST
 
 ### Phase 1: foundations
 
-- [ ] `crates/network`: AES-128-OCB3 crypto, protobuf messages, and SSP transport, differential-tested against upstream
-- [ ] `crates/terminal`: emulator and `Display::new_frame`, cell-exact against upstream on fuzz and corpus inputs
-- [ ] `crates/platform` and the `mosh` launcher: raw mode, resize, pty, `--fake-proxy` address discovery as in mosh.pl
-- [ ] `tools/`: `udp-impair` network impairment proxy, session corpus recorder
+- [x] `crates/network`: AES-128-OCB3 crypto, protobuf messages, and SSP transport, differential-tested against upstream
+- [x] `crates/terminal`: emulator and `Display::new_frame`, cell-exact against upstream on fuzz and corpus inputs
+- [x] `crates/platform` and the `mosh` launcher: raw mode, resize, pty, `--fake-proxy` address discovery as in mosh.pl
+- [x] `tools/`: `udp-impair` network impairment proxy, session corpus recorder
 
 ### Phase 2: state sync, server, client
 
-- [ ] State objects (`UserStream`, `Complete`) round-trip against upstream
-- [ ] `mosh-server`: upstream `mosh-client` connects and survives loss and roaming
-- [ ] `mosh-client`: connects to upstream `mosh-server`, with the prediction overlay
-- [ ] Full interop matrix and upstream `make check` pass with mosh-rs binaries
+- [x] State objects (`UserStream`, `Complete`) round-trip against upstream
+- [x] `mosh-server`: upstream `mosh-client` connects and survives loss and roaming
+- [x] `mosh-client`: connects to upstream `mosh-server`, with the prediction overlay
+- [x] Full interop matrix and upstream `make check` pass with mosh-rs binaries
 
 ### Phase 3: Windows
 
@@ -65,8 +65,8 @@ A box is checked only when its gate has passed and the result is recorded in [ST
 
 ### Phase 4: scrollback
 
-- [ ] Server-side capture and the `ScrolledLines` wire extension
-- [ ] Client-side injection into the local terminal's history, with old peers unaffected
+- [x] Server-side capture and the `ScrolledLines` wire extension
+- [x] Client-side injection into the local terminal's history, with old peers unaffected
 
 ### Phase 5: performance and release
 
