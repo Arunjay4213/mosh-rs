@@ -18,6 +18,10 @@ Newest entry first.
 - Cause: the test sent packet 100 and started the blackout immediately after, then counted replies by arrival time, so the echo of a packet sent before the blackout could land inside the window. The proxy was right; the test was wrong.
 - Fix (test only): send for 1 s, stop, drain until no reply for 200 ms, then start the blackout and judge packets by send time. Packets sent after the `ok` reply and at least 300 ms before the earliest possible end must get no reply; packets sent after the latest possible end must all come back (at least 90%).
 - Proof it can still fail: with `in_blackout` patched to return false, 155 of 155 packets sent inside the blackout were answered and the test failed. Proof it is stable: 30 of 30 runs passed under `stress-ng --cpu 8` (load average 7.8 on 8 cores).
+## 2026-10-13 Orchestrator waiting on laptop branches (not a user decision)
+
+- The user's Phase 3 decision (laptop/phase3-gate) and the docs audit (laptop/docs-audit, PR #16, CI green) are not on main yet. The orchestrator's next commit touches the same files (README Windows section and status box, PLAN section 2 dependency list, Cargo.toml), so it waits for them to land to avoid conflicts: Phase 3 "gate: PASSED" entry citing the user's decision, README box and Windows notes (sleep/wake covered by the network-loss roaming test, escape key Ctrl+6 in Windows Terminal), removal of the unused `unicode-width` and `lexopt` declarations with PLAN section 2 updated, the GitHub `repository` URL, and one-line corrections next to the two entries that say CI built mosh 1.4.0.
+- The Fable review of `crates/platform` from the laptop is awaited; its findings are handled when it lands in `reviews/`.
 
 ## 2026-10-13 NEEDS THE USER: push branch ci/release-dry-run, then run the release workflow by hand
 
