@@ -3,6 +3,15 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 CI: client_e2e command_output_and_exit "non-zero exit" (agent S2)
+
+- CI (565684a, shard client, arm): `[rust] non-zero exit` at tests/tests/client_e2e.rs:238. The screen in the failure shows the session's output and `[mosh is exiting.]`, but no `MOSH_EXIT=<n>` line at all. A non-zero exit would have printed `MOSH_EXIT=1`; this screen shows no status line was printed yet.
+- Cause, in the tests: they waited with `wait_for("MOSH_EXIT=")`, which also matches the typed command line (`...; echo MOSH_EXIT=$?`). That line comes back on screen as soon as the client leaves the alternate screen, before the client has exited and the shell has printed the status. On a slow runner the capture fell into that gap and the assertion saw no `MOSH_EXIT=0`. The same wait was in client_e2e (6 places), server_e2e (2) and launcher (3), for both clients.
+- Reproduction on devbox: the gap never showed (0 of 50 runs of our client and 0 of 50 of /usr/bin/mosh-client, unloaded and on 1-2 cores under `stress-ng`, polling the pane as fast as tmux allows). Every exit status was 0 for our client. One C++ run printed 10, a launcher startup failure on a reused port, not a client exit. So the client's status was never wrong; only the test's timing was.
+- Fix: a `wait_exit` helper in the three files waits for a whole `MOSH_EXIT=<digits>` line, and the exit assertions now print the screen. No product change: our client's exit path matches stmclient.cc and mosh-client.cc (`clean_shutdown` is set when our shutdown is acknowledged or when we acknowledged the server's, and the exit status is `!success`).
+- `command_output_and_exit` on 2 cores under `stress-ng --cpu 8`: 15 of 15 pass; client_e2e, server_e2e and launcher all pass.
+- Also seen: `~/.cargo/bin/rustup` (the proxy behind `cargo`) disappeared from devbox at 18:47 UTC while the toolchains stayed in ~/.rustup; tests that build with `cargo` failed until I ran the stable toolchain's cargo directly. Not changed by me.
+
 ## 2026-10-13 CI: udp_impair blackout test raced its own last packet (agent H)
 
 - Failure on the x86 runner, intermittent: `blackout_silences_then_resumes` "replies arrived during blackout left: 1 right: 0".

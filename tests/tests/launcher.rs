@@ -130,6 +130,29 @@ impl Tmux {
             std::thread::sleep(Duration::from_millis(50));
         }
     }
+
+    /// Wait for the shell's `MOSH_EXIT=<status>` line. The typed command
+    /// line (`...; echo MOSH_EXIT=$?`) holds `MOSH_EXIT=` too, and is back
+    /// on screen as soon as the client leaves the alternate screen, before
+    /// the client has exited and the shell has printed the status; waiting
+    /// for the text alone could capture that moment (CI, 565684a).
+    fn wait_exit(&self, timeout: Duration) -> String {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let screen = self.capture();
+            if screen.lines().any(|l| {
+                l.strip_prefix("MOSH_EXIT=")
+                    .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+            }) {
+                return screen;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for a MOSH_EXIT=<status> line; screen:\n{screen}"
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
 }
 
 impl Drop for Tmux {
@@ -163,7 +186,7 @@ fn launches_session_on_localhost_with_command() {
     );
     let live = tmux.wait_for("LAUNCH_OK", Duration::from_secs(30));
     println!("live session screen:\n{}", live.trim_end());
-    let done = tmux.wait_for("MOSH_EXIT=", Duration::from_secs(30));
+    let done = tmux.wait_exit(Duration::from_secs(30));
     println!("final screen:\n{}", done.trim_end());
     assert!(
         done.contains("[mosh is exiting.]"),
@@ -185,7 +208,7 @@ fn launches_session_with_user_at_ip_literal() {
             "--client=/usr/bin/mosh-client --server=/usr/bin/mosh-server {user}@127.0.0.1 -- true"
         )),
     );
-    let done = tmux.wait_for("MOSH_EXIT=", Duration::from_secs(30));
+    let done = tmux.wait_exit(Duration::from_secs(30));
     println!("final screen:\n{}", done.trim_end());
     assert!(
         done.contains("[mosh is exiting.]"),
@@ -249,7 +272,7 @@ fn launches_session_on_dual_stack_name() {
             )),
         );
         tmux.wait_for("LAUNCH_OK", Duration::from_secs(30));
-        let done = tmux.wait_for("MOSH_EXIT=", Duration::from_secs(30));
+        let done = tmux.wait_exit(Duration::from_secs(30));
         println!(
             "mosh {family} mosh-dualstack, final screen:\n{}",
             done.trim_end()
