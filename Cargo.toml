@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 # Minimum supported Rust, verified: 1.88 is refused by the aes crate (0.9.3 needs 1.89).
 rust-version = "1.89"
