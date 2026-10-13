@@ -5,7 +5,7 @@ Both print one PASS or FAIL line per case and exit non-zero on any failure.
 
 ## tests/interop.sh
 
-```
+```text
 tests/interop.sh [--client cxx|rust|all|PATH] [--server cxx|rust|all|PATH]
                  [--profile clean|loss5|loss30|blackout|rebind|all]
                  [--scenario seq|colors|vim|wide|resize|typing|all]
@@ -57,7 +57,7 @@ These differ between mosh and a direct run for every mosh pair, so they cannot b
 
 ## tests/upstream-check.sh
 
-```
+```text
 tests/upstream-check.sh [--client cxx|rust|PATH] [--server cxx|rust|PATH]
 ```
 
@@ -74,10 +74,10 @@ The script prints the automake summary and passes only when FAIL, ERROR and XPAS
 With upstream's binaries the result is 30 PASS, 2 XFAIL (`e2e-failure.test`, which is meant to fail, and `emulation-attributes-256color8.test`).
 The full log is `target/upstream-check/make-check.log`, and per-test logs are in `target/upstream-check/mosh/src/tests/`.
 
-## Gate commands
+## Commands that check each part
 
-- Server (agent D): `tests/interop.sh --client cxx --server rust` and `tests/upstream-check.sh --client cxx --server rust`.
-- Client (agent E): `tests/interop.sh --client rust --server cxx` and `tests/upstream-check.sh --client rust --server cxx`.
+- Server: `tests/interop.sh --client cxx --server rust` and `tests/upstream-check.sh --client cxx --server rust`.
+- Client: `tests/interop.sh --client rust --server cxx` and `tests/upstream-check.sh --client rust --server cxx`.
 - Full matrix: `INTEROP_FULL=1 tests/interop.sh --client all --server all`, plus `tests/upstream-check.sh --client rust --server rust`.
 
 For a quicker loop while developing, add `--profile clean` or `--scenario NAME`, or set `INTEROP_BLACKOUT_MS=10000`.

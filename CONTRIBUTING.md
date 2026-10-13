@@ -10,7 +10,7 @@ You need:
 
 - Rust 1.89 or later (`rustup toolchain install stable`). 1.89 is the minimum (`rust-version` in `Cargo.toml`), set by the `aes` crate.
 - Linux.
-  The tests are run on Ubuntu 24.04 (devbox and CI, x86_64 and arm64); macOS has not been tried.
+  The tests are run on Ubuntu 24.04 (x86_64 and arm64, locally and in CI); running them on macOS has not been tried.
   The server and the test drivers are Unix-only; the Windows client is cross-compiled (see [Building for Windows](docs/ARCHITECTURE.md#building-for-windows)).
 - `tmux` 3.2 or later.
   The end-to-end tests use tmux as the host terminal and compare `tmux capture-pane` output.
@@ -19,7 +19,14 @@ You need:
 - `ncurses-term` and `kitty-terminfo` at the versions recorded in `crates/terminal/src/terminfo.rs`: `terminfo_table` refuses to run against a different terminfo database.
 - A built upstream mosh tree, symlinked as `upstream/` at the repository root, for the reference oracles in `ref/` and for running upstream's own `make check`.
 
-Build the upstream tree once:
+First get the code:
+
+```sh
+git clone https://github.com/Arunjay4213/mosh-rs
+cd mosh-rs
+```
+
+Then install the packages and build the upstream tree once:
 
 ```sh
 sudo apt install mosh tmux vim less sysstat ncurses-term kitty-terminfo openssh-server \
@@ -29,8 +36,8 @@ scripts/build-upstream.sh
 ```
 
 This is the package list CI installs.
-The script fetches mosh at the reference commit decd9b7 into `~/src/mosh` (or the directory given as its argument), builds it with the configure line devbox uses (`./configure --enable-examples=no`), and links it as `upstream`.
-Do not install `libutempter-dev` first: configure would then build upstream with utempter, which the devbox build does not have.
+The script fetches mosh at the reference commit decd9b7 into `~/src/mosh` (or the directory given as its argument), builds it with `./configure --enable-examples=no` (the configuration the oracles and CI use), and links it as `upstream`.
+Do not install `libutempter-dev` first: configure would then build upstream with utempter, which the reference build does not have.
 
 That configure uses OpenSSL's AES with mosh's internal OCB implementation, which is what the `ref-crypto` oracle links against.
 
@@ -54,7 +61,7 @@ cargo +1.89.0 clippy --workspace --all-targets -- -D warnings   # the minimum su
 
 ## Porting rules
 
-These come from [CLAUDE.md](CLAUDE.md) and [PLAN.md](PLAN.md) sections 0, 4, and 11.
+These come from [PLAN.md](PLAN.md) sections 0, 4, and 11.
 They are what keeps a port reviewable against its source.
 
 1. **Port file by file.** Read the upstream file before porting it. Keep its names, its constants, and its order of operations, so a reviewer can read the two side by side.
@@ -78,8 +85,20 @@ They live in `tests/` as cargo integration tests or shell drivers, and `tests/ru
 ## How changes land
 
 main is protected: nothing is pushed to it directly, and it only moves to a commit whose CI is green.
-CI runs on every push to a branch of this repository (`.github/workflows/ci.yml`: rustfmt, clippy, and four test shards on x86_64 and arm64), not on `pull_request` events, so a pull request from a fork shows no CI until a maintainer pushes its commits to a branch here.
-Maintainers and the project's agents push to `agent/<topic>` or `laptop/<topic>` branches: the push opens a pull request by itself, and when CI is green main is fast-forwarded to the tested commit and the pull request shows as merged ([CLAUDE.md](CLAUDE.md), "CI feedback").
+CI (`.github/workflows/ci.yml`: rustfmt, clippy, and four test shards on x86_64 and arm64) runs on every push to a branch of this repository, not on `pull_request` events.
+
+To contribute from a fork:
+
+1. Fork the repository on GitHub and clone your fork.
+2. Create a branch, make your change, and run the checks above.
+3. Push the branch to your fork and open a pull request against `main`.
+4. Your pull request shows no CI at first, because CI does not run on pull requests.
+   A maintainer reviews it and pushes its commits to a branch in this repository, which runs CI.
+5. When CI is green, main is fast-forwarded to the tested commit, and your pull request shows as merged because its commits are now on main.
+
+Maintainers push branches named `agent/<topic>` or `laptop/<topic>` to this repository directly.
+Such a push opens a pull request by itself (`.github/workflows/pr-open.yml`), and when CI is green `.github/workflows/auto-merge.yml` fast-forwards main to the tested commit.
+If main moved while CI ran, the pull request gets the comment "Rebase onto main and push again".
 
 ## Commit messages
 

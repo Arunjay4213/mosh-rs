@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-13
+
 ### Added
 
 - Cargo workspace with the `terminal`, `network`, `platform`, and `mosh` crates, the release profile, and the Windows cross-compile target.
@@ -17,4 +19,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Static musl Linux build (`scripts/build-release.sh`) and a release workflow for Linux x86_64 and arm64, macOS arm64 and Windows x86_64.
 - Test suite: reference oracles in `ref/`, differential fuzzing (`vt-fuzz`), the interop matrix, upstream's `make check` with mosh-rs binaries, the scrollback oracle, and `tools/bench`.
 
-[Unreleased]: https://github.com/Arunjay4213/mosh-rs/commits/main
+[Unreleased]: https://github.com/Arunjay4213/mosh-rs/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.0

@@ -2,24 +2,23 @@
 
 ## Supported versions
 
-mosh-rs has not made a release yet, so no version receives security fixes.
-This table will list supported versions from v0.1.0 on.
+mosh-rs is pre-alpha, and v0.1.0 is its first pre-release.
 
 | Version | Supported |
 | --- | --- |
-| none released | not applicable |
+| 0.1.x | yes |
 
 ## Reporting a vulnerability
 
 Please do not open a public issue, discussion, or pull request for a security problem.
 
-Report it privately through GitHub private vulnerability reporting.
-The repository is still private, and GitHub offers this form only on public repositories, so it is not available yet; it is to be turned on when the repository goes public.
-The steps will then be:
+Report it privately through GitHub private vulnerability reporting, which is enabled for this repository:
 
 1. Go to the repository's [Security tab](https://github.com/Arunjay4213/mosh-rs/security).
-2. Click **Report a vulnerability**.
+2. Click **Report a vulnerability**, or open the [report form](https://github.com/Arunjay4213/mosh-rs/security/advisories/new) directly.
 3. Describe the issue, the affected version or commit, and steps to reproduce.
+
+Only you and the maintainers can see the report.
 
 We aim to acknowledge every report within 72 hours, and to agree on a fix and disclosure date with you after that.
 You will be credited in the release notes unless you ask not to be.
