@@ -359,11 +359,21 @@ fn keystroke_shows_at_once_with_prediction() {
     }
 }
 
-/// The server stops echoing: a shell loop echoes typed characters until
-/// `q`, which it swallows. The prediction of `q` shows, then goes away
-/// when the server's frame arrives without it.
+/// The server does not echo `q`: a shell loop echoes every typed character
+/// except `q`. The prediction of `q` shows, then goes away when the
+/// server's frame arrives without it.
+///
+/// A prediction is only shown in a confirmed epoch, and a prediction whose
+/// echo is not on the server's screen 50 ms after the keystroke reached it
+/// (upstream's `ECHO_TIMEOUT`) counts as wrong and makes the epoch
+/// tentative again. On a loaded machine the shell loop's echo can take
+/// longer than that, so the `q` typed after it may legitimately not be
+/// shown. Then the attempt is repeated (two more echoed keys, which
+/// confirm a new epoch, then `q` again), up to 10 times; `q` never comes
+/// from the server, so any `q` on screen is the prediction.
 #[test]
 fn wrong_prediction_is_removed() {
+    const KEYS: &str = "abcdefghijklmnoprstuvwxyz";
     for (i, (name, client)) in clients().into_iter().enumerate() {
         let s = Session::start(
             &format!("wrong-{name}"),
@@ -374,34 +384,52 @@ fn wrong_prediction_is_removed() {
         );
         s.tmux.wait_line("R$", Duration::from_secs(30));
         s.tmux.type_line(
-            "clear; stty -icanon -echo; while read -rsn1 c && [ \"$c\" != q ]; do printf %s \"$c\"; done; sleep 30",
+            "clear; stty -icanon -echo; while read -rsn1 c; do [ \"$c\" = q ] || printf %s \"$c\"; done",
         );
-        s.tmux.wait_until("clear", Duration::from_secs(10), |sc| {
+        s.tmux.wait_until("clear", Duration::from_secs(30), |sc| {
             sc.lines().all(|l| l.is_empty())
         });
-        s.tmux.keys("a");
-        s.tmux.wait_line("a", Duration::from_secs(10));
-        s.tmux.keys("b");
-        s.tmux.wait_line("ab", Duration::from_secs(10));
-        std::thread::sleep(Duration::from_millis(1000));
+        let mut text = String::new();
+        let mut keys = KEYS.chars().cycle();
+        let mut attempt = 0;
+        let (shown, removed, screen) = loop {
+            attempt += 1;
+            assert!(
+                attempt <= 10,
+                "[{name}] the prediction of q never showed in 10 attempts; screen:\n{}",
+                s.tmux.capture()
+            );
+            for _ in 0..2 {
+                let c = keys.next().unwrap();
+                s.tmux.keys(&c.to_string());
+                text.push(c);
+                s.tmux.wait_line(&text, Duration::from_secs(30));
+            }
+            // Let the server's echo of the last key arrive and be judged.
+            std::thread::sleep(Duration::from_millis(1000));
 
-        let typed = Instant::now();
-        s.tmux.keys("q");
-        let (_, shown) = s
-            .tmux
-            .poll(Duration::from_millis(5), Duration::from_secs(5), |sc| {
-                sc.lines().any(|l| l == "abq")
-            })
-            .expect("the prediction of q never showed");
-        let (screen, _) = s
-            .tmux
-            .poll(Duration::from_millis(5), Duration::from_secs(10), |sc| {
-                sc.lines().any(|l| l == "ab")
-            })
-            .expect("the wrong prediction was never removed");
-        let removed = typed.elapsed();
+            let typed = Instant::now();
+            s.tmux.keys("q");
+            let with_q = format!("{text}q");
+            let Some((_, shown)) =
+                s.tmux
+                    .poll(Duration::from_millis(5), Duration::from_secs(2), |sc| {
+                        sc.lines().any(|l| l == with_q)
+                    })
+            else {
+                println!("[{name}] attempt {attempt}: q was not predicted (epoch not confirmed)");
+                continue;
+            };
+            let (screen, _) = s
+                .tmux
+                .poll(Duration::from_millis(5), Duration::from_secs(30), |sc| {
+                    sc.lines().any(|l| l == text)
+                })
+                .expect("the wrong prediction was never removed");
+            break (shown, typed.elapsed(), screen);
+        };
         println!(
-            "[{name}] q predicted after {} ms, removed after {} ms",
+            "[{name}] attempt {attempt}: q predicted after {} ms, removed after {} ms",
             shown.as_millis(),
             removed.as_millis()
         );
@@ -411,7 +439,7 @@ fn wrong_prediction_is_removed() {
         let screen = s.tmux.capture();
         assert_eq!(
             screen.lines().find(|l| !l.is_empty()),
-            Some("ab"),
+            Some(text.as_str()),
             "[{name}] screen:\n{screen}"
         );
     }

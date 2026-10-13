@@ -82,8 +82,13 @@
 # Every variant also fails if mosh's notification bar text ("mosh:",
 # "[To quit", ...) is found in the host's history.
 #
-# Output: one PASS/FAIL line per variant with the checker's summary; exit 1
-# if any failed. On FAIL, target/scrollback/<variant>/ keeps the capture.
+# Output (stdout, so CI logs show it): one PASS/FAIL line per variant with
+# the checker's summary; on FAIL also the reason, the checker's first
+# unexpected lines, any screen diff, and the screen at the time; exit 1 if
+# any failed. On FAIL, target/scrollback/<variant>/ keeps the capture.
+# Waits are generous (a shared CI runner is several times slower than
+# devbox) and history waits are by progress: they give up only after the
+# captured history has stopped growing for a while.
 
 set -uo pipefail
 
@@ -101,11 +106,21 @@ for v in "${variants[@]}"; do
     [[ " ${ALL[*]} " == *" $v "* ]] || { echo "scrollback: unknown variant $v (one of: ${ALL[*]})" >&2; exit 2; }
 done
 
+echo "scrollback: variants: ${variants[*]}"
 missing=()
-for cmd in tmux vim ss ssh python3 flock cargo; do
+for cmd in tmux vim less ss ssh python3 flock cargo; do
     command -v $cmd > /dev/null || missing+=("$cmd")
 done
 ssh -o BatchMode=yes localhost true 2> /dev/null || missing+=("passwordless ssh to localhost")
+# The shrink and grow expectations are tmux's resize behavior, measured with
+# tmux 3.4; tmux before 3.2 resizes differently.
+if command -v tmux > /dev/null; then
+    tmux_version=$(tmux -V | grep -o '[0-9]*\.[0-9]*' | head -1)
+    echo "scrollback: $(tmux -V)"
+    if ! python3 -c 'import sys; sys.exit(0 if tuple(map(int, sys.argv[1].split("."))) >= (3, 2) else 1)' "${tmux_version:-0.0}" 2> /dev/null; then
+        missing+=("tmux 3.2 or later (found $(tmux -V))")
+    fi
+fi
 if [ ${#missing[@]} -ne 0 ]; then
     echo "FAIL scrollback: missing prerequisites: ${missing[*]}"
     exit 1
@@ -259,17 +274,27 @@ sys.exit(0 if ok else 1)
 PY
 }
 
-# wait_history SECONDS LAST MODE: poll the history until the check passes;
-# then (or at the deadline) keep the last capture in $cap.
+# wait_history STALL LAST MODE: poll the history until the check passes.
+# Gives up when the captured history has not grown for STALL seconds (or
+# after 30 minutes in all); keeps the last capture in $cap.
 wait_history() {
-    local end=$(($(now_ms) + $1 * 1000))
+    local start now grew lines last=-1
+    start=$(now_ms)
+    grew=$start
     while :; do
         history > "$cap"
         summary=$(check "$cap" "$2" "$3") && return 0
-        [ "$(now_ms)" -ge $end ] && break
+        now=$(now_ms)
+        lines=$(wc -l < "$cap")
+        if [ "$lines" -ne "$last" ]; then
+            last=$lines
+            grew=$now
+        fi
+        [ $((now - grew)) -ge $(($1 * 1000)) ] && break
+        [ $((now - start)) -ge 1800000 ] && break
         sleep 1
     done
-    why="history not right after $1 s: $summary"
+    why="history not right after $(((now - start) / 1000)) s (no growth for $(((now - grew) / 1000)) s, $lines lines)"
     return 1
 }
 
@@ -299,13 +324,13 @@ start_direct() {
 # The remote shell is sh, whose prompt is "$ ".
 v_clean() {
     start_launcher || return 1
-    wait_line 30 '$' || return 1
+    wait_line 120 '$' || return 1
     keys 'seq 1 50000; echo DONE-SEQ' Enter
-    wait_line 30 DONE-SEQ || return 1
+    wait_line 120 DONE-SEQ || return 1
     # The escape key's help bar on the top row while history is injected
     # there; then any key ends it (sh gets Ctrl-^ and a backspace).
     keys C-^
-    wait_text 5 'Commands: Ctrl-Z suspends' || return 1
+    wait_text 60 'Commands: Ctrl-Z suspends' || return 1
     sleep 3
     keys BSpace
     wait_history 60 50000 exact
@@ -313,71 +338,74 @@ v_clean() {
 
 v_loss30() {
     start_direct "" "--loss 0.30 --delay-ms 100" || return 1
-    wait_line 60 '$' || return 1
+    wait_line 180 '$' || return 1
     keys 'seq 1 50000; echo DONE-SEQ' Enter
-    wait_line 120 DONE-SEQ || return 1
-    wait_history 300 50000 exact
+    wait_line 600 DONE-SEQ || return 1
+    wait_history 120 50000 exact
 }
 
 v_vim() {
     start_launcher || return 1
-    wait_line 30 '$' || return 1
+    wait_line 120 '$' || return 1
     keys 'seq 1 3000; vim -u NONE -N; seq 3001 6000; echo DONE-SEQ' Enter
-    wait_text 30 '~' || return 1
+    wait_text 120 '~' || return 1
     keys i 'VIMTEXT one' Enter 'VIMTEXT two' Escape
-    wait_text 10 'VIMTEXT two' || return 1
+    wait_text 60 'VIMTEXT two' || return 1
     keys ':q!' Enter
-    wait_line 30 DONE-SEQ || return 1
+    wait_line 120 DONE-SEQ || return 1
     wait_history 60 6000 exact
 }
 
 v_clear() {
     start_launcher || return 1
-    wait_line 30 '$' || return 1
+    wait_line 120 '$' || return 1
     keys 'seq 1 100; clear; seq 101 3000; echo DONE-SEQ' Enter
-    wait_line 30 DONE-SEQ || return 1
+    wait_line 120 DONE-SEQ || return 1
     wait_history 60 3000 exact
 }
 
 v_resize() {
     start_launcher || return 1
-    wait_line 30 '$' || return 1
+    wait_line 120 '$' || return 1
     keys 'seq 1 3000' Enter
-    wait_line 30 3000 || return 1
+    wait_line 120 3000 || return 1
     tmux -S "$sock" resize-window -t sb -x 100 -y 24
     sleep 1
     tmux -S "$sock" resize-window -t sb -x 60 -y 24
     sleep 1
     keys 'seq 3001 6000; echo DONE-SEQ' Enter
-    wait_line 30 DONE-SEQ || return 1
+    wait_line 120 DONE-SEQ || return 1
     wait_history 60 6000 exact
 }
 
 v_shrink() {
     start_launcher || return 1
-    wait_line 30 '$' || return 1
+    wait_line 120 '$' || return 1
     keys 'seq 1 3000' Enter
-    wait_line 30 3000 || return 1
-    sleep 2
-    screen > "$dir/screen-before-shrink.txt"
+    wait_line 120 3000 || return 1
+    wait_last 120 '$' || return 1
+    wait_caught_up 60 2978 || return 1
     tmux -S "$sock" resize-window -t sb -x 80 -y 18
-    sleep 2
-    screen > "$dir/screen-after-shrink.txt"
+    # the server applied the resize: its screen ends at 2995, the cursor's row
+    wait_last 120 2995 || return 1
     keys 'seq 3001 6000; echo DONE-SEQ' Enter
-    wait_line 30 DONE-SEQ || return 1
+    wait_line 120 DONE-SEQ || return 1
     wait_history 60 6000 shrink
 }
 
 v_grow() {
     start_launcher || return 1
-    wait_line 30 '$' || return 1
+    wait_line 120 '$' || return 1
     keys 'seq 1 3000' Enter
-    wait_line 30 3000 || return 1
-    sleep 2
+    wait_line 120 3000 || return 1
+    wait_last 120 '$' || return 1
+    wait_caught_up 60 2978 || return 1
     tmux -S "$sock" resize-window -t sb -x 80 -y 30
-    sleep 2
+    # the repaint after the server applied the resize starts at 2978 (tmux
+    # first shows the history lines it pulled back)
+    wait_first 120 2978 || return 1
     keys 'seq 3001 6000; echo DONE-SEQ' Enter
-    wait_line 30 DONE-SEQ || return 1
+    wait_line 120 DONE-SEQ || return 1
     wait_history 60 6000 grow
 }
 
@@ -402,45 +430,84 @@ wait_screen() {
     why="screen differs from $(basename "$2"): $(diff "$2" "$2.got" | head -6 | tr '\n' '|')"
     return 1
 }
-# alt_on WANT: the host pane's alternate_on is WANT (only checked for mosh).
-alt_on() {
-    [ "$mode" = direct ] && return 0
-    local a
-    a=$(tmux -S "$sock" display -p -t sb '#{alternate_on}')
-    [ "$a" = "$1" ] || { why="host alternate_on=$a, expected $1 ($2)"; return 1; }
+# wait_caught_up STALL N: until the host's history holds 1 .. N-1 right
+# before the screen's N, i.e. history has caught up with the screen (it
+# trickles behind it). Gives up when the history stops growing for STALL s.
+wait_caught_up() {
+    local before lines last=-1 grew
+    grew=$(now_ms)
+    while :; do
+        history > "$cap"
+        before=$(grep -x -B1 -m1 -- "$2" "$cap" | head -1)
+        [ "$before" = $(($2 - 1)) ] && grep -qx 1 "$cap" && return 0
+        lines=$(wc -l < "$cap")
+        if [ "$lines" -ne "$last" ]; then
+            last=$lines
+            grew=$(now_ms)
+        fi
+        [ $(($(now_ms) - grew)) -ge $(($1 * 1000)) ] && break
+        sleep 0.5
+    done
+    why="history did not catch up with the screen (line before $2 is \"$before\")"
+    return 1
+}
+
+# wait_alt SECONDS WANT WHAT: until the pane's alternate_on is WANT (the
+# program, or mosh for it, has entered or left the alternate screen).
+wait_alt() {
+    local end=$(($(now_ms) + $1 * 1000)) a
+    while [ "$(now_ms)" -lt $end ]; do
+        a=$(tmux -S "$sock" display -p -t sb '#{alternate_on}')
+        [ "$a" = "$2" ] && return 0
+        sleep 0.2
+    done
+    why="pane alternate_on=$a, expected $2 ($3) within $1 s"
+    return 1
+}
+# wait_first SECONDS TEXT: until the screen's first line is TEXT.
+wait_first() {
+    local end=$(($(now_ms) + $1 * 1000))
+    while [ "$(now_ms)" -lt $end ]; do
+        [ "$(screen | head -1)" = "$2" ] && return 0
+        sleep 0.2
+    done
+    why="first screen line is not \"$2\" within $1 s: \"$(screen | head -1)\""
+    return 1
 }
 # The keys of the altscreen variant. mode=direct saves the screens after
 # vim and after less in $dir/direct-*.txt; mode=mosh waits for the same.
 alt_steps() {
-    wait_line 30 '$' || return 1
+    wait_line 120 '$' || return 1
     keys 'seq 1 3000' Enter
-    wait_last 30 '$' || return 1
+    wait_last 120 '$' || return 1
     keys 'vim -u NONE -N' Enter
-    wait_text 30 '~' || return 1
-    alt_on 1 "in vim" || return 1
+    wait_alt 120 1 "vim started" || return 1
+    wait_text 120 '~' || return 1
     keys i 'VIMTEXT one' Escape
-    wait_text 10 'VIMTEXT one' || return 1
+    wait_text 60 'VIMTEXT one' || return 1
     keys ':q!' Enter
     if [ "$mode" = direct ]; then
-        wait_last 30 '$' || return 1
+        wait_last 120 '$' || return 1
         sleep 0.5
         screen > "$dir/direct-vim.txt"
     else
-        wait_screen 30 "$dir/direct-vim.txt" || return 1
+        wait_screen 120 "$dir/direct-vim.txt" || return 1
     fi
-    alt_on 0 "after vim" || return 1
+    wait_alt 120 0 "vim exited" || return 1
     keys "less $tmp/less.txt" Enter
-    wait_text 30 'less.txt' || return 1
-    alt_on 1 "in less" || return 1
+    # less discards keys typed before it starts: wait for its first page
+    wait_alt 120 1 "less started" || return 1
+    wait_first 120 1 || return 1
+    wait_last 120 "$tmp/less.txt" || return 1
     keys q
     if [ "$mode" = direct ]; then
-        wait_last 30 '$' || return 1
+        wait_last 120 '$' || return 1
         sleep 0.5
         screen > "$dir/direct-less.txt"
     else
-        wait_screen 30 "$dir/direct-less.txt" || return 1
+        wait_screen 120 "$dir/direct-less.txt" || return 1
     fi
-    alt_on 0 "after less"
+    wait_alt 120 0 "less exited"
 }
 
 v_altscreen() {
@@ -456,22 +523,22 @@ v_altscreen() {
     start_launcher || return 1
     alt_steps || return 1
     keys 'seq 3001 6000; echo DONE-SEQ' Enter
-    wait_line 30 DONE-SEQ || return 1
+    wait_line 120 DONE-SEQ || return 1
     wait_history 60 6000 exact
 }
 
 v_oldserver() {
     start_launcher --server=/usr/bin/mosh-server || return 1
-    wait_text 30 'does not support scrollback' || return 1
+    wait_text 120 'does not support scrollback' || return 1
     local alt
     alt=$(tmux -S "$sock" display -p -t sb '#{alternate_on}')
     [ "$alt" = 1 ] || { why="client is not in the alternate screen (alternate_on=$alt)"; return 1; }
-    wait_line 30 '$' || return 1
+    wait_line 120 '$' || return 1
     keys 'seq 1 3000; echo DONE-SEQ' Enter
-    wait_line 30 DONE-SEQ || return 1
+    wait_line 120 DONE-SEQ || return 1
     screen > "$dir/screen.txt"
     keys exit Enter
-    wait_text 30 '[client exited with status 0]' || return 1
+    wait_text 120 '[client exited with status 0]' || return 1
     history > "$cap"
     # Nothing of the session may be in the host's main screen or history.
     if grep -qxE '[0-9]+|DONE-SEQ' "$cap" || grep -qF -e 'mosh:' -e 'scrollback' "$cap"; then
@@ -483,16 +550,17 @@ v_oldserver() {
 
 v_dropped() {
     start_direct "--scrollback 16K" "" || return 1
-    wait_line 30 '$' || return 1
-    keys 'seq 1 1000; sleep 3; seq 1001 200000; echo DONE-SEQ' Enter
-    wait_line 30 1000 || return 1
-    sleep 1
+    wait_line 120 '$' || return 1
+    # The blackout must cover the flood: it starts at most a few seconds
+    # after 1000 shows, the flood 10 s after that, and it lasts 20 s.
+    keys 'seq 1 1000; sleep 10; seq 1001 200000; echo DONE-SEQ' Enter
+    wait_line 120 1000 || return 1
     local reply
-    reply=$(control "blackout 8000")
+    reply=$(control "blackout 20000")
     [ "$reply" = ok ] || { why="proxy refused blackout: $reply"; return 1; }
-    sleep 8
-    wait_line 60 DONE-SEQ || return 1
-    wait_history 120 200000 dropped || return 1
+    sleep 20
+    wait_line 180 DONE-SEQ || return 1
+    wait_history 60 200000 dropped || return 1
     # The notice is dim (SGR 2), so it reads as mosh's, not the program's.
     local notice
     notice=$(tmux -S "$sock" capture-pane -p -e -t sb -S -200000 | grep -F 'lines of history were dropped')
@@ -518,7 +586,15 @@ for v in "${variants[@]}"; do
         failed=1
         [ -s "$cap" ] || history > "$cap" 2> /dev/null
         echo "FAIL $v ($(( ($(now_ms) - start) / 1000 )) s): $why"
-        [ -n "$summary" ] && [[ $why != *"$summary"* ]] && echo "  $summary"
+        [ -n "$summary" ] && [[ $why != *"$summary"* ]] && sed 's/^/  /' <<< "$summary"
+        for got in "$dir"/*.got; do
+            [ -f "$got" ] || continue
+            echo "  screen diff, expected ($(basename "${got%.got}")) vs shown:"
+            diff "${got%.got}" "$got" | head -20 | sed 's/^/  | /'
+        done
+        echo "  screen at the failure:"
+        screen 2> /dev/null | sed 's/^/  | /'
+        echo "  (history capture: $cap, $(wc -l < "$cap" 2> /dev/null || echo 0) lines)"
     fi
     end_session
 done

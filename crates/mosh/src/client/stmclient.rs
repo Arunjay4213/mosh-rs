@@ -377,8 +377,7 @@ impl STMClient {
             let mut r = received.borrow_mut();
             (r.take_pending(), r.lost())
         };
-        let (ws_col, ws_row) = self.window_size;
-        let width = usize::from(ws_col);
+        let width = usize::from(self.window_size.0);
         // Dim (SGR 2), which mosh's emulator drops, so written directly:
         // ASCII, cut to the width, the rest of the row erased.
         let notice = |n: u64| {
@@ -411,11 +410,13 @@ impl STMClient {
         if !self.local_framebuffer.ds.get_hyperlink().empty() {
             out.push_str(&Hyperlink::default().osc8());
         }
-        let last_row = format!("\x1b[{ws_row};1H\n");
+        // The last row by clamping, not by number: the host may have been
+        // resized after the client last read the window size, and a line
+        // feed above the last row would not move row 1 into history.
         for row in &rows {
             out.push_str("\x1b[H");
             out.push_str(row);
-            out.push_str(&last_row);
+            out.push_str("\x1b[9999;1H\n");
         }
         self.local_framebuffer.host_scrolled(rows.len());
         out.into_bytes()

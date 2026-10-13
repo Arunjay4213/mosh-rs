@@ -589,3 +589,13 @@ Gate not declared: CI is red until the laptop pushes branch `ci/terminfo`. Next:
 - Keystroke at 300 ms round trip with prediction: 0.09 ms, one render (C++ 0.08 ms, one render).
 - `seq 1 100000` until done on screen: 110 ms (C++ 130 ms).
 The README performance table now holds these numbers. Also verified: `cargo check` for the release targets not built so far, aarch64-apple-darwin and x86_64-pc-windows-msvc, passes with no errors or warnings.
+
+## 2026-10-13 Test robustness for CI runners (agent S2)
+
+- `tests/scrollback.sh` prints the variant list and the tmux version, and checks that tmux is 3.2 or later and that less is installed. A failing variant now prints its reason, the checker's counts line and first unexpected lines, any screen diff, and the screen at the failure, all to stdout.
+- Waits are generous (120 s for screens). History waits go by progress: they give up only after the history has stopped growing for 60 s, or 120 s for loss30. The dropped variant's blackout is 20 s, with 10 s of margin before the flood.
+- CI's altscreen failure ("direct run: last screen line is not "$" ... "q"") was a race in the test: it waited for text that the typed `less` command line already held, and less discarded the early `q`. It now waits until the pane is in the alternate screen and less shows its first page.
+- shrink and grow now wait until history has caught up with the screen before resizing. Done earlier, while history was still arriving, tmux's own resize moves rows into the middle of history.
+- Client: an injected line's line feed now goes to `CSI 9999;1H`, the last row by clamping. Before, it used the window size, so a resize the client had not processed yet (a taller host) left the line feed above the last row, and the line was lost. PLAN 6.4 updated.
+- Under load on devbox (tests and `stress-ng --cpu 12` pinned to 4 cores, load average 18): all 10 oracle variants pass. Unpinned, with `stress-ng --cpu 6` (load 6): all pass.
+- `wrong_prediction_is_removed`: a prediction is shown only in a confirmed epoch, and an echo that takes more than 50 ms on the server (upstream's ECHO_TIMEOUT) makes the epoch tentative again, so on a loaded machine `q` may legitimately not be predicted. Reproduced under the same load with the old test: it failed in 6 of 18 runs ("the prediction of q never showed"), for both the C++ and our client. The shell loop now swallows `q` without ending, and the test repeats the attempt (two echoed keys, then `q`) up to 10 times. A `q` on screen can only be the prediction, so the assertion keeps its meaning. New test under that load: 10 of 10 runs passed; 1 of 20 client sessions needed a second attempt.
