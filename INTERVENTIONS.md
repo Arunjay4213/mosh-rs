@@ -3,6 +3,12 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 Devbox: the rustup binary disappeared at 18:47 UTC; reinstalled
+
+- `~/.cargo/bin/rustup` vanished at 18:47 UTC (every tool in `~/.cargo/bin` is a symlink to it, so `cargo` stopped working); the toolchains under `~/.rustup` (stable 1.99.0, 1.91.1, 1.89.0, 1.88.0) were intact. Agent S2 noticed it; no agent reports deleting it, and the orchestrator does not know the cause.
+- The orchestrator reinstalled the binary with `rustup-init -y --no-modify-path --default-toolchain stable` at 19:10 UTC; the existing toolchains were kept, `cargo 1.99.0` works, the workspace builds. Note for non-login shells: `~/.cargo/bin` is not on PATH unless added, as CLAUDE.md says.
+- Agent S2's last item is closed: the intermittent `command_output_and_exit` failure on the arm runner was a test race (the test matched `MOSH_EXIT=` in the echoed command line before the shell printed the real status); 11 waits in three test files now wait for a whole `MOSH_EXIT=<n>` line; no product change; on main as c8561cd through green CI.
+
 ## 2026-10-13 CI: client_e2e command_output_and_exit "non-zero exit" (agent S2)
 
 - CI (565684a, shard client, arm): `[rust] non-zero exit` at tests/tests/client_e2e.rs:238. The screen in the failure shows the session's output and `[mosh is exiting.]`, but no `MOSH_EXIT=<n>` line at all. A non-zero exit would have printed `MOSH_EXIT=1`; this screen shows no status line was printed yet.
