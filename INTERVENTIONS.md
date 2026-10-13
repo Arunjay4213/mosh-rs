@@ -3,6 +3,13 @@
 Every time the run needed outside help, was nudged after going idle, or deviated from PLAN.md.
 Newest entry first.
 
+## 2026-10-13 Scrollback: history is windowed and never blocks the remote program (decision, overridable)
+
+- Agent S1's live test found a gap in PLAN section 6: nothing limited how many history lines one update carries. A fast `seq 1 50000` filled the 10,000-line ring before the first send (39,977 lines lost), and a bigger ring produced one update of about 87 UDP packets that never arrived completely, because every resend is packed with a new fragment id (upstream behavior; upstream only works because screen updates are small). Through 30% loss nothing arrived.
+- Decision by the orchestrator: the remote program is never paused while history is undelivered, connected or not. The screen is always current, and history follows behind it at a bounded rate: the server publishes at most W bytes of history beyond what the client has acknowledged. The server keeps only undelivered lines, capped in bytes; on overflow the oldest undelivered lines are dropped and counted, and the client will show a one-line notice.
+- Rejected alternative: pausing the program (as ssh effectively does through TCP) would give exact history in every case, but a build printing a million lines while the laptop sleeps would stall, and under loss the screen would freeze because the server stops reading the program's output. That breaks mosh's main promise. Tell the orchestrator if you want the other trade-off.
+- PLAN 6.2 and 6.3 are rewritten by S1 in the same commit as the code. The client half of scrollback waits until this rework lands and is verified.
+
 ## 2026-10-13 Phase 5 bench tooling started early
 
 - Decision: agent P builds `tools/bench` and the static musl release build now, during Phase 4, instead of after it. Reason: it touches only `tools/` and a release script, shares no files with the scrollback work, and one PLAN 5 measurement (memory after a 1-hour session) takes an hour per run, so having the tool ready shortens Phase 5. The numbers that go into the README are measured again after scrollback lands.
