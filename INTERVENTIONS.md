@@ -411,3 +411,7 @@ Evidence came from the `ci-status` branch (every run's failure excerpt) and the 
 
 - The entry of 2026-10-13 says the Mac dedicated host was released; it was not. `describe-hosts` showed h-0b448e31dc2a08aa9 still `available` on 2026-10-14, so a macOS 15.8 instance (i-09481842e7ba05b57) was launched on it for the Homebrew check, then terminated. Whoever releases the host should check it is actually released afterwards (`aws ec2 describe-hosts`).
 - Devbox's ssh key did not open the new instance; the key pair named `devbox` matches the laptop's `~/.ssh/devbox.pem`, so the Mac was reached from the laptop over its public address (temporary rule, removed) and the session to devbox used agent forwarding.
+
+## 2026-10-14 CI red on laptop/controlmaster: hint wrapped by the 80-column pane (laptop)
+
+- Both conformance shards failed in `control_master_hint_and_remote_mode_reuses_socket`: the hint was on screen but tmux wrapped it mid-word at column 80 ("ControlMaster s" / "ocket"), so `contains` on the raw capture missed it. Devbox passed because its shorter binary path moved the wrap. Fix: the test searches the capture with newlines removed. No launcher change.
