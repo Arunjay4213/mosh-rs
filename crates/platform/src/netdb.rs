@@ -109,6 +109,11 @@ pub fn getaddrinfo(
         Flags::CanonName => libc::AI_CANONNAME,
     };
     let mut res: *mut libc::addrinfo = std::ptr::null_mut();
+    // `errno` below must be what getaddrinfo itself left, as Perl's `$!` is
+    // after mosh.pl's call: earlier Rust std calls can leave a stale value
+    // (its one-time statx probe fails with EFAULT), and a failure such as
+    // "Address family for hostname not supported" sets no errno at all.
+    nix::errno::Errno::clear();
     // SAFETY: valid C strings and hints; res receives a list we free below.
     let rc = unsafe { libc::getaddrinfo(c_host.as_ptr(), c_port.as_ptr(), &hints, &mut res) };
     if rc != 0 {

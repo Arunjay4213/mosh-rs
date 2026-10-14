@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `mosh --help` now points bug reports at https://github.com/Arunjay4213/mosh-rs/issues instead of the upstream mailing list (#42, PLAN.md 9.17).
 - `mosh` run from an extracted release folder on Linux and macOS finds the `mosh-client` next to it, as the Windows build already did; before it failed with `Can't exec "mosh-client"` and `Can't count colors` unless the folder was on PATH (PLAN.md 9.16).
 - Launcher error messages no longer carry Perl's `at ./mosh line N.` suffix copied from mosh.pl (PLAN.md 9.17).
+- Launcher: the exit code after a failed host lookup is the resolver's errno as in mosh.pl, no longer a stale value left by an earlier library call (`mosh --experimental-remote-ip=local -6 127.0.0.1` exited 14 instead of 255).
 - Internal: `cargo build --workspace` compiles on macOS again (`tools/bench` passed `TIOCSCTTY` with the wrong integer type for Darwin).
 - Tests: `prediction_e2e`, `client_e2e` and `tests/scrollback.sh` find leftover servers with `lsof` where `ss` is missing (macOS), `scrollback.sh` uses a `mkdir` lock where `flock` is missing, and the `ref/` oracle Makefiles take the compiler and the OpenSSL and terminfo link flags from upstream's configured build so they link with clang++ on macOS.
 
