@@ -792,8 +792,11 @@ fn control_master_hint_and_remote_mode_reuses_socket() {
     drop(tmux);
     let sshlog = std::fs::read_to_string(&log).unwrap_or_default();
     assert!(done.contains("MOSH_EXIT=0"), "default mode failed:\n{done}");
+    // The pane wraps the hint at 80 columns, at a point that depends on the
+    // binary's path, so search the screen with the line breaks removed.
+    let flat = done.replace('\n', "");
     assert!(
-        done.contains(hint),
+        flat.contains(hint),
         "no ControlMaster hint in default mode:\n{done}"
     );
     assert!(
@@ -828,7 +831,8 @@ fn control_master_hint_and_remote_mode_reuses_socket() {
         .status();
     let _ = std::fs::remove_file(&log);
     assert!(done.contains("MOSH_EXIT=0"), "remote mode failed:\n{done}");
-    assert!(!done.contains(hint), "hint printed in remote mode:\n{done}");
+    let flat = done.replace('\n', "");
+    assert!(!flat.contains(hint), "hint printed in remote mode:\n{done}");
     assert!(
         sshlog.contains("mux_client_request_session"),
         "remote mode did not reuse the master socket:\n{sshlog}"
