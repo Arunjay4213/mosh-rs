@@ -197,6 +197,23 @@ fn shellwords(line: &str) -> Vec<String> {
 }
 
 /// `sub shell_quote { join ' ', map {(my $a = $_) =~ s/'/'\\''/g; "'$a'"} @_ }`
+/// Whether the user's ssh already holds a ControlMaster connection to
+/// `userhost`: `ssh -O check` exits 0 only then (mosh-rs only, PLAN 9.18).
+/// Any failure (no ControlPath configured, no socket, an ssh wrapper that does
+/// not know `-O`, Windows OpenSSH) means "no", and the real ssh run reports
+/// real errors later.
+fn ssh_control_master_running(ssh: &[String], userhost: &str) -> bool {
+    Command::new(&ssh[0])
+        .args(&ssh[1..])
+        .args(["-O", "check"])
+        .arg(userhost)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
 fn shell_quote(args: &[String]) -> String {
     args.iter()
         .map(|a| format!("'{}'", a.replace('\'', "'\\''")))
@@ -809,6 +826,11 @@ pub fn main() -> ! {
             }
         }
         if use_remote_ip == "proxy" {
+            // mosh-rs only (PLAN 9.18): `-S none` below bypasses an open ssh
+            // ControlMaster socket, so say how to use it instead.
+            if ssh_control_master_running(&ssh, &userhost) {
+                errp!("{argv0}: ssh has a ControlMaster socket for {userhost}, but the default address discovery opens a new connection (ssh -S none); use --experimental-remote-ip=remote to reuse the socket.\n");
+            }
             /* Non-standard shells and broken shrc files cause the ssh
             proxy to break mysteriously. */
             cmd.env("SHELL", "/bin/sh");
