@@ -43,7 +43,7 @@ For security problems, follow [SECURITY.md](SECURITY.md) instead.
 - Pre-alpha: expect rough edges, and report them in the issue tracker.
 - The v0.1.0 macOS client cannot connect (an address lookup bug on macOS); use v0.1.1 or later on a Mac.
 - Windows: there is no native ARM64 build; the x86_64 build runs on Windows on Arm through emulation.
-- Windows: sleeping and waking the machine, Ctrl-^ Ctrl-Z, and idle CPU have not been tested; losing and regaining the network has.
+- Windows: there is no job control, so Ctrl-^ Ctrl-Z does not suspend the client; the Ctrl-Z goes to the remote shell (use `fg` there to resume a stopped program). Sleep and wake, network loss, and idle CPU were tested on Windows 11 (see [Windows](#windows)).
 - `mosh-server` is Unix-only, as in upstream.
 - No X forwarding, port forwarding, or SOCKS; mosh never had them.
 
@@ -275,9 +275,10 @@ The escape key is Ctrl-^, as in upstream; in Windows Terminal you type it as Ctr
 So Ctrl+6 then `.` quits the session.
 
 Tested by hand in Windows Terminal on an ARM64 Windows 11 laptop (the x86_64 build under emulation) against a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)): connecting, typing, `ls --color`, vim, UTF-8 output, Ctrl-C, resizing and quitting all worked, and a session survived turning Wi-Fi off and on.
-The Wi-Fi off-and-on test was accepted as the network-loss check for the Windows client in place of a sleep-and-wake test, because both cut the network under a live session and mosh recovers from either the same way.
-Sleeping and waking the Windows machine has not been tested.
-Not tested yet: Ctrl-^ Ctrl-Z and idle CPU on Windows.
+Losing and regaining the network (Wi-Fi off and on) kept the session live, and so did sleeping and waking the machine.
+Sleeping and waking the Windows machine was tested on 2026-10-13 with `top` running: after a minute asleep the session was live and `top` kept updating.
+Idle CPU of `mosh-client.exe`, measured over 60 seconds while `top` redrew: 0.1% of one core and 14.7 MB of memory.
+Ctrl-^ Ctrl-Z does not suspend the client on Windows, which has no job control; the Ctrl-Z is delivered to the remote shell instead.
 
 ## How correctness is checked
 
