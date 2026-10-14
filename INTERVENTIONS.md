@@ -400,3 +400,9 @@ Evidence came from the `ci-status` branch (every run's failure excerpt) and the 
 - scrollback.sh altscreen ("screen differs from direct-vim.txt", "last screen line is not $ within 30 s: q$") was fixed earlier today by waiting for seq's prompt before typing; no change here.
 - Proof on devbox (worktree ~/mosh-rs-flaky at 9b9f818, 8 cores): single pass of each binary clean; then two lanes at once, lane A `server_e2e` x10 then `prediction_e2e` x10, lane B `client_e2e` x10 then `udp_impair` x10, 00:57 to 01:12 UTC: 40 of 40 passed, no FAIL line. `tests/run-all.sh` twice, back to back: 21 items, 0 failed, wall time 535 s and 504 s.
 - GitHub runners: CI on 9b9f818 green on all eight shards (x86 and arm).
+## 2026-10-13 Windows: the three remaining checks done (user and laptop)
+
+- 7:30 PM Central, Windows 11 ARM64 laptop running the x86_64 v0.1.1 client under emulation, Rust server on devbox, `top` running in the session.
+- Idle CPU, measured from the laptop with Get-Process over 60 s while `top` redrew: 0.062 CPU seconds, 0.1% of one core, 14.7 MB working set.
+- Sleep and wake (Start, Power, Sleep, about a minute, wake): the session was live and `top` kept updating; typing worked.
+- Ctrl-^ Ctrl-Z: Windows has no job control, so the client does not suspend; the Ctrl-Z reached the remote shell and stopped `top`; a second Ctrl-Z at the shell prompt did nothing, as expected. Documented in the README.
