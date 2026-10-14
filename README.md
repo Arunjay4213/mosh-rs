@@ -30,7 +30,7 @@ Scrollback is opt-in: run `mosh --scrollback host` against a mosh-rs `mosh-serve
 The Linux release binaries are single static binaries.
 
 **Status: pre-alpha.**
-The current pre-release is v0.1.1: download it from the [Releases page](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.1) and see [Install](#install).
+The current pre-release is v0.1.2: download it from the [Releases page](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.2) and see [Install](#install).
 The [Known limitations](#known-limitations) list says what has been tested and what has not.
 Every number and every compatibility result in this README was measured, and anything not yet tested is marked as such.
 
@@ -60,12 +60,31 @@ New features are additive protobuf fields that existing peers ignore, so mixed o
 
 ## Install
 
-Pre-built binaries are attached to the [v0.1.1 release](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.1).
+Pre-built binaries are attached to the [v0.1.2 release](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.2).
 Each archive has a `.sha256` file next to it for checking the download.
-v0.1.1 is a pre-release; the [Known limitations](#known-limitations) list says what has been tested.
+v0.1.2 is a pre-release; the [Known limitations](#known-limitations) list says what has been tested.
 
 mosh-rs works with the `mosh-server` already on your hosts (mosh 1.4), so you can install only the client side.
 The `--scrollback` feature needs the mosh-rs `mosh-server` on the remote host: install the same archive there (see [Scrollback](#scrollback)).
+
+### Homebrew (macOS on Apple silicon, Linux)
+
+```sh
+brew install Arunjay4213/mosh-rs/mosh-rs
+```
+
+The [tap](https://github.com/Arunjay4213/homebrew-mosh-rs) installs the pre-built `mosh`, `mosh-client`, and `mosh-server` from the release archives.
+It conflicts with the `mosh` formula because both install the same three programs, so `brew unlink mosh` first if you have it.
+
+### Scoop (Windows)
+
+```powershell
+scoop bucket add mosh-rs https://github.com/Arunjay4213/scoop-mosh-rs
+scoop install mosh-rs
+```
+
+The [bucket](https://github.com/Arunjay4213/scoop-mosh-rs) installs `mosh.exe` and `mosh-client.exe` from the release zip.
+A winget manifest is submitted ([microsoft/winget-pkgs#452393](https://github.com/microsoft/winget-pkgs/pull/452393)); `winget install Arunjay4213.mosh-rs` works once it is merged.
 
 ### Linux (x86_64 and arm64)
 
@@ -79,7 +98,7 @@ curl -LO https://github.com/Arunjay4213/mosh-rs/releases/download/$v/mosh-rs-$v-
 sha256sum -c mosh-rs-$v-$t.tar.gz.sha256
 tar xzf mosh-rs-$v-$t.tar.gz
 sudo install mosh-rs-$v-$t/mosh mosh-rs-$v-$t/mosh-client mosh-rs-$v-$t/mosh-server /usr/local/bin/
-mosh --version   # prints "mosh-rs 0.1.1"
+mosh --version   # prints "mosh-rs 0.1.2"
 ```
 
 Without sudo, install into a directory on your `PATH` that you own instead, such as `~/.local/bin`.
@@ -101,12 +120,12 @@ In PowerShell, download the zip and its checksum, compare the two hashes, and un
 
 ```powershell
 $f = "mosh-rs-v0.1.2-x86_64-pc-windows-msvc"
-Invoke-WebRequest "https://github.com/Arunjay4213/mosh-rs/releases/download/v0.1.1/$f.zip" -OutFile "$f.zip"
-Invoke-WebRequest "https://github.com/Arunjay4213/mosh-rs/releases/download/v0.1.1/$f.zip.sha256" -OutFile "$f.zip.sha256"
+Invoke-WebRequest "https://github.com/Arunjay4213/mosh-rs/releases/download/v0.1.2/$f.zip" -OutFile "$f.zip"
+Invoke-WebRequest "https://github.com/Arunjay4213/mosh-rs/releases/download/v0.1.2/$f.zip.sha256" -OutFile "$f.zip.sha256"
 (Get-FileHash "$f.zip" -Algorithm SHA256).Hash.ToLower() -eq (Get-Content "$f.zip.sha256").Split(" ")[0]   # must print True
 Expand-Archive "$f.zip" -DestinationPath .
 cd $f
-.\mosh.exe --version   # prints "mosh-rs 0.1.1"
+.\mosh.exe --version   # prints "mosh-rs 0.1.2"
 ```
 
 The zip unpacks into a folder named `mosh-rs-v0.1.2-x86_64-pc-windows-msvc` that holds `mosh.exe` and `mosh-client.exe`.
@@ -120,15 +139,15 @@ See [Windows](#windows) for what has been tested.
 
 ### With cargo
 
-Cargo can build and install the v0.1.1 tag from Git with Rust 1.89 or later.
-The package is named `mosh`, and it installs `mosh`, `mosh-client`, and `mosh-server` into `~/.cargo/bin`:
+The package is published on crates.io as [`mosh`](https://crates.io/crates/mosh).
+Cargo builds it with Rust 1.89 or later and installs `mosh`, `mosh-client`, and `mosh-server` into `~/.cargo/bin`:
 
 ```sh
-cargo install --locked --git https://github.com/Arunjay4213/mosh-rs --tag v0.1.2 mosh
+cargo install --locked mosh
 ```
 
-Publishing to crates.io as `mosh` is prepared and will make this `cargo install mosh`; until then use the Git form above.
 The crate named `mosh-rs` on crates.io is a different, unrelated project, so do not run `cargo install mosh-rs`.
+To build a specific commit instead, use `cargo install --locked --git https://github.com/Arunjay4213/mosh-rs --tag v0.1.2 mosh`.
 On Windows the installed `mosh-server.exe` only prints that the server is not supported there, as described under [Windows](#windows).
 
 ### From source

@@ -717,3 +717,11 @@ Also in this commit: the unused `unicode-width` and `lexopt` declarations are re
 ## 2026-10-14 CI flakiness fixed in the tests (laptop)
 
 - Root causes and fixes in INTERVENTIONS.md (same date). Devbox: server_e2e, client_e2e, prediction_e2e, udp_impair 10 of 10 each with two binaries running at once; `tests/run-all.sh` twice, 21 items, 0 failed each; CI green on both architectures.
+
+## 2026-10-14 packaging: crates.io, Homebrew tap, Scoop bucket, winget submission
+
+- `mosh` 0.1.2 is live on crates.io (published by `publish.yml` at 02:13 UTC); README now says `cargo install --locked mosh`.
+- Homebrew tap `Arunjay4213/homebrew-mosh-rs` with `Formula/mosh-rs.rb` (macOS arm64, Linux x86_64 and arm64, from the v0.1.2 release archives; conflicts with the `mosh` formula). `ruby -c` passes; not yet installed through brew on a real machine.
+- Scoop bucket `Arunjay4213/scoop-mosh-rs` with `bucket/mosh-rs.json` (x86_64 zip, `extract_dir`, autoupdate via the `.sha256` file). JSON validated; not yet installed through scoop on a real machine.
+- winget manifest submitted as microsoft/winget-pkgs#452393 (Arunjay4213.mosh-rs 0.1.2, zip with two portable executables). Local `winget validate` was not run (no Windows shell here); the pipeline validates it.
+- README: the Windows install block downloaded the v0.1.1 zip under a v0.1.2 folder name (fixed), and the other v0.1.1 release references were updated to v0.1.2.
