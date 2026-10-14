@@ -729,3 +729,11 @@ Also in this commit: the unused `unicode-width` and `lexopt` declarations are re
 ## 2026-10-14 README: "Verification at a glance" (laptop)
 
 - A short section before Install with the Phase 1, 2 and 4 gate numbers that matter to someone deciding whether to run it: crypto conformance (2000 packets, 14 malformed keys, RFC 7253), interop 120 of 120, upstream `make check` 30 PASS 2 XFAIL, fuzzing totals, forbid(unsafe_code) per crate, the hostile-server bound, and a plain statement that there has been no independent audit. Numbers copied from the gate entries above; no new runs.
+
+## 2026-10-14 Homebrew tap verified on a real Mac (laptop)
+
+- Fresh mac2.metal instance (macOS 15.8, Apple M1, Homebrew 6.0.22) on the still-allocated dedicated host h-0b448e31dc2a08aa9. `brew install Arunjay4213/mosh-rs/mosh-rs`: tapped, fetched the aarch64-apple-darwin v0.1.2 archive, installed 8 files, 2.1 MB in 12 s. `brew test mosh-rs` passed. `mosh --version` prints `mosh-rs 0.1.2 [build 0.1.2]`; `mosh-server --version` prints `mosh-server (mosh-rs 0.1.2)`.
+- `brew audit --strict --online` found 3 problems in the first formula (`url`/`sha256` directly under `on_macos`, redundant `version`); fixed in tap commit 9490b51, after which the audit exits 0 with 0 problems.
+- Real sessions from the Mac to devbox in a 100x30 tmux pane, both exit 0: the brew `mosh` against devbox's `/usr/bin/mosh-server` (mosh 1.4.0), and `mosh --scrollback --server=~/mosh-rs/target/release/mosh-server` running `seq 1 40`, after which tmux's history holds all 40 lines.
+- Harness note: a session started under macOS `script` with no terminal behind it (0x0 window) panics with `assertion failed: s_height > 0` in `terminalframebuffer.rs:1272`; upstream's `Framebuffer` asserts the same (`terminalframebuffer.cc:79`), so the port matches and the harness was wrong.
+- The instance was terminated and the four temporary security-group rules (ssh to the Mac from the VPC and from the laptop; ssh and UDP 60000-61000 to devbox from the VPC) were removed. The dedicated host is still allocated.
