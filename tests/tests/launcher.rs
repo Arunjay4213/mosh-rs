@@ -730,3 +730,107 @@ fn numeric_addresses_resolve_the_same_in_both_paths() {
         }
     }
 }
+
+/// With an ssh ControlMaster socket open for localhost, the default mode
+/// prints the mosh-rs hint and still connects (through a new ssh connection,
+/// `-S none`), and `--experimental-remote-ip=remote` reuses the master
+/// socket (ssh's debug log shows `mux_client_request_session`) with no hint.
+#[test]
+fn control_master_hint_and_remote_mode_reuses_socket() {
+    let Some(_) = mosh_tests::upstream::require() else {
+        return;
+    };
+    require_ssh_localhost();
+    // ControlPath has a length limit (a Unix socket path), so keep it short.
+    let control = format!("/tmp/mosh-rs-cm-{}", std::process::id());
+    let log = format!("{control}.log");
+    let master = Command::new("ssh")
+        .args([
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "ControlMaster=yes",
+            "-o",
+            "ControlPersist=120",
+            "-o",
+            &format!("ControlPath={control}"),
+            "-fN",
+            "localhost",
+        ])
+        .stdin(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    assert!(master, "could not open an ssh ControlMaster to localhost");
+    let check = Command::new("ssh")
+        .args([
+            "-o",
+            &format!("ControlPath={control}"),
+            "-O",
+            "check",
+            "localhost",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    assert!(check, "ssh -O check does not see the master socket");
+
+    let ssh_opt = format!("--ssh='ssh -o ControlPath={control} -v -E {log}'");
+    let hint = "ssh has a ControlMaster socket for localhost";
+
+    let tmux = Tmux::start(
+        "cm-default",
+        &session(&format!(
+            "{} {ssh_opt} -p 60520 localhost -- sh -c 'echo CM_DEFAULT_OK; sleep 1'",
+            real_client_server()
+        )),
+    );
+    tmux.wait_for("CM_DEFAULT_OK", Duration::from_secs(30));
+    let done = tmux.wait_exit(Duration::from_secs(30));
+    println!("default mode final screen:\n{}", done.trim_end());
+    drop(tmux);
+    let sshlog = std::fs::read_to_string(&log).unwrap_or_default();
+    assert!(done.contains("MOSH_EXIT=0"), "default mode failed:\n{done}");
+    assert!(
+        done.contains(hint),
+        "no ControlMaster hint in default mode:\n{done}"
+    );
+    assert!(
+        !sshlog.contains("mux_client_request_session"),
+        "default mode reused the master socket, so -S none is not in effect:\n{sshlog}"
+    );
+
+    let _ = std::fs::remove_file(&log);
+    let tmux = Tmux::start(
+        "cm-remote",
+        &session(&format!(
+            "{} {ssh_opt} --experimental-remote-ip=remote -p 60521 localhost -- sh -c 'echo CM_REMOTE_OK; sleep 1'",
+            real_client_server()
+        )),
+    );
+    tmux.wait_for("CM_REMOTE_OK", Duration::from_secs(30));
+    let done = tmux.wait_exit(Duration::from_secs(30));
+    println!("remote mode final screen:\n{}", done.trim_end());
+    drop(tmux);
+    let sshlog = std::fs::read_to_string(&log).unwrap_or_default();
+    let _ = Command::new("ssh")
+        .args([
+            "-o",
+            &format!("ControlPath={control}"),
+            "-O",
+            "exit",
+            "localhost",
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    let _ = std::fs::remove_file(&log);
+    assert!(done.contains("MOSH_EXIT=0"), "remote mode failed:\n{done}");
+    assert!(!done.contains(hint), "hint printed in remote mode:\n{done}");
+    assert!(
+        sshlog.contains("mux_client_request_session"),
+        "remote mode did not reuse the master socket:\n{sshlog}"
+    );
+}

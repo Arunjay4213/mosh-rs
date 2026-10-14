@@ -212,6 +212,26 @@ The most used launcher flags ([PLAN.md](PLAN.md) section 8); `mosh --help` lists
 
 The server takes `mosh-server new --scrollback MIB` to cap how much undelivered history it holds (default 32 MiB, `0` turns capture off).
 
+### ssh ControlMaster
+
+In the default mode the launcher learns the server's address through a fake `ProxyCommand`, which needs a fresh ssh connection, so it runs ssh with `-S none` and an open ControlMaster socket is not used (upstream [mobile-shell/mosh#24](https://github.com/mobile-shell/mosh/issues/24)); every session authenticates again.
+With `--experimental-remote-ip=remote` the launcher asks the server for the address instead (`$SSH_CONNECTION`), ssh runs without `-S none`, and a ControlMaster socket from `~/.ssh/config` is reused, so later sessions open without logging in:
+
+```
+Host myhost
+    ControlMaster auto
+    ControlPersist 10m
+    ControlPath ~/.ssh/cm-%C
+```
+
+```sh
+mosh --experimental-remote-ip=remote myhost
+```
+
+Measured against devbox with a master socket open and `ssh -v -E log`: the default mode made a full new connection and authentication, `remote` mode reused the socket (`mux_client_request_session`), both sessions worked.
+`remote` reports the address the server sees, which is wrong behind port-forwarding NAT; `--experimental-remote-ip=local` resolves the name on your side and also runs ssh without `-S none`.
+When a master socket is open and the default mode is used, mosh-rs prints a one-line hint naming the option (upstream prints nothing); `tests/tests/launcher.rs` checks both modes.
+
 Environment variables, as in upstream:
 
 | Variable | Meaning |
