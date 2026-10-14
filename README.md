@@ -30,7 +30,7 @@ Scrollback is opt-in: run `mosh --scrollback host` against a mosh-rs `mosh-serve
 The Linux release binaries are single static binaries.
 
 **Status: pre-alpha.**
-The current pre-release is v0.1.2: download it from the [Releases page](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.2) and see [Install](#install).
+The current pre-release is v0.1.3: download it from the [Releases page](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.3) and see [Install](#install).
 The [Known limitations](#known-limitations) list says what has been tested and what has not.
 Every number and every compatibility result in this README was measured, and anything not yet tested is marked as such.
 
@@ -61,7 +61,7 @@ New features are additive protobuf fields that existing peers ignore, so mixed o
 ## Verification at a glance
 
 mosh-rs is checked against upstream's own C++ code, with the commands in `tests/` and the numbers in [STATUS.md](STATUS.md).
-The main results at v0.1.2:
+The main results at v0.1.3 (unchanged since v0.1.2):
 
 - **Crypto.** Every packet is AES-128-OCB3 from the RustCrypto [`aes`](https://crates.io/crates/aes) and [`ocb3`](https://crates.io/crates/ocb3) crates, with the key schedule wiped on drop as upstream does.
   `tests/tests/crypto_conformance.rs` encrypts and decrypts 2000 random packets with mosh-rs and with upstream's C++ linked into a harness: byte-identical in both directions, tampered packets and 14 malformed keys rejected by both, RFC 7253 test vectors pass.
@@ -76,9 +76,9 @@ The crypto and transport code is a line-by-line port of upstream's, and the conf
 
 ## Install
 
-Pre-built binaries are attached to the [v0.1.2 release](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.2).
+Pre-built binaries are attached to the [v0.1.3 release](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.3).
 Each archive has a `.sha256` file next to it for checking the download.
-v0.1.2 is a pre-release; the [Known limitations](#known-limitations) list says what has been tested.
+v0.1.3 is a pre-release; the [Known limitations](#known-limitations) list says what has been tested.
 
 mosh-rs works with the `mosh-server` already on your hosts (mosh 1.4), so you can install only the client side.
 The `--scrollback` feature needs the mosh-rs `mosh-server` on the remote host: install the same archive there (see [Scrollback](#scrollback)).
@@ -108,13 +108,13 @@ The archives hold static binaries for `mosh`, `mosh-client`, and `mosh-server`.
 `uname -m` prints `x86_64` or `aarch64`, which picks the matching archive.
 
 ```sh
-v=v0.1.2; t=$(uname -m)-unknown-linux-musl
+v=v0.1.3; t=$(uname -m)-unknown-linux-musl
 curl -LO https://github.com/Arunjay4213/mosh-rs/releases/download/$v/mosh-rs-$v-$t.tar.gz
 curl -LO https://github.com/Arunjay4213/mosh-rs/releases/download/$v/mosh-rs-$v-$t.tar.gz.sha256
 sha256sum -c mosh-rs-$v-$t.tar.gz.sha256
 tar xzf mosh-rs-$v-$t.tar.gz
 sudo install mosh-rs-$v-$t/mosh mosh-rs-$v-$t/mosh-client mosh-rs-$v-$t/mosh-server /usr/local/bin/
-mosh --version   # prints "mosh-rs 0.1.2"
+mosh --version   # prints "mosh-rs 0.1.3"
 ```
 
 Without sudo, install into a directory on your `PATH` that you own instead, such as `~/.local/bin`.
@@ -122,7 +122,7 @@ If an archive for the wrong CPU is installed, every program fails with "cannot e
 
 ### macOS (Apple silicon)
 
-Download `mosh-rs-v0.1.2-aarch64-apple-darwin.tar.gz` and install it the same way, with `shasum -a 256 -c` in place of `sha256sum -c`.
+Download `mosh-rs-v0.1.3-aarch64-apple-darwin.tar.gz` and install it the same way, with `shasum -a 256 -c` in place of `sha256sum -c`.
 The v0.1.0 macOS `mosh` launcher could not connect ("Did not find remote IP address"), because it read the address family at the Linux position of a C socket address.
 v0.1.1 fixes this: the v0.1.1 release archive was used for a real session from an Apple silicon Mac to a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)).
 The v0.1.0 `mosh-server` was verified on macOS separately: a Linux client ran a full session against it.
@@ -135,16 +135,16 @@ It also runs on Windows on Arm through the x64 emulation built into Windows 11; 
 In PowerShell, download the zip and its checksum, compare the two hashes, and unzip:
 
 ```powershell
-$f = "mosh-rs-v0.1.2-x86_64-pc-windows-msvc"
-Invoke-WebRequest "https://github.com/Arunjay4213/mosh-rs/releases/download/v0.1.2/$f.zip" -OutFile "$f.zip"
-Invoke-WebRequest "https://github.com/Arunjay4213/mosh-rs/releases/download/v0.1.2/$f.zip.sha256" -OutFile "$f.zip.sha256"
+$f = "mosh-rs-v0.1.3-x86_64-pc-windows-msvc"
+Invoke-WebRequest "https://github.com/Arunjay4213/mosh-rs/releases/download/v0.1.3/$f.zip" -OutFile "$f.zip"
+Invoke-WebRequest "https://github.com/Arunjay4213/mosh-rs/releases/download/v0.1.3/$f.zip.sha256" -OutFile "$f.zip.sha256"
 (Get-FileHash "$f.zip" -Algorithm SHA256).Hash.ToLower() -eq (Get-Content "$f.zip.sha256").Split(" ")[0]   # must print True
 Expand-Archive "$f.zip" -DestinationPath .
 cd $f
-.\mosh.exe --version   # prints "mosh-rs 0.1.2"
+.\mosh.exe --version   # prints "mosh-rs 0.1.3"
 ```
 
-The zip unpacks into a folder named `mosh-rs-v0.1.2-x86_64-pc-windows-msvc` that holds `mosh.exe` and `mosh-client.exe`.
+The zip unpacks into a folder named `mosh-rs-v0.1.3-x86_64-pc-windows-msvc` that holds `mosh.exe` and `mosh-client.exe`.
 Keep the two together in one folder: `mosh.exe` starts the `mosh-client.exe` next to it.
 In Windows Terminal, run `.\mosh.exe user@host` from that folder, or add the folder to your `PATH` and run `mosh user@host`.
 
@@ -163,7 +163,7 @@ cargo install --locked mosh
 ```
 
 The crate named `mosh-rs` on crates.io is a different, unrelated project, so do not run `cargo install mosh-rs`.
-To build a specific commit instead, use `cargo install --locked --git https://github.com/Arunjay4213/mosh-rs --tag v0.1.2 mosh`.
+To build a specific commit instead, use `cargo install --locked --git https://github.com/Arunjay4213/mosh-rs --tag v0.1.3 mosh`.
 On Windows the installed `mosh-server.exe` only prints that the server is not supported there, as described under [Windows](#windows).
 
 ### From source

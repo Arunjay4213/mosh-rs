@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-14
+
+### Added
+
+- Launcher: when the default address discovery is about to bypass an open ssh ControlMaster socket (it runs ssh with `-S none`, as mosh.pl does; upstream issue #24), `mosh` prints one hint naming `--experimental-remote-ip=remote`, which reuses the socket so later sessions open without logging in again (PLAN.md 9.18). The README has a new "ssh ControlMaster" section with the configuration and the measured behaviour of both modes.
+- Packaging: a Homebrew tap (`brew install Arunjay4213/mosh-rs/mosh-rs`, macOS on Apple silicon and Linux) and a Scoop bucket (`scoop bucket add mosh-rs https://github.com/Arunjay4213/scoop-mosh-rs`); a winget manifest is submitted.
+
+### Fixed
+
+- README: the Windows install block downloaded the v0.1.1 zip under a v0.1.2 folder name; the crates.io install is `cargo install --locked mosh`.
+
 ## [0.1.2] - 2026-10-13
 
 ### Fixed
