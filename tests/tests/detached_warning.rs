@@ -50,7 +50,7 @@
 // as detached, so the test holds /tmp/mosh-rs-interop.lock (the lock of
 // tests/interop.sh and tools/bench) to keep their sessions away.
 //
-// Linux only (utmp layout, utempter). UDP ports 61500-61509.
+// Linux only (utmp layout, utempter). UDP ports 61400-61409.
 
 #![cfg(target_os = "linux")]
 
@@ -275,7 +275,7 @@ fn detached_session_is_reported() {
     let singular = format!("Mosh: You have a detached Mosh session on this server ({entry}).");
     let mut blocks = Vec::new();
     for (i, (name, server)) in servers.iter().enumerate() {
-        let block = warning_seen(name, server, 61501 + i as u16);
+        let block = warning_seen(name, server, 61401 + i as u16);
         // Other detached sessions of this user may exist on the machine;
         // then upstream prints the plural form with one line per session.
         let names_ours = block.first() == Some(&singular)

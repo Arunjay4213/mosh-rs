@@ -1,7 +1,7 @@
 # Tests
 
 `tests/run-all.sh` runs everything: each cargo integration test, `lib-bin-doc` (the workspace's lib, bin and doc tests), and every executable `tests/*.sh` driver.
-The cargo tests run one after another; `scrollback.sh` runs after them (it shares ports 61500-61599 with `detached_warning` and `scrollback_hostile`); every other driver runs alongside them.
+The cargo tests run one after another; `scrollback.sh` runs after them (it SIGKILLs anything bound in its ports 61500-61599, a range no cargo test uses); every other driver runs alongside them.
 Each item prints one block (its tail when it passed, all of it when it failed, full logs in `target/run-all/`), then a PASS/FAIL line per item and the wall time.
 It exports `MOSH_CI_FULL=1` unless that is already 0.
 

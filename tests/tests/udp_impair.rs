@@ -46,6 +46,17 @@ use std::time::{Duration, Instant};
 
 const PACKETS: u32 = 2000;
 
+/// The tests judge packet timing (loss rates, delays, a blackout window),
+/// so they run one at a time: in parallel threads each would have five
+/// other proxies and traffic generators competing for a shared CI runner's
+/// cores, which is what skews the measured timing.
+static SERIAL: Mutex<()> = Mutex::new(());
+
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    // A test that panicked while holding the lock must not fail the rest.
+    SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 fn binary() -> PathBuf {
     static BIN: OnceLock<PathBuf> = OnceLock::new();
     BIN.get_or_init(|| {
@@ -140,7 +151,8 @@ fn start_impair(target: SocketAddr, extra: &[&str]) -> Impair {
 
 fn control(imp: &Impair, cmd: &str) -> String {
     let sock = UdpSocket::bind("127.0.0.1:0").unwrap();
-    sock.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    sock.set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
     sock.send_to(cmd.as_bytes(), imp.control).unwrap();
     let mut buf = [0u8; 1024];
     let (n, _) = sock.recv_from(&mut buf).expect("control reply");
@@ -214,6 +226,7 @@ fn out_of_sequence(replies: &[Reply]) -> usize {
 
 #[test]
 fn loss_half_each_direction() {
+    let _serial = serial();
     let echo = start_echo();
     let imp = start_impair(echo.addr, &["--loss", "0.5", "--seed", "7"]);
     let replies = run_traffic(
@@ -221,7 +234,7 @@ fn loss_half_each_direction() {
         0,
         PACKETS,
         Duration::from_micros(300),
-        Duration::from_millis(500),
+        Duration::from_millis(1500),
     );
     let at_server = echo.sources.lock().unwrap().len();
     println!(
@@ -243,17 +256,19 @@ fn loss_half_each_direction() {
 
 #[test]
 fn delay_applies_both_directions() {
+    let _serial = serial();
     let echo = start_echo();
     let imp = start_impair(
         echo.addr,
         &["--delay-ms", "200", "--jitter-ms", "50", "--seed", "1"],
     );
+    // Quiet time: three times the longest round trip (2 x 250 ms).
     let replies = run_traffic(
         &imp,
         0,
         PACKETS,
         Duration::from_micros(500),
-        Duration::from_millis(800),
+        Duration::from_millis(1500),
     );
     let mut rtts: Vec<Duration> = replies.iter().map(|r| r.rtt).collect();
     rtts.sort();
@@ -272,6 +287,7 @@ fn delay_applies_both_directions() {
 
 #[test]
 fn reorder_delivers_out_of_sequence() {
+    let _serial = serial();
     let echo = start_echo();
     let imp = start_impair(echo.addr, &["--reorder", "0.3", "--seed", "3"]);
     let replies = run_traffic(
@@ -279,7 +295,7 @@ fn reorder_delivers_out_of_sequence() {
         0,
         PACKETS,
         Duration::from_micros(500),
-        Duration::from_millis(500),
+        Duration::from_millis(1500),
     );
     let ooo = out_of_sequence(&replies);
     println!(
@@ -297,6 +313,7 @@ fn reorder_delivers_out_of_sequence() {
 
 #[test]
 fn rebind_changes_source_port() {
+    let _serial = serial();
     let echo = start_echo();
     let imp = start_impair(echo.addr, &[]);
     let before = run_traffic(
@@ -304,7 +321,7 @@ fn rebind_changes_source_port() {
         0,
         100,
         Duration::from_millis(1),
-        Duration::from_millis(300),
+        Duration::from_millis(1000),
     );
     let old_ports: Vec<u16> = echo
         .sources
@@ -320,7 +337,7 @@ fn rebind_changes_source_port() {
         0,
         100,
         Duration::from_millis(1),
-        Duration::from_millis(300),
+        Duration::from_millis(1000),
     );
     let all: Vec<u16> = echo
         .sources
@@ -397,12 +414,14 @@ fn blackout_silences_then_resumes() {
     const BLACKOUT: Duration = Duration::from_millis(2000);
     // Longest a packet may take from our send to the proxy (loopback, no
     // configured delay, but a loaded machine). Packets sent this close to
-    // the blackout's earliest possible end are not judged.
-    const TRANSIT: Duration = Duration::from_millis(300);
+    // the blackout's earliest possible end are not judged. 1.5 s of the
+    // 2 s window remain, 150 packets at 10 ms.
+    const TRANSIT: Duration = Duration::from_millis(500);
     // The proxy has no configured delay, so in-flight replies are gone well
     // within this; it stands in for "twice the configured delay".
-    const QUIET: Duration = Duration::from_millis(200);
+    const QUIET: Duration = Duration::from_millis(500);
 
+    let _serial = serial();
     let echo = start_echo();
     let imp = start_impair(echo.addr, &[]);
     let sock = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -471,6 +490,7 @@ fn blackout_silences_then_resumes() {
 
 #[test]
 fn stats_and_sigterm() {
+    let _serial = serial();
     let echo = start_echo();
     let mut imp = start_impair(
         echo.addr,
@@ -481,7 +501,7 @@ fn stats_and_sigterm() {
         0,
         500,
         Duration::from_micros(500),
-        Duration::from_millis(300),
+        Duration::from_millis(1000),
     );
     let line = control(&imp, "stats");
     println!("stats reply: {line}");

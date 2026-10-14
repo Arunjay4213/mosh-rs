@@ -46,10 +46,27 @@
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const DELAY_MS: &str = "150";
+
+/// The tests measure key-to-screen times in milliseconds, so they run one
+/// at a time: cargo would otherwise run them in parallel threads, and the
+/// other sessions' load (two more clients, servers and proxies on a shared
+/// CI runner) is what made the measured times miss their bounds.
+static SERIAL: Mutex<()> = Mutex::new(());
+
+fn serial() -> std::sync::MutexGuard<'static, ()> {
+    // A test that panicked while holding the lock must not fail the rest.
+    SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Deadlines, sized for a loaded shared CI runner: at least three times
+/// what each step takes on an idle machine (connecting takes a second or
+/// two; an echo through the 300 ms round trip shows within a second).
+const CONNECT: Duration = Duration::from_secs(90);
+const OUTPUT: Duration = Duration::from_secs(30);
 
 fn release_dir() -> PathBuf {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -111,7 +128,7 @@ impl Tmux {
             .expect("run tmux");
         assert!(status.success(), "tmux new-session failed");
         let t = Tmux { socket };
-        t.wait_line("$", Duration::from_secs(10));
+        t.wait_line("$", OUTPUT);
         t
     }
 
@@ -265,14 +282,14 @@ fn editing_latencies(name: &str, client: &str, base: u16, env: &str) -> [Duratio
     let label = env.replace(['=', ' '], "-");
     let s = Session::start(&format!("{label}-{name}"), client, base, env, SHELL);
     let t = &s.tmux;
-    t.wait_line("R$", Duration::from_secs(30));
+    t.wait_line("R$", CONNECT);
     t.keys("echo ab");
-    t.wait_line("R$ echo ab", Duration::from_secs(10));
+    t.wait_line("R$ echo ab", OUTPUT);
     std::thread::sleep(Duration::from_millis(1000));
 
     let measure = |what: &str, expect: &str| {
         let (_, took) = t
-            .poll(Duration::from_millis(5), Duration::from_secs(5), |sc| {
+            .poll(Duration::from_millis(5), OUTPUT, |sc| {
                 sc.lines().any(|l| l == expect)
             })
             .unwrap_or_else(|| panic!("[{name}] {env}: {what} never showed {expect:?}"));
@@ -290,7 +307,7 @@ fn editing_latencies(name: &str, client: &str, base: u16, env: &str) -> [Duratio
     t.keys("x");
     let overwrite = env.contains("MOSH_PREDICTION_OVERWRITE=yes");
     let (_, inserted) = t
-        .poll(Duration::from_millis(5), Duration::from_secs(5), |sc| {
+        .poll(Duration::from_millis(5), OUTPUT, |sc| {
             sc.lines().any(|l| {
                 l == if overwrite {
                     "R$ echo ax"
@@ -301,9 +318,9 @@ fn editing_latencies(name: &str, client: &str, base: u16, env: &str) -> [Duratio
         })
         .unwrap_or_else(|| panic!("[{name}] {env}: insert never showed"));
     // The server's truth is bash's insert in every mode.
-    t.wait_line("R$ echo axb", Duration::from_secs(5));
+    t.wait_line("R$ echo axb", OUTPUT);
     t.tmux(&["send-keys", "Enter"]);
-    t.wait_line("axb", Duration::from_secs(10));
+    t.wait_line("axb", OUTPUT);
     [typed, backspace, inserted]
 }
 
@@ -312,6 +329,7 @@ fn keystroke_shows_at_once_with_prediction() {
     let Some(_) = mosh_tests::upstream::require() else {
         return;
     };
+    let _serial = serial();
     let modes = [
         "MOSH_PREDICTION_DISPLAY=always",
         "MOSH_PREDICTION_DISPLAY=adaptive",
@@ -367,6 +385,7 @@ fn wrong_prediction_is_removed() {
     let Some(_) = mosh_tests::upstream::require() else {
         return;
     };
+    let _serial = serial();
     const KEYS: &str = "abcdefghijklmnoprstuvwxyz";
     for (i, (name, client)) in clients().into_iter().enumerate() {
         let s = Session::start(
@@ -376,13 +395,12 @@ fn wrong_prediction_is_removed() {
             "MOSH_PREDICTION_DISPLAY=always",
             SHELL,
         );
-        s.tmux.wait_line("R$", Duration::from_secs(30));
+        s.tmux.wait_line("R$", CONNECT);
         s.tmux.type_line(
             "clear; stty -icanon -echo; while read -rsn1 c; do [ \"$c\" = q ] || printf %s \"$c\"; done",
         );
-        s.tmux.wait_until("clear", Duration::from_secs(30), |sc| {
-            sc.lines().all(|l| l.is_empty())
-        });
+        s.tmux
+            .wait_until("clear", OUTPUT, |sc| sc.lines().all(|l| l.is_empty()));
         let mut text = String::new();
         let mut keys = KEYS.chars().cycle();
         let mut attempt = 0;
@@ -397,7 +415,7 @@ fn wrong_prediction_is_removed() {
                 let c = keys.next().unwrap();
                 s.tmux.keys(&c.to_string());
                 text.push(c);
-                s.tmux.wait_line(&text, Duration::from_secs(30));
+                s.tmux.wait_line(&text, OUTPUT);
             }
             // Let the server's echo of the last key arrive and be judged.
             std::thread::sleep(Duration::from_millis(1000));
@@ -416,7 +434,7 @@ fn wrong_prediction_is_removed() {
             };
             let (screen, _) = s
                 .tmux
-                .poll(Duration::from_millis(5), Duration::from_secs(30), |sc| {
+                .poll(Duration::from_millis(5), OUTPUT, |sc| {
                     sc.lines().any(|l| l == text)
                 })
                 .expect("the wrong prediction was never removed");
@@ -448,6 +466,7 @@ fn unicode_input_with_prediction() {
     let Some(_) = mosh_tests::upstream::require() else {
         return;
     };
+    let _serial = serial();
     for (i, (name, client)) in clients().into_iter().enumerate() {
         let s = Session::start(
             &format!("unicode-{name}"),
@@ -456,11 +475,10 @@ fn unicode_input_with_prediction() {
             "MOSH_PREDICTION_DISPLAY=always",
             SHELL,
         );
-        s.tmux.wait_line("R$", Duration::from_secs(30));
+        s.tmux.wait_line("R$", CONNECT);
         s.tmux.type_line("clear; cat > /dev/null");
-        s.tmux.wait_until("clear", Duration::from_secs(10), |sc| {
-            sc.lines().all(|l| l.is_empty())
-        });
+        s.tmux
+            .wait_until("clear", OUTPUT, |sc| sc.lines().all(|l| l.is_empty()));
         let mut garbled = Vec::new();
         let pieces = ["gl", "ü", "ck fa", "ĩ", "l "];
         for _ in 0..3 {
@@ -480,11 +498,9 @@ fn unicode_input_with_prediction() {
         }
         let line = "glück faĩl ".repeat(5);
         let line = line.trim_end();
-        let screen = s
-            .tmux
-            .wait_until("all typed lines", Duration::from_secs(10), |sc| {
-                sc.lines().filter(|l| *l == line).count() == 3
-            });
+        let screen = s.tmux.wait_until("all typed lines", OUTPUT, |sc| {
+            sc.lines().filter(|l| *l == line).count() == 3
+        });
         println!("[{name}] final screen:\n{}", screen.trim_end());
         assert!(
             garbled.is_empty(),

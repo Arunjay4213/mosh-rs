@@ -48,6 +48,20 @@ use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+/// Deadlines, sized for a loaded shared CI runner: at least three times
+/// what each step takes on an idle machine (connecting over ssh localhost
+/// takes 1-3 s there, a command's output shows within a frame interval).
+const CONNECT: Duration = Duration::from_secs(90);
+const OUTPUT: Duration = Duration::from_secs(30);
+const EXIT: Duration = Duration::from_secs(60);
+
+/// Typed into the remote shell after the window was resized: prints the
+/// size once the pty has it (`tput` reads the pty's size, which the server
+/// sets when the client's resize arrives). The typed line never equals
+/// "100" or "30", so `wait_for_line` sees only the output.
+const RESIZE_PROBE: &str =
+    "until [ \"$(tput cols)\" = 100 ] && [ \"$(tput lines)\" = 30 ]; do sleep 0.1; done; tput cols; tput lines";
+
 fn release_binary(name: &str) -> PathBuf {
     static BUILT: OnceLock<PathBuf> = OnceLock::new();
     let dir = BUILT.get_or_init(|| {
@@ -212,25 +226,30 @@ fn command_output_and_exit() {
     require_ssh_localhost();
     for (name, server, offset) in servers() {
         let port = 61200 + offset;
-        // SERVER_OK gets a second on screen of its own: mosh sends screen
-        // states, not every byte, so a line that scrolls away within one
-        // frame interval is never shown by any mosh.
+        // mosh-server runs the command as soon as it starts, before the
+        // client has connected, so the command waits for a key (READY on
+        // screen proves the client is connected) before it prints anything
+        // that must be seen. SERVER_OK then gets a second on screen of its
+        // own: mosh sends screen states, not every byte, so a line that
+        // scrolls away within one frame interval is never shown by any mosh.
         let tmux = Tmux::start(
             &format!("cmd-{name}"),
             &launcher_session(
                 &server,
                 port,
-                r#"sh -c 'printf "SERVER_OK\n"; sleep 1; seq 1 300; echo DONE; sleep 2'"#,
+                r#"sh -c 'echo READY; read x; printf "SERVER_OK\n"; sleep 1; seq 1 300; echo DONE; sleep 2'"#,
             ),
         );
-        tmux.wait_for_line("SERVER_OK", Duration::from_secs(30));
-        let live = tmux.wait_for_line("DONE", Duration::from_secs(30));
+        tmux.wait_for_line("READY", CONNECT);
+        tmux.send_keys(&["Enter"]);
+        tmux.wait_for_line("SERVER_OK", OUTPUT);
+        let live = tmux.wait_for_line("DONE", OUTPUT);
         println!("[{name}] live screen:\n{}", live.trim_end());
         assert!(
             live.lines().any(|l| l.trim_end() == "300"),
             "[{name}] no 300 line:\n{live}"
         );
-        let done = tmux.wait_exit(Duration::from_secs(30));
+        let done = tmux.wait_exit(EXIT);
         println!("[{name}] final screen:\n{}", done.trim_end());
         assert!(
             done.contains("[mosh is exiting.]"),
@@ -255,17 +274,17 @@ fn typing_and_resize() {
             &format!("type-{name}"),
             &launcher_session(&server, port, "bash --norc"),
         );
-        tmux.wait_for("$", Duration::from_secs(30));
+        tmux.wait_for("$", CONNECT);
         tmux.send_keys(&["echo typed-through-mosh", "Enter"]);
-        let typed = tmux.wait_for_line("typed-through-mosh", Duration::from_secs(10));
+        let typed = tmux.wait_for_line("typed-through-mosh", OUTPUT);
         println!("[{name}] after typing:\n{}", typed.trim_end());
 
         tmux.tmux(&["resize-window", "-x", "100", "-y", "30"]);
-        // The client notices SIGWINCH and sends the size; give it a moment
-        // before asking the program.
-        std::thread::sleep(Duration::from_millis(500));
-        tmux.send_keys(&["tput cols; tput lines", "Enter"]);
-        let resized = tmux.wait_for_line("100", Duration::from_secs(10));
+        // The client notices SIGWINCH and sends the size to the server,
+        // which resizes the pty; the program waits until it sees the new
+        // size (a fixed pause would race it on a loaded machine).
+        tmux.send_keys(&[RESIZE_PROBE, "Enter"]);
+        let resized = tmux.wait_for_line("100", OUTPUT);
         println!("[{name}] after resize:\n{}", resized.trim_end());
         assert!(
             resized.lines().any(|l| l.trim_end() == "30"),
@@ -273,7 +292,7 @@ fn typing_and_resize() {
         );
 
         tmux.send_keys(&["exit", "Enter"]);
-        let done = tmux.wait_exit(Duration::from_secs(30));
+        let done = tmux.wait_exit(EXIT);
         assert!(
             done.contains("MOSH_EXIT=0"),
             "[{name}] mosh exited non-zero:\n{done}"
@@ -346,7 +365,7 @@ fn connect_then_kill_client(
             mosh_tests::upstream::get().client
         ),
     );
-    tmux.wait_for_line("CONNECTED", Duration::from_secs(20));
+    tmux.wait_for_line("CONNECTED", CONNECT);
     // Anchored: the tmux server and the pane shell carry the same text.
     let client_pid = pgrep(&format!(
         "^{} 127.0.0.1 {port}$",

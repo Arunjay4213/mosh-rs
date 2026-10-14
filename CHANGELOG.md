@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Tests: the end-to-end suites no longer fail intermittently on loaded CI runners. The remote command of the command-output tests waits until the client is connected before printing, the resize probes wait for the new pty size, every wait has a deadline of at least three times its idle time, the timing tests in `prediction_e2e` and `udp_impair` run one at a time, and no cargo test binds in `scrollback.sh`'s port range (INTERVENTIONS.md, CI flakiness).
 - `mosh --help` now points bug reports at https://github.com/Arunjay4213/mosh-rs/issues instead of the upstream mailing list (#42, PLAN.md 9.17).
 - `mosh` run from an extracted release folder on Linux and macOS finds the `mosh-client` next to it, as the Windows build already did; before it failed with `Can't exec "mosh-client"` and `Can't count colors` unless the folder was on PATH (PLAN.md 9.16).
 - Launcher error messages no longer carry Perl's `at ./mosh line N.` suffix copied from mosh.pl (PLAN.md 9.17).
