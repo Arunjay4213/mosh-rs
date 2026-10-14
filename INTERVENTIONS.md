@@ -406,3 +406,8 @@ Evidence came from the `ci-status` branch (every run's failure excerpt) and the 
 - Idle CPU, measured from the laptop with Get-Process over 60 s while `top` redrew: 0.062 CPU seconds, 0.1% of one core, 14.7 MB working set.
 - Sleep and wake (Start, Power, Sleep, about a minute, wake): the session was live and `top` kept updating; typing worked.
 - Ctrl-^ Ctrl-Z: Windows has no job control, so the client does not suspend; the Ctrl-Z reached the remote shell and stopped `top`; a second Ctrl-Z at the shell prompt did nothing, as expected. Documented in the README.
+
+## 2026-10-14 Mac instance for the Homebrew tap check (laptop)
+
+- The entry of 2026-10-13 says the Mac dedicated host was released; it was not. `describe-hosts` showed h-0b448e31dc2a08aa9 still `available` on 2026-10-14, so a macOS 15.8 instance (i-09481842e7ba05b57) was launched on it for the Homebrew check, then terminated. Whoever releases the host should check it is actually released afterwards (`aws ec2 describe-hosts`).
+- Devbox's ssh key did not open the new instance; the key pair named `devbox` matches the laptop's `~/.ssh/devbox.pem`, so the Mac was reached from the laptop over its public address (temporary rule, removed) and the session to devbox used agent forwarding.
