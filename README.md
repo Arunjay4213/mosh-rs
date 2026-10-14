@@ -58,6 +58,22 @@ Scrollback has been missing since the start: [mobile-shell/mosh#122](https://git
 A port keeps everything that works (the protocol, the emulator semantics, the prediction behavior) and makes the two missing features possible without forking the protocol.
 New features are additive protobuf fields that existing peers ignore, so mixed old and new installs keep working.
 
+## Verification at a glance
+
+mosh-rs is checked against upstream's own C++ code, with the commands in `tests/` and the numbers in [STATUS.md](STATUS.md).
+The main results at v0.1.2:
+
+- **Crypto.** Every packet is AES-128-OCB3 from the RustCrypto [`aes`](https://crates.io/crates/aes) and [`ocb3`](https://crates.io/crates/ocb3) crates, with the key schedule wiped on drop as upstream does.
+  `tests/tests/crypto_conformance.rs` encrypts and decrypts 2000 random packets with mosh-rs and with upstream's C++ linked into a harness: byte-identical in both directions, tampered packets and 14 malformed keys rejected by both, RFC 7253 test vectors pass.
+- **Interop.** C++ and Rust clients against C++ and Rust servers, each pair under clean, 5% loss, 30% loss with 200 ms delay and reordering, a 2-minute blackout, and a client address change, six screen scenarios each: 120 of 120 cells pass.
+- **Upstream's test suite.** mosh's own `make check` with the mosh-rs client, server, and both swapped in: 30 PASS, 2 XFAIL, 0 FAIL.
+- **Terminal emulator.** Differential fuzzing against upstream's emulator: 1,000,000 cases plus four runs of 200,000 and 200,000 frame cases, 0 mismatches; 27 recorded sessions cell-exact at two sizes; terminfo answers for 2830 terminal names identical.
+- **Memory safety.** `#![forbid(unsafe_code)]` in the terminal, network, and mosh crates; `unsafe` only in the platform crate, each block with a stated invariant.
+  A hostile server sending a 1,000,000-line-feed history line is rejected with the client at 6.2 MB peak memory.
+
+There has been no independent security audit.
+The crypto and transport code is a line-by-line port of upstream's, and the conformance tests above are what stands behind it; see [How correctness is checked](#how-correctness-is-checked) for the full list.
+
 ## Install
 
 Pre-built binaries are attached to the [v0.1.2 release](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.2).

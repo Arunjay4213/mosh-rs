@@ -725,3 +725,7 @@ Also in this commit: the unused `unicode-width` and `lexopt` declarations are re
 - Scoop bucket `Arunjay4213/scoop-mosh-rs` with `bucket/mosh-rs.json` (x86_64 zip, `extract_dir`, autoupdate via the `.sha256` file). JSON validated; not yet installed through scoop on a real machine.
 - winget manifest submitted as microsoft/winget-pkgs#452393 (Arunjay4213.mosh-rs 0.1.2, zip with two portable executables). Local `winget validate` was not run (no Windows shell here); the pipeline validates it.
 - README: the Windows install block downloaded the v0.1.1 zip under a v0.1.2 folder name (fixed), and the other v0.1.1 release references were updated to v0.1.2.
+
+## 2026-10-14 README: "Verification at a glance" (laptop)
+
+- A short section before Install with the Phase 1, 2 and 4 gate numbers that matter to someone deciding whether to run it: crypto conformance (2000 packets, 14 malformed keys, RFC 7253), interop 120 of 120, upstream `make check` 30 PASS 2 XFAIL, fuzzing totals, forbid(unsafe_code) per crate, the hostile-server bound, and a plain statement that there has been no independent audit. Numbers copied from the gate entries above; no new runs.
