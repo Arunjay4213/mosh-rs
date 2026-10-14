@@ -70,10 +70,11 @@ if [ "${MOSH_CI_FULL-}" != 0 ]; then
     export MOSH_CI_FULL=1
 fi
 
-# Drivers that must not run alongside the cargo tests because they share
-# ports with them. scrollback.sh owns 61500-61599 and SIGKILLs whatever is
-# bound there; detached_warning.rs binds 61500+ and scrollback_hostile.rs
-# 61580+.
+# Drivers that run after the cargo tests. scrollback.sh owns 61500-61599
+# and SIGKILLs whatever is bound there; no cargo test binds in that range
+# (detached_warning.rs uses 61400-61409, scrollback_hostile.rs 61410-61419),
+# and keeping it after them also keeps its sessions off the cargo tests'
+# timing.
 AFTER_CARGO=" scrollback.sh "
 
 PASS_TAIL=15

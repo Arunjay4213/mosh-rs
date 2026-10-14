@@ -46,6 +46,19 @@ use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+/// Deadlines, sized for a loaded shared CI runner: at least three times
+/// what each step takes on an idle machine (connecting over ssh localhost
+/// takes 1-3 s there, an echo or a notification shows within a second).
+const CONNECT: Duration = Duration::from_secs(90);
+const OUTPUT: Duration = Duration::from_secs(30);
+const EXIT: Duration = Duration::from_secs(60);
+
+/// Typed into the remote shell after the window was resized: prints the
+/// size once the pty has it (`tput` reads the pty's size, which the server
+/// sets when the client's resize arrives); a probe typed before that would
+/// print the old size once and never again.
+const RESIZE_PROBE: &str = "until [ \"$(tput cols)\" = 100 ] && [ \"$(tput lines)\" = 30 ]; do sleep 0.1; done; echo COLS=$(tput cols) LINES=$(tput lines)";
+
 fn release_dir() -> PathBuf {
     static DIR: OnceLock<PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
@@ -117,7 +130,7 @@ impl Tmux {
             .expect("run tmux");
         assert!(status.success(), "tmux new-session failed");
         let t = Tmux { socket };
-        t.wait_line("$", Duration::from_secs(10));
+        t.wait_line("$", OUTPUT);
         t
     }
 
@@ -214,13 +227,18 @@ fn command_output_and_exit() {
     for (i, (name, client)) in clients().into_iter().enumerate() {
         let port = 61300 + i as u16;
         let tmux = Tmux::start(&format!("cmd-{name}"));
+        // mosh-server runs the command as soon as it starts, before the
+        // client has connected: the command waits for a key (READY on screen
+        // proves the client is connected) before printing what must be seen.
         tmux.type_line(&mosh_command(
             &client,
             port,
-            "sh -c 'printf \"CLIENT_OK\\n\"; seq 1 300; echo DONE; sleep 2'",
+            "sh -c 'echo READY; read x; printf \"CLIENT_OK\\n\"; seq 1 300; echo DONE; sleep 2'",
         ));
-        let live = tmux.wait_line("DONE", Duration::from_secs(30));
-        let done = tmux.wait_exit(Duration::from_secs(30));
+        tmux.wait_line("READY", CONNECT);
+        tmux.tmux(&["send-keys", "Enter"]);
+        let live = tmux.wait_line("DONE", OUTPUT);
+        let done = tmux.wait_exit(EXIT);
         println!(
             "[{name}] live screen:\n{}\n[{name}] final screen:\n{}",
             live.trim_end(),
@@ -252,19 +270,19 @@ fn interactive_shell_and_resize() {
         let port = 61310 + i as u16;
         let tmux = Tmux::start(&format!("shell-{name}"));
         tmux.type_line(&mosh_command(&client, port, "env PS1='R$ ' bash --norc"));
-        tmux.wait_line("R$", Duration::from_secs(30));
+        tmux.wait_line("R$", CONNECT);
         tmux.type_line("echo $((6*7))TYPED");
-        tmux.wait_for("42TYPED", Duration::from_secs(10));
+        tmux.wait_for("42TYPED", OUTPUT);
 
         tmux.tmux(&["resize-window", "-x", "100", "-y", "30"]);
         let size = tmux.tmux(&["display", "-p", "#{window_width}x#{window_height}"]);
         assert_eq!(size.trim(), "100x30", "[{name}] tmux did not resize");
-        tmux.type_line("echo COLS=$(tput cols) LINES=$(tput lines)");
-        let screen = tmux.wait_for("COLS=100 LINES=30", Duration::from_secs(10));
+        tmux.type_line(RESIZE_PROBE);
+        let screen = tmux.wait_for("COLS=100 LINES=30", OUTPUT);
         println!("[{name}] after resize:\n{}", screen.trim_end());
 
         tmux.type_line("exit");
-        let done = tmux.wait_exit(Duration::from_secs(30));
+        let done = tmux.wait_exit(EXIT);
         println!("[{name}] final screen:\n{}", done.trim_end());
         assert!(
             done.contains("MOSH_EXIT=0"),
@@ -284,20 +302,20 @@ fn escape_quit_restores_terminal() {
         let port = 61320 + i as u16;
         let tmux = Tmux::start(&format!("quit-{name}"));
         tmux.type_line("echo PRE_MOSH_MARKER");
-        tmux.wait_for("PRE_MOSH_MARKER\n", Duration::from_secs(5));
+        tmux.wait_for("PRE_MOSH_MARKER\n", OUTPUT);
         tmux.type_line(&mosh_command(&client, port, "env PS1='R$ ' bash --norc"));
-        tmux.wait_line("R$", Duration::from_secs(30));
+        tmux.wait_line("R$", CONNECT);
         tmux.type_line("echo INSIDE_MOSH");
-        tmux.wait_for("INSIDE_MOSH\n", Duration::from_secs(10));
+        tmux.wait_for("INSIDE_MOSH\n", OUTPUT);
 
         tmux.tmux(&["send-keys", "C-^"]);
-        let help = tmux.wait_for("Commands:", Duration::from_secs(5));
+        let help = tmux.wait_for("Commands:", OUTPUT);
         println!(
             "[{name}] escape help:\n{}",
             help.lines().next().unwrap_or("")
         );
         tmux.tmux(&["send-keys", "."]);
-        let done = tmux.wait_exit(Duration::from_secs(30));
+        let done = tmux.wait_exit(EXIT);
         println!("[{name}] after quit:\n{}", done.trim_end());
         assert!(
             done.contains("[mosh is exiting.]"),
@@ -321,7 +339,7 @@ fn escape_quit_restores_terminal() {
         tmux.type_line(
             "clear; stty -a | tr ' ;' '\\n\\n' | grep -x -e icanon -e echo -e -icanon -e -echo | sed 's/^/ST''TY:/'; echo ST''TY_END",
         );
-        let stty = tmux.wait_line("STTY_END", Duration::from_secs(5));
+        let stty = tmux.wait_line("STTY_END", OUTPUT);
         let flags: Vec<&str> = stty
             .lines()
             .filter_map(|l| l.strip_prefix("STTY:"))
@@ -342,12 +360,12 @@ fn killed_server_shows_last_contact() {
         let port = 61330 + i as u16;
         let tmux = Tmux::start(&format!("kill-{name}"));
         tmux.type_line(&mosh_command(&client, port, "env PS1='R$ ' bash --norc"));
-        tmux.wait_line("R$", Duration::from_secs(30));
+        tmux.wait_line("R$", CONNECT);
         let pid = mosh_tests::udp::listener_pid(port).expect("mosh-server pid");
         let killed = Instant::now();
         let status = Command::new("kill").arg("-9").arg(pid.to_string()).status();
         assert!(status.is_ok_and(|s| s.success()));
-        let bar = tmux.wait_for("mosh: Last contact", Duration::from_secs(10));
+        let bar = tmux.wait_for("mosh: Last contact", OUTPUT);
         println!(
             "[{name}] notification after {:.1} s: {}",
             killed.elapsed().as_secs_f64(),
@@ -361,7 +379,7 @@ fn killed_server_shows_last_contact() {
 
         tmux.tmux(&["send-keys", "C-^"]);
         tmux.tmux(&["send-keys", "."]);
-        let done = tmux.wait_exit(Duration::from_secs(30));
+        let done = tmux.wait_exit(EXIT);
         println!("[{name}] after quit:\n{}", done.trim_end());
         assert!(
             done.contains("[mosh is exiting.]"),
@@ -387,7 +405,7 @@ fn idle_cpu() {
         let port = 61340 + i as u16;
         let tmux = Tmux::start(&format!("idle-{name}"));
         tmux.type_line(&mosh_command(&client, port, "env PS1='R$ ' bash --norc"));
-        tmux.wait_line("R$", Duration::from_secs(30));
+        tmux.wait_line("R$", CONNECT);
         let out = Command::new("pgrep")
             .args(["-f", &format!("mosh-client .* {port}$")])
             .output()
@@ -417,7 +435,7 @@ fn idle_cpu() {
         let cpu: f64 = line.split_whitespace().nth(7).unwrap().parse().unwrap();
         assert!(cpu <= 0.05, "[{name}] idle client used {cpu}% CPU");
         tmux.type_line("exit");
-        tmux.wait_exit(Duration::from_secs(30));
+        tmux.wait_exit(EXIT);
         kill_server(*port);
     }
 }
@@ -439,31 +457,31 @@ fn escape_suspend_and_resume() {
             release_dir().join("mosh").display(),
             mosh_tests::upstream::get().server
         ));
-        tmux.wait_line("R$", Duration::from_secs(30));
+        tmux.wait_line("R$", CONNECT);
         tmux.type_line("echo BEFORE_SUSPEND");
-        tmux.wait_line("BEFORE_SUSPEND", Duration::from_secs(10));
+        tmux.wait_line("BEFORE_SUSPEND", OUTPUT);
 
         tmux.tmux(&["send-keys", "C-^"]);
         tmux.tmux(&["send-keys", "C-z"]);
-        let stopped = tmux.wait_until("the shell's job report", Duration::from_secs(10), |s| {
+        let stopped = tmux.wait_until("the shell's job report", OUTPUT, |s| {
             s.contains("[mosh is suspended.]") && s.contains("Stopped")
         });
         println!("[{name}] suspended:\n{}", stopped.trim_end());
         tmux.type_line("echo SHELL_WORKS");
-        tmux.wait_line("SHELL_WORKS", Duration::from_secs(5));
+        tmux.wait_line("SHELL_WORKS", OUTPUT);
 
         tmux.type_line("fg");
-        let back = tmux.wait_line("BEFORE_SUSPEND", Duration::from_secs(10));
+        let back = tmux.wait_line("BEFORE_SUSPEND", OUTPUT);
         assert!(
             !back.contains("SHELL_WORKS"),
             "[{name}] not repainted:\n{back}"
         );
         tmux.type_line("echo AFTER_RESUME");
-        let screen = tmux.wait_line("AFTER_RESUME", Duration::from_secs(10));
+        let screen = tmux.wait_line("AFTER_RESUME", OUTPUT);
         println!("[{name}] resumed:\n{}", screen.trim_end());
 
         tmux.type_line("exit");
-        tmux.wait_for("[mosh is exiting.]", Duration::from_secs(30));
+        tmux.wait_for("[mosh is exiting.]", EXIT);
         kill_server(port);
     }
 }
@@ -484,14 +502,16 @@ fn no_server_times_out() {
             "MOSH_KEY=AAAAAAAAAAAAAAAAAAAAAA {client} 127.0.0.1 {port}; echo MOSH_EXIT=$?"
         ));
         let bar = format!("mosh: Nothing received from server on UDP port {port}.");
-        tmux.wait_until("the connecting bar", Duration::from_secs(5), |s| {
+        // The bar comes 250 ms after the client starts (stmclient.cc).
+        tmux.wait_until("the connecting bar", OUTPUT, |s| {
             s.lines().next().is_some_and(|l| l.starts_with(&bar))
         });
         println!(
             "[{name}] connecting bar after {:.1} s",
             started.elapsed().as_secs_f64()
         );
-        tmux.wait_until("the timeout bar", Duration::from_secs(25), |s| {
+        // The client gives up 15 s after it started (stmclient.cc).
+        tmux.wait_until("the timeout bar", Duration::from_secs(15) + OUTPUT, |s| {
             s.lines()
                 .next()
                 .is_some_and(|l| l.starts_with("mosh: Timed out waiting for server..."))
@@ -500,7 +520,7 @@ fn no_server_times_out() {
             "[{name}] timeout bar after {:.1} s",
             started.elapsed().as_secs_f64()
         );
-        let done = tmux.wait_exit(Duration::from_secs(60));
+        let done = tmux.wait_exit(EXIT);
         println!(
             "[{name}] exit after {:.1} s:\n{}",
             started.elapsed().as_secs_f64(),

@@ -41,7 +41,7 @@
 // Each case runs the real mosh-client (target/release, MOSH_SCROLLBACK=1)
 // in a tmux pane and reads its peak memory (VmHWM) from /proc.
 //
-// Linux only (/proc). UDP ports 61580-61589; holds /tmp/mosh-rs-interop.lock.
+// Linux only (/proc). UDP ports 61410-61419; holds /tmp/mosh-rs-interop.lock.
 
 #![cfg(target_os = "linux")]
 
@@ -213,7 +213,7 @@ fn hostile_history_lines_stay_bounded() {
     for (k, (kind, size, accepted, what)) in cases.into_iter().enumerate() {
         let o = run_case(
             &dir,
-            61580 + 2 * k as u16,
+            61410 + 2 * k as u16,
             kind,
             size,
             Duration::from_secs(10),

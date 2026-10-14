@@ -714,3 +714,6 @@ Also in this commit: the unused `unicode-width` and `lexopt` declarations are re
 
 - Launcher: bug reports in `--help` go to the GitHub issue tracker (#42); `mosh-client` next to the launcher is preferred on every platform (PLAN 9.16); the Perl `at SCRIPT line N.` suffixes are gone (PLAN 9.17). `tools/bench` compiles for `aarch64-apple-darwin` (`cargo check --workspace --target aarch64-apple-darwin` clean). Tests: shared `mosh_tests::udp` probe (`ss`, else `lsof`), `scrollback.sh` without `ss`/`flock`, oracle Makefiles reading `CXX`, `CRYPTO_CFLAGS`, `CRYPTO_LIBS`, `TINFO_LIBS` from `upstream/Makefile`.
 - Evidence (devbox test runs and CI) in INTERVENTIONS.md, entry of the same date.
+## 2026-10-14 CI flakiness fixed in the tests (laptop)
+
+- Root causes and fixes in INTERVENTIONS.md (same date). Devbox: server_e2e, client_e2e, prediction_e2e, udp_impair 10 of 10 each with two binaries running at once; `tests/run-all.sh` twice, 21 items, 0 failed each; CI green on both architectures.
