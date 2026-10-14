@@ -198,10 +198,11 @@ fn shellwords(line: &str) -> Vec<String> {
 
 /// `sub shell_quote { join ' ', map {(my $a = $_) =~ s/'/'\\''/g; "'$a'"} @_ }`
 /// Whether the user's ssh already holds a ControlMaster connection to
-/// `userhost`: `ssh -O check` exits 0 only then (mosh-rs only, PLAN 9.18).
-/// Any failure (no ControlPath configured, no socket, an ssh wrapper that does
-/// not know `-O`, Windows OpenSSH) means "no", and the real ssh run reports
-/// real errors later.
+/// `userhost`: `ssh -O check` exits 0 and reports `Master running` on stderr
+/// only then (mosh-rs only, PLAN 9.18). Anything else (no ControlPath
+/// configured, no socket, an ssh wrapper that does not know `-O` or answers
+/// everything with 0, Windows OpenSSH) means "no", and the real ssh run
+/// reports real errors later.
 fn ssh_control_master_running(ssh: &[String], userhost: &str) -> bool {
     Command::new(&ssh[0])
         .args(&ssh[1..])
@@ -209,9 +210,11 @@ fn ssh_control_master_running(ssh: &[String], userhost: &str) -> bool {
         .arg(userhost)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .is_ok_and(|s| s.success())
+        .stderr(Stdio::piped())
+        .output()
+        .is_ok_and(|o| {
+            o.status.success() && String::from_utf8_lossy(&o.stderr).contains("Master running")
+        })
 }
 
 fn shell_quote(args: &[String]) -> String {
