@@ -200,40 +200,9 @@ fn mosh_command(client: &str, port: u16, remote: &str) -> String {
     )
 }
 
-/// The pid of the mosh-server listening on UDP `port`.
-fn server_pid(port: u16) -> Option<u32> {
-    // `ss` on Linux; macOS has no `ss`, so `lsof -t` (which prints only pids) there.
-    let Ok(out) = Command::new("ss")
-        .args(["-H", "-u", "-l", "-n", "-p"])
-        .arg(format!("sport = :{port}"))
-        .output()
-    else {
-        let out = Command::new("lsof")
-            .args(["-t", "-nP", &format!("-iUDP:{port}")])
-            .output()
-            .ok()?;
-        return String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .next()?
-            .trim()
-            .parse()
-            .ok();
-    };
-    let text = String::from_utf8_lossy(&out.stdout);
-    let at = text.find("pid=")? + 4;
-    text[at..]
-        .chars()
-        .take_while(|c| c.is_ascii_digit())
-        .collect::<String>()
-        .parse()
-        .ok()
-}
-
 /// Make sure no server from a failed run is left on `port`.
 fn kill_server(port: u16) {
-    if let Some(pid) = server_pid(port) {
-        let _ = Command::new("kill").arg("-9").arg(pid.to_string()).status();
-    }
+    mosh_tests::udp::kill_listener(port);
 }
 
 #[test]
@@ -374,7 +343,7 @@ fn killed_server_shows_last_contact() {
         let tmux = Tmux::start(&format!("kill-{name}"));
         tmux.type_line(&mosh_command(&client, port, "env PS1='R$ ' bash --norc"));
         tmux.wait_line("R$", Duration::from_secs(30));
-        let pid = server_pid(port).expect("mosh-server pid");
+        let pid = mosh_tests::udp::listener_pid(port).expect("mosh-server pid");
         let killed = Instant::now();
         let status = Command::new("kill").arg("-9").arg(pid.to_string()).status();
         assert!(status.is_ok_and(|s| s.success()));

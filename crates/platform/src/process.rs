@@ -87,15 +87,14 @@ impl LineProcess {
     }
 }
 
-/// The client the launcher runs by default. On unix this is `mosh-client`
-/// from PATH, as mosh.pl line 64. On Windows it is `mosh-client.exe` next to
-/// the launcher's own executable when that file exists (the release zip
-/// ships both side by side and is usually not on PATH), else `mosh-client`
-/// from PATH.
+/// The client the launcher runs by default: `mosh-client` (`mosh-client.exe`
+/// on Windows) next to the launcher's own executable when that file exists,
+/// else `mosh-client` from PATH as mosh.pl line 64. The release archives
+/// ship the three binaries side by side in a folder that is usually not on
+/// PATH, so the extracted folder runs as is (PLAN.md section 9 item 16).
 pub fn default_client_program() -> String {
-    #[cfg(windows)]
     if let Ok(exe) = std::env::current_exe() {
-        let sibling = exe.with_file_name("mosh-client.exe");
+        let sibling = exe.with_file_name(format!("mosh-client{}", std::env::consts::EXE_SUFFIX));
         if sibling.is_file() {
             return sibling.to_string_lossy().into_owned();
         }

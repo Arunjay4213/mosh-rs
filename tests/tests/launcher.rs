@@ -392,8 +392,9 @@ if [ "$1" = "-c" ]; then printf '%b' "${FAKE_COLORS-256\n}"; exit "${FAKE_COLORS
     .clone()
 }
 
-/// Replace `$0` paths, Perl's `at SCRIPT line N.` numbers and the usage
-/// text (compared separately) so the two launchers' outputs can be diffed.
+/// Replace `$0` paths, drop Perl's `at SCRIPT line N.` suffix (which ours
+/// does not print, PLAN 9.16) and the usage text (compared separately) so
+/// the two launchers' outputs can be diffed.
 fn normalize(text: &str, bin: &str) -> String {
     let mut out = String::new();
     for line in text.replace(bin, "$0").lines() {
@@ -402,7 +403,7 @@ fn normalize(text: &str, bin: &str) -> String {
             break;
         }
         let line = match line.rfind(" at $0 line ") {
-            Some(i) if line.ends_with('.') => format!("{} at $0 line N.", &line[..i]),
+            Some(i) if line.ends_with('.') => line[..i].to_string(),
             _ => line.to_string(),
         };
         out.push_str(&line);
@@ -608,13 +609,18 @@ fn options_and_messages_match_mosh_pl() {
     );
 
     // The usage text differs only where PLAN allows: `--bind-server` takes
-    // ssh or any (PLAN 9.3), and `--scrollback` exists (PLAN section 6).
+    // ssh or any (PLAN 9.3), `--scrollback` exists (PLAN section 6), and bug
+    // reports go to this repository (PLAN 9.16).
     let help = |bin: &str| {
         let out = Command::new(bin).arg("--help").output().unwrap();
         String::from_utf8_lossy(&out.stdout).replace(bin, "$0")
     };
     let want = help(mosh_pl)
         .replace("--bind-server={ssh|any|IP}", "--bind-server={ssh|any}")
+        .replace(
+            "Please report bugs to mosh-devel@mit.edu.",
+            "Please report bugs to https://github.com/Arunjay4213/mosh-rs/issues.",
+        )
         .replace(
             "\n\n        --local ",
             "\n\n        --scrollback         keep the session's output in this terminal's\n                                scrollback (needs a mosh-rs server)\n\n        --local ",

@@ -120,9 +120,12 @@ done
 
 echo "scrollback: variants: ${variants[*]}"
 missing=()
-for cmd in tmux vim less ss ssh python3 flock cargo; do
+for cmd in tmux vim less ssh python3 cargo; do
     command -v $cmd > /dev/null || missing+=("$cmd")
 done
+# `ss` and `flock` are Linux tools; macOS has `lsof` and no `flock` (see
+# `udp_listeners` and the lock below).
+command -v ss > /dev/null || command -v lsof > /dev/null || missing+=("ss or lsof")
 ssh -o BatchMode=yes localhost true 2> /dev/null || missing+=("passwordless ssh to localhost")
 # The shrink and grow expectations are tmux's resize behavior, measured with
 # tmux 3.4; tmux before 3.2 resizes differently.
@@ -140,10 +143,21 @@ fi
 cargo build --release -q -p mosh -p mosh-tools --bin mosh --bin mosh-client --bin mosh-server --bin udp-impair || exit 1
 
 # Sessions use the shared lock and their own port range.
-exec 9> /tmp/mosh-rs-interop.lock
-if ! flock -n 9; then
-    echo "scrollback: another run holds /tmp/mosh-rs-interop.lock, waiting"
-    flock 9
+lock_dir=
+if command -v flock > /dev/null; then
+    exec 9> /tmp/mosh-rs-interop.lock
+    if ! flock -n 9; then
+        echo "scrollback: another run holds /tmp/mosh-rs-interop.lock, waiting"
+        flock 9
+    fi
+else
+    # No flock (macOS): mkdir is atomic, so a directory is the lock. It is
+    # removed by `cleanup`; a stale one from a killed run must be removed by hand.
+    lock_dir=/tmp/mosh-rs-interop.lock.d
+    if ! mkdir "$lock_dir" 2> /dev/null; then
+        echo "scrollback: another run holds $lock_dir, waiting"
+        until mkdir "$lock_dir" 2> /dev/null; do sleep 1; done
+    fi
 fi
 
 rm -rf "$out_dir"
@@ -154,12 +168,23 @@ sock=$tmp/tmux-0.sock
 printf 'set -g history-limit 200000\n' > "$tmp/tmux.conf"
 proxy_pid=
 
+# Every bound UDP socket as "PID PORT" lines: from `ss` on Linux, else from
+# `lsof` (macOS), whose -F output is one field per line: `p<pid>` once per
+# process, then `n<address>:<port>` for each of its sockets.
+udp_listeners() {
+    if command -v ss > /dev/null; then
+        ss -Hulpn 2> /dev/null | while read -r _ _ _ local _ users; do
+            grep -o 'pid=[0-9]*' <<< "$users" | cut -d= -f2 | sed "s/\$/ ${local##*:}/"
+        done
+    else
+        lsof -nP -iUDP -F pn 2> /dev/null | awk '/^p/ { pid = substr($0, 2) } /^n/ { sub(/.*:/, ""); print pid, $0 }'
+    fi
+}
 kill_ours() {
     # Anything bound in our port range is ours (the lock guarantees it).
-    ss -Hulpn 2> /dev/null | while read -r _ _ _ local _ users; do
-        local port=${local##*:}
-        if [ "$port" -ge $PORT_FIRST ] && [ "$port" -le $PORT_LAST ]; then
-            grep -o 'pid=[0-9]*' <<< "$users" | cut -d= -f2
+    udp_listeners | while read -r pid port; do
+        if [ "$port" -ge $PORT_FIRST ] && [ "$port" -le $PORT_LAST ] 2> /dev/null; then
+            echo "$pid"
         fi
     done | sort -u | xargs -r kill -KILL 2> /dev/null
 }
@@ -175,6 +200,7 @@ end_session() {
 cleanup() {
     end_session
     rm -rf "$tmp"
+    [ -n "$lock_dir" ] && rmdir "$lock_dir" 2> /dev/null
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM

@@ -201,7 +201,7 @@ mosh-server binds the address it sees in `SSH_CONNECTION`, which is the same one
 An earlier design that resolved the name separately (`ssh -G`) was dropped after a dual-stack bug; `--fake-proxy` is kept as in mosh.pl (PLAN.md section 8).
 
 The ProxyCommand words are quoted for the shell that runs them: POSIX single quotes on Unix, and Windows command-line rules on Windows (double quotes only around a word with a space, tab or quote; backslashes untouched), because Windows OpenSSH hands the ProxyCommand to `CreateProcessW` without a shell (`mosh_platform::process::proxy_command_quote`).
-On Windows the launcher prefers `mosh-client.exe` next to `mosh.exe`; elsewhere it runs `mosh-client` from PATH, as mosh.pl does.
+The launcher prefers `mosh-client` (`mosh-client.exe` on Windows) next to its own executable, so an extracted release folder runs as is; otherwise it runs `mosh-client` from PATH, as mosh.pl does (PLAN.md 9.16).
 
 Options are mosh.pl's complete set, parsed the way its Getopt::Long configuration parses them, with the same messages and exit codes (`tests/tests/launcher.rs` compares 73 cases with `/usr/bin/mosh`).
 The differences are `--scrollback` (new, a flag that starts the client with `MOSH_SCROLLBACK=1`) and `--bind-server`, which takes `ssh` or `any` only (PLAN.md 9.3).

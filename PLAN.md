@@ -263,18 +263,18 @@ So mosh-server sees that address in `SSH_CONNECTION` and binds it, and the clien
 Host key checking is untouched because ssh still connects to the name the user typed.
 An earlier design (`ssh -G`, then resolving the name separately) was dropped: on dual-stack hosts ssh and the client could pick different address families (INTERVENTIONS.md, 2026-10-13), and `-o HostName=<ip> -o HostKeyAlias=...` cannot reproduce ssh's known_hosts lookup for non-default ports (`[host]:port` with fallback to `host`).
 Options are mosh.pl's complete set, parsed as its Getopt::Long configuration does: options and arguments may be mixed until `--`, `-x` and `--x` are the same, long names match case-insensitively and by any unique prefix (`--pred` is ambiguous between `predict` and `predict-overwrite`, `--loc` is `--local`), `!` options also take `--noNAME`/`--no-NAME`, there is no bundling (`-an` is the unknown option `an`), and a value is `--name=value` or the next argument whatever it looks like.
-Getopt::Long's warnings, every `die` message (including Perl's `at SCRIPT line N.` suffix where mosh.pl's message has no newline) and the exit codes (Perl's `$!`: 10 after the ssh child is reaped, 29 inside the read loop, the resolver's errno after a failed lookup) are reproduced; `tests/tests/launcher.rs` compares 73 argument and environment cases with `/usr/bin/mosh`.
+Getopt::Long's warnings, every `die` message (without Perl's `at SCRIPT line N.` suffix where mosh.pl's message has no newline, section 9 item 17) and the exit codes (Perl's `$!`: 10 after the ssh child is reaped, 29 inside the read loop, the resolver's errno after a failed lookup) are reproduced; `tests/tests/launcher.rs` compares 73 argument and environment cases with `/usr/bin/mosh`.
 `--experimental-remote-ip=(local|remote|proxy)` is ported as in mosh.pl (default `proxy`, the mode described above).
 `resolvename` follows mosh.pl: the host as a numeric address first, else its canonical name (AI_CANONNAME) resolved again, through `getaddrinfo` in `crates/platform/src/netdb.rs`.
 The color count keeps `chomp` semantics: one trailing newline is removed, so a `mosh-client -c` output of `256\n\n` is passed on as `256\n`, as mosh.pl does.
-The default client is `mosh-client` from PATH, as mosh.pl. On Windows only, `mosh-client.exe` next to `mosh.exe` is preferred when it exists, because the release zip ships both side by side and is usually not on PATH.
+The default client is `mosh-client` (`mosh-client.exe` on Windows) next to the launcher's own executable when that file exists, else `mosh-client` from PATH as mosh.pl (section 9 item 16), because the release archives ship the binaries side by side in a folder that is usually not on PATH.
 `--scrollback` (mosh-rs only) and the restriction of `--bind-server` to `ssh` and `any` (section 9.3) are the only differences in the option set and usage text; `--scrollback` also makes `--s` ambiguous with four names instead of three.
 `--scrollback` (listed in the usage text) starts the client with `MOSH_SCROLLBACK=1`, as mosh.pl passes `--predict` in `MOSH_PREDICTION_DISPLAY`; the client then asks the server for history (section 6.4).
 
 ## 9. Deviations from upstream (the only allowed ones)
 
 1. Withdrawn (was: launcher uses `ssh -G` instead of `--fake-proxy`). The launcher ports `--fake-proxy` as mosh.pl does (section 8). The number is kept so references to items 2-10 stay valid.
-   Windows-only launcher behavior (the sibling `mosh-client.exe` lookup and the Windows quoting of the ProxyCommand) has no upstream counterpart and is described in sections 7 and 8.
+   The Windows quoting of the ProxyCommand has no upstream counterpart and is described in sections 7 and 8; the sibling `mosh-client` lookup is item 16.
 2. utmp/wtmp records are not written.
 3. `--bind-server` supports `ssh` and `any` only.
 4. Scrollback extension (section 6), alternate-screen flag in `DrawState`.
@@ -298,6 +298,10 @@ The default client is `mosh-client` from PATH, as mosh.pl. On Windows only, `mos
     Through ssh's terminal, the normal case, both print them (STATUS.md, detached-session warning).
 
 15. On Linux x86_64 and aarch64, `mosh-server` reads the utmp file (`/run/utmp`, else `/var/run/utmp`) with glibc's `struct utmpx` record layout instead of calling `getutxent()`, for the detached-session warning (mosh-server.cc line 1046), because musl's `getutxent` is a stub that never returns a record, so a static musl `mosh-server` would never warn. Reading the file the same way in the glibc and musl builds keeps them identical. A file whose size is not a whole number of records yields no records, as `getutxent` does for a file it cannot use. Other systems call `getutxent()`.
+
+16. The launcher runs `mosh-client` (`mosh-client.exe` on Windows) from next to its own executable (`std::env::current_exe()`) when that file exists, and only otherwise `mosh-client` from PATH as mosh.pl line 64 does, on every platform (`mosh_platform::process::default_client_program`). The release archives ship `mosh`, `mosh-client` and `mosh-server` side by side in a folder that is usually not on PATH; without this, `./mosh` from the extracted folder fails with `Can't exec "mosh-client"` and `Can't count colors` (INTERVENTIONS.md, macOS verification item 4). `--client` still overrides it.
+
+17. Launcher text that only makes sense for a Perl script is not copied: the usage text points bug reports at https://github.com/Arunjay4213/mosh-rs/issues instead of mosh-devel@mit.edu (issue #42; the Keith Winstein copyright lines stay), and the four `die` and `warn` messages that mosh.pl writes without a newline (`Unknown parameter`, `Died`, `could not find address for`, `Can't exec`) are printed without Perl's `at SCRIPT line N.` suffix. `tests/tests/launcher.rs` strips that suffix from mosh.pl's output before comparing.
 
 Anything else that differs from upstream is a bug.
 

@@ -115,7 +115,7 @@ fn usage(argv0: &str) -> String {
         --help               this message
         --version            version and copyright information
 
-Please report bugs to mosh-devel@mit.edu.
+Please report bugs to https://github.com/Arunjay4213/mosh-rs/issues.
 Mosh home page: https://mosh.org
 "#
     )
@@ -258,12 +258,6 @@ fn check_port_request(argv0: &str, port_request: &str) {
 fn perl_errstr(e: &std::io::Error) -> String {
     let e = e.to_string();
     e.split(" (os error").next().unwrap_or(&e).to_string()
-}
-
-/// `die` with a message that does not end in a newline: Perl appends
-/// " at SCRIPT line N.". The line numbers are those of mosh.pl.
-fn die_at(argv0: &str, msg: &str, line: u32, code: i32) -> ! {
-    die(&format!("{msg} at {argv0} line {line}.\n"), code)
 }
 
 /// `sub resolvename` (mosh.pl lines 484-538): first the host as a numeric
@@ -662,12 +656,8 @@ pub fn main() -> ! {
     };
 
     if !["local", "remote", "proxy"].contains(&use_remote_ip.as_str()) {
-        die_at(
-            &argv0,
-            &format!("Unknown parameter {use_remote_ip}"),
-            196,
-            DIE,
-        );
+        // mosh.pl line 196; Perl's " at SCRIPT line N." suffix is not copied.
+        die(&format!("Unknown parameter {use_remote_ip}\n"), DIE);
     }
 
     family = family.to_lowercase();
@@ -723,17 +713,12 @@ pub fn main() -> ! {
     {
         Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout).into_owned(),
         /* close COLORCOUNT or die: `die` exits with the child's status */
-        Ok(out) => die_at(
-            &argv0,
-            "Died",
-            320,
+        Ok(out) => die(
+            "Died\n",
             out.status.code().filter(|&c| c != 0).unwrap_or(DIE),
         ),
         Err(e) => {
-            errln!(
-                "Can't exec \"{client}\": {} at {argv0} line 314.",
-                perl_errstr(&e)
-            );
+            errln!("Can't exec \"{client}\": {}", perl_errstr(&e));
             die(
                 &format!("Can't count colors: {}\n", perl_errstr(&e)),
                 e.raw_os_error().filter(|&c| c != 0).unwrap_or(DIE),
@@ -764,12 +749,8 @@ pub fn main() -> ! {
         let res = resolvename(&argv0, host, "22", &family);
         /* Use only the first address as the Mosh IP */
         let Some(hostaddr) = res.first() else {
-            die_at(
-                &argv0,
-                &format!("could not find address for {host}"),
-                343,
-                DIE,
-            );
+            // mosh.pl line 343; Perl's " at SCRIPT line N." suffix is not copied.
+            die(&format!("could not find address for {host}\n"), DIE);
         };
         let addr_string = numeric_host(hostaddr);
         userhost = format!("{user}{addr_string}");
@@ -859,14 +840,8 @@ pub fn main() -> ! {
             // pipe. With --local Perl execs through /bin/sh, which exists.
             let what = if localhost { server.as_str() } else { "ssh" };
             if !localhost {
-                first_lines.push(
-                    format!(
-                        "Can't exec \"{}\": {} at {argv0} line 410.",
-                        ssh[0],
-                        perl_errstr(&e)
-                    )
-                    .into_bytes(),
-                );
+                first_lines
+                    .push(format!("Can't exec \"{}\": {}", ssh[0], perl_errstr(&e)).into_bytes());
             }
             first_lines.push(format!("Cannot exec {what}: {}", perl_errstr(&e)).into_bytes());
             None
