@@ -73,7 +73,7 @@ The archives hold static binaries for `mosh`, `mosh-client`, and `mosh-server`.
 `uname -m` prints `x86_64` or `aarch64`, which picks the matching archive.
 
 ```sh
-v=v0.1.1; t=$(uname -m)-unknown-linux-musl
+v=v0.1.2; t=$(uname -m)-unknown-linux-musl
 curl -LO https://github.com/Arunjay4213/mosh-rs/releases/download/$v/mosh-rs-$v-$t.tar.gz
 curl -LO https://github.com/Arunjay4213/mosh-rs/releases/download/$v/mosh-rs-$v-$t.tar.gz.sha256
 sha256sum -c mosh-rs-$v-$t.tar.gz.sha256
@@ -87,7 +87,7 @@ If an archive for the wrong CPU is installed, every program fails with "cannot e
 
 ### macOS (Apple silicon)
 
-Download `mosh-rs-v0.1.1-aarch64-apple-darwin.tar.gz` and install it the same way, with `shasum -a 256 -c` in place of `sha256sum -c`.
+Download `mosh-rs-v0.1.2-aarch64-apple-darwin.tar.gz` and install it the same way, with `shasum -a 256 -c` in place of `sha256sum -c`.
 The v0.1.0 macOS `mosh` launcher could not connect ("Did not find remote IP address"), because it read the address family at the Linux position of a C socket address.
 v0.1.1 fixes this: the v0.1.1 release archive was used for a real session from an Apple silicon Mac to a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)).
 The v0.1.0 `mosh-server` was verified on macOS separately: a Linux client ran a full session against it.
@@ -100,7 +100,7 @@ It also runs on Windows on Arm through the x64 emulation built into Windows 11; 
 In PowerShell, download the zip and its checksum, compare the two hashes, and unzip:
 
 ```powershell
-$f = "mosh-rs-v0.1.1-x86_64-pc-windows-msvc"
+$f = "mosh-rs-v0.1.2-x86_64-pc-windows-msvc"
 Invoke-WebRequest "https://github.com/Arunjay4213/mosh-rs/releases/download/v0.1.1/$f.zip" -OutFile "$f.zip"
 Invoke-WebRequest "https://github.com/Arunjay4213/mosh-rs/releases/download/v0.1.1/$f.zip.sha256" -OutFile "$f.zip.sha256"
 (Get-FileHash "$f.zip" -Algorithm SHA256).Hash.ToLower() -eq (Get-Content "$f.zip.sha256").Split(" ")[0]   # must print True
@@ -109,7 +109,7 @@ cd $f
 .\mosh.exe --version   # prints "mosh-rs 0.1.1"
 ```
 
-The zip unpacks into a folder named `mosh-rs-v0.1.1-x86_64-pc-windows-msvc` that holds `mosh.exe` and `mosh-client.exe`.
+The zip unpacks into a folder named `mosh-rs-v0.1.2-x86_64-pc-windows-msvc` that holds `mosh.exe` and `mosh-client.exe`.
 Keep the two together in one folder: `mosh.exe` starts the `mosh-client.exe` next to it.
 In Windows Terminal, run `.\mosh.exe user@host` from that folder, or add the folder to your `PATH` and run `mosh user@host`.
 
@@ -124,7 +124,7 @@ Cargo can build and install the v0.1.1 tag from Git with Rust 1.89 or later.
 The package is named `mosh`, and it installs `mosh`, `mosh-client`, and `mosh-server` into `~/.cargo/bin`:
 
 ```sh
-cargo install --locked --git https://github.com/Arunjay4213/mosh-rs --tag v0.1.1 mosh
+cargo install --locked --git https://github.com/Arunjay4213/mosh-rs --tag v0.1.2 mosh
 ```
 
 Publishing to crates.io as `mosh` is prepared and will make this `cargo install mosh`; until then use the Git form above.
