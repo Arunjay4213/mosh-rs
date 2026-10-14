@@ -709,3 +709,8 @@ Also in this commit: the unused `unicode-width` and `lexopt` declarations are re
 - The real mosh 1.4.0 used as a comparison in the tests is found on PATH (`mosh_tests::upstream`, never a mosh-rs build), with a skip message when missing; `client_e2e` finds the server pid with `lsof` where `ss` is missing.
 - Mac (Apple silicon, macOS 15.8): `client_e2e` 7 passed (`idle_cpu` without its pidstat measurement). Devbox: client_e2e 7, server_e2e 4, prediction_e2e 3, detached_warning 1, launcher 8, scrollback_server `cxx_server_ignores_capability` 1 passed; fmt; clippy -D warnings stable and 1.89.0 clean.
 - CHANGELOG has `[0.1.1] - unreleased` with the macOS launcher fix and the platform review fixes P1-P13; the README's macOS section says v0.1.1 carries the fix once tagged. Nothing tagged.
+
+## 2026-10-13 Remaining macOS findings and issue #42 fixed (laptop)
+
+- Launcher: bug reports in `--help` go to the GitHub issue tracker (#42); `mosh-client` next to the launcher is preferred on every platform (PLAN 9.16); the Perl `at SCRIPT line N.` suffixes are gone (PLAN 9.17). `tools/bench` compiles for `aarch64-apple-darwin` (`cargo check --workspace --target aarch64-apple-darwin` clean). Tests: shared `mosh_tests::udp` probe (`ss`, else `lsof`), `scrollback.sh` without `ss`/`flock`, oracle Makefiles reading `CXX`, `CRYPTO_CFLAGS`, `CRYPTO_LIBS`, `TINFO_LIBS` from `upstream/Makefile`.
+- Evidence (devbox test runs and CI) in INTERVENTIONS.md, entry of the same date.

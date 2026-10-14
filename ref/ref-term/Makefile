@@ -2,10 +2,18 @@
 # gen-wcwidth: generates crates/terminal/src/wcwidth.rs from glibc wcwidth().
 
 UPSTREAM := ../../upstream
-CXX ?= c++
-CXXFLAGS := -std=gnu++17 -g -O2 -Wall -DHAVE_CONFIG_H
+# The compiler and the terminfo library come from upstream's configured
+# build (`$(UPSTREAM)/Makefile`, written by its configure), so the oracle
+# links the same way on every system upstream built on: `-ltinfo` on Linux,
+# `-lncurses` on macOS, which has no separate tinfo library. The defaults
+# in the second argument are the Linux values, for a tree configured by hand.
+upstream_var = $(or $(strip $(shell sed -n 's/^$(1) = //p' $(UPSTREAM)/Makefile 2>/dev/null)),$(2))
+CXX := $(call upstream_var,CXX,c++ -std=gnu++17)
+TINFO_LIBS := $(call upstream_var,TINFO_LIBS,-ltinfo)
+CXXFLAGS := -g -O2 -Wall -DHAVE_CONFIG_H
 CPPFLAGS := -I $(UPSTREAM) -I $(UPSTREAM)/src/include
-LIBS := $(UPSTREAM)/src/terminal/libmoshterminal.a $(UPSTREAM)/src/util/libmoshutil.a -lm -ltinfo
+# Static archives before the libraries they need, the order GNU ld requires.
+LIBS := $(UPSTREAM)/src/terminal/libmoshterminal.a $(UPSTREAM)/src/util/libmoshutil.a -lm $(TINFO_LIBS)
 
 all: ref-term
 

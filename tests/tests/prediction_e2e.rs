@@ -207,21 +207,9 @@ fn start_server(port: u16, command: &[&str]) -> String {
     key.expect("MOSH CONNECT line")
 }
 
-/// The pid of the process listening on UDP `port`.
+/// Kill whatever is left listening on UDP `port` from a failed run.
 fn kill_port(port: u16) {
-    let out = Command::new("ss")
-        .args(["-H", "-u", "-l", "-n", "-p"])
-        .arg(format!("sport = :{port}"))
-        .output()
-        .expect("run ss");
-    let text = String::from_utf8_lossy(&out.stdout);
-    if let Some(at) = text.find("pid=") {
-        let pid: String = text[at + 4..]
-            .chars()
-            .take_while(|c| c.is_ascii_digit())
-            .collect();
-        let _ = Command::new("kill").args(["-9", &pid]).status();
-    }
+    mosh_tests::udp::kill_listener(port);
 }
 
 /// A mosh session through udp-impair: server on `base`, proxy on `base + 1`
