@@ -17,22 +17,25 @@
 
 > mosh-rs is an independent project.
 > It is not affiliated with MIT, Keith Winstein, or the mosh maintainers.
-> It exists because of their work: see [License and attribution](#license-and-attribution).
+> It is built on their work (see [License and attribution](#license-and-attribution)).
 
 ## What it is
 
-[mosh](https://mosh.org) is a remote terminal that survives what kills ssh: Wi-Fi to cellular handoffs, a laptop that sleeps overnight, and links with high latency or packet loss.
-It runs over UDP, keeps the screen in sync instead of streaming bytes, and echoes your keystrokes locally before the server answers.
+[mosh](https://mosh.org) is a remote terminal that keeps a session alive through things that drop an ssh connection, such as a switch from Wi-Fi to cellular, a laptop that sleeps overnight, or a link with high latency or packet loss.
+It runs over UDP and keeps the client's copy of the screen in sync with the server's instead of streaming bytes.
+It also echoes your keystrokes locally before the server answers.
 
-mosh-rs is a Rust port of mosh master (decd9b7, March 2026), wire-compatible with mosh 1.4.0, so that it works with the `mosh-server` already installed on your hosts.
-It adds two things upstream mosh never had: a native Windows client, and scrollback that lands in your local terminal's history.
-Scrollback is opt-in: run `mosh --scrollback host` against a mosh-rs `mosh-server`; plain `mosh host` behaves like upstream and keeps no history.
-The Linux release binaries are single static binaries.
+mosh-rs is a Rust port of mosh master (decd9b7, March 2026).
+It is wire-compatible with mosh 1.4.0, so it works with the `mosh-server` already installed on your hosts.
+It also adds two things upstream mosh never had, a native Windows client and scrollback that lands in your local terminal's history.
+Scrollback is opt-in.
+You get it by running `mosh --scrollback host` against a mosh-rs `mosh-server`, while plain `mosh host` behaves like upstream and keeps no history.
+On Linux, each release program is a single static binary.
 
-**Status: pre-alpha.**
-The current pre-release is v0.1.3: download it from the [Releases page](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.3) and see [Install](#install).
-The [Known limitations](#known-limitations) list says what has been tested and what has not.
-Every number and every compatibility result in this README was measured, and anything not yet tested is marked as such.
+The project is pre-alpha.
+The current pre-release is v0.1.3, which you can download from the [Releases page](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.3) (see [Install](#install)).
+[Known limitations](#known-limitations) lists what has and has not been tested.
+The numbers and compatibility results in this README all come from real measurements, and anything not yet tested is marked.
 
 Found a bug or something that behaves differently from mosh?
 Please [open an issue](https://github.com/Arunjay4213/mosh-rs/issues).
@@ -43,45 +46,48 @@ For security problems, follow [SECURITY.md](SECURITY.md) instead.
 - Pre-alpha: expect rough edges, and report them in the issue tracker.
 - The v0.1.0 macOS client cannot connect (an address lookup bug on macOS); use v0.1.1 or later on a Mac.
 - Windows: there is no native ARM64 build; the x86_64 build runs on Windows on Arm through emulation.
-- Windows: there is no job control, so Ctrl-^ Ctrl-Z does not suspend the client; the Ctrl-Z goes to the remote shell (use `fg` there to resume a stopped program). Sleep and wake, network loss, and idle CPU were tested on Windows 11 (see [Windows](#windows)).
+- Windows: there is no job control, so Ctrl-^ Ctrl-Z does not suspend the client; the Ctrl-Z goes to the remote shell (use `fg` there to resume a stopped program).
+  Sleep and wake, network loss, and idle CPU were tested on Windows 11 (see [Windows](#windows)).
 - `mosh-server` is Unix-only, as in upstream.
 - No X forwarding, port forwarding, or SOCKS; mosh never had them.
 
 ## Why a rewrite
 
-mosh is excellent software, and its protocol design is the reason this project exists.
-Its last release, 1.4.0, shipped in October 2022.
-As of October 2026 the upstream repository has 170 open issues and 62 open pull requests.
-There has never been a native Windows client; Windows users run mosh inside WSL, Cygwin, or a browser extension.
-Scrollback has been missing since the start: [mobile-shell/mosh#122](https://github.com/mobile-shell/mosh/issues/122), "mosh prevents the use of scrollback", has been open since April 2012.
+mosh is excellent software, and this project exists because of its protocol design.
+But its last release, 1.4.0, shipped in October 2022, and as of October 2026 the upstream repository has 170 open issues and 62 open pull requests.
+There has never been a native Windows client, so Windows users run mosh inside WSL, Cygwin, or a browser extension.
+Scrollback has been missing from the start: [mobile-shell/mosh#122](https://github.com/mobile-shell/mosh/issues/122), "mosh prevents the use of scrollback", has been open since April 2012.
 
-A port keeps everything that works (the protocol, the emulator semantics, the prediction behavior) and makes the two missing features possible without forking the protocol.
-New features are additive protobuf fields that existing peers ignore, so mixed old and new installs keep working.
+A port can keep the parts that work (the protocol, the emulator semantics and the prediction behavior) and still add the two missing features without forking the protocol.
+New features go in additive protobuf fields that existing peers ignore, which is why mixed old and new installs keep working.
 
 ## Verification at a glance
 
-mosh-rs is checked against upstream's own C++ code, with the commands in `tests/` and the numbers in [STATUS.md](STATUS.md).
-The main results at v0.1.3 (unchanged since v0.1.2):
+mosh-rs is checked against upstream's own C++ code.
+The commands are in `tests/` and the numbers in [STATUS.md](STATUS.md).
+These are the main results at v0.1.3, unchanged since v0.1.2.
 
-- **Crypto.** Every packet is AES-128-OCB3 from the RustCrypto [`aes`](https://crates.io/crates/aes) and [`ocb3`](https://crates.io/crates/ocb3) crates, with the key schedule wiped on drop as upstream does.
-  `tests/tests/crypto_conformance.rs` encrypts and decrypts 2000 random packets with mosh-rs and with upstream's C++ linked into a harness: byte-identical in both directions, tampered packets and 14 malformed keys rejected by both, RFC 7253 test vectors pass.
-- **Interop.** C++ and Rust clients against C++ and Rust servers, each pair under clean, 5% loss, 30% loss with 200 ms delay and reordering, a 2-minute blackout, and a client address change, six screen scenarios each: 120 of 120 cells pass.
-- **Upstream's test suite.** mosh's own `make check` with the mosh-rs client, server, and both swapped in: 30 PASS, 2 XFAIL, 0 FAIL.
-- **Terminal emulator.** Differential fuzzing against upstream's emulator: 1,000,000 cases plus four runs of 200,000 and 200,000 frame cases, 0 mismatches; 27 recorded sessions cell-exact at two sizes; terminfo answers for 2830 terminal names identical.
-- **Memory safety.** `#![forbid(unsafe_code)]` in the terminal, network, and mosh crates; `unsafe` only in the platform crate, each block with a stated invariant.
-  A hostile server sending a 1,000,000-line-feed history line is rejected with the client at 6.2 MB peak memory.
+- Every packet is encrypted with AES-128-OCB3 from the RustCrypto [`aes`](https://crates.io/crates/aes) and [`ocb3`](https://crates.io/crates/ocb3) crates, and the key schedule is wiped on drop as in upstream.
+  `tests/tests/crypto_conformance.rs` encrypts and decrypts 2000 random packets with mosh-rs and with upstream's C++ linked into a harness.
+  The output is byte-identical in both directions, both reject tampered packets and the same 14 malformed keys, and the RFC 7253 test vectors pass.
+- In the interop test, C++ and Rust clients run against C++ and Rust servers under clean, 5% loss, 30% loss with 200 ms delay and reordering, a 2-minute blackout, and a client address change, with six screen scenarios each; 120 of 120 cells pass.
+- mosh's own `make check`, run with the mosh-rs client, the mosh-rs server, and both swapped in, gives 30 PASS, 2 XFAIL, 0 FAIL.
+- Differential fuzzing against upstream's terminal emulator found 0 mismatches over 1,000,000 cases plus four runs of 200,000 and 200,000 frame cases.
+  27 recorded sessions are cell-exact at two sizes, and terminfo answers for 2830 terminal names are identical.
+- The terminal, network, and mosh crates use `#![forbid(unsafe_code)]`.
+  `unsafe` appears only in the platform crate, and each block has a stated invariant.
+  A hostile server that sends a 1,000,000-line-feed history line is rejected while the client peaks at 6.2 MB of memory.
 
 There has been no independent security audit.
-The crypto and transport code is a line-by-line port of upstream's, and the conformance tests above are what stands behind it; see [How correctness is checked](#how-correctness-is-checked) for the full list.
+The crypto and transport code is a line-by-line port of upstream's, backed by the conformance tests above (the full list is in [How correctness is checked](#how-correctness-is-checked)).
 
 ## Install
 
-Pre-built binaries are attached to the [v0.1.3 release](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.3).
-Each archive has a `.sha256` file next to it for checking the download.
-v0.1.3 is a pre-release; the [Known limitations](#known-limitations) list says what has been tested.
+Pre-built binaries are attached to the [v0.1.3 release](https://github.com/Arunjay4213/mosh-rs/releases/tag/v0.1.3), each archive with a `.sha256` file next to it for checking the download.
+v0.1.3 is a pre-release, and [Known limitations](#known-limitations) lists what has been tested.
 
-mosh-rs works with the `mosh-server` already on your hosts (mosh 1.4), so you can install only the client side.
-The `--scrollback` feature needs the mosh-rs `mosh-server` on the remote host: install the same archive there (see [Scrollback](#scrollback)).
+Since mosh-rs works with the `mosh-server` already on your hosts (mosh 1.4), you can install only the client side.
+The `--scrollback` feature is the exception: it needs the mosh-rs `mosh-server` on the remote host, so install the same archive there too (see [Scrollback](#scrollback)).
 
 ### Homebrew (macOS on Apple silicon, Linux)
 
@@ -90,7 +96,7 @@ brew install Arunjay4213/mosh-rs/mosh-rs
 ```
 
 The [tap](https://github.com/Arunjay4213/homebrew-mosh-rs) installs the pre-built `mosh`, `mosh-client`, and `mosh-server` from the release archives.
-It conflicts with the `mosh` formula because both install the same three programs, so `brew unlink mosh` first if you have it.
+Both it and the `mosh` formula install the same three programs, so they conflict; if you have the formula installed, run `brew unlink mosh` first.
 
 ### Scoop (Windows)
 
@@ -100,12 +106,12 @@ scoop install mosh-rs
 ```
 
 The [bucket](https://github.com/Arunjay4213/scoop-mosh-rs) installs `mosh.exe` and `mosh-client.exe` from the release zip.
-A winget manifest is submitted ([microsoft/winget-pkgs#452393](https://github.com/microsoft/winget-pkgs/pull/452393)); `winget install Arunjay4213.mosh-rs` works once it is merged.
+A winget manifest has been submitted ([microsoft/winget-pkgs#452393](https://github.com/microsoft/winget-pkgs/pull/452393)), and once it is merged `winget install Arunjay4213.mosh-rs` will work too.
 
 ### Linux (x86_64 and arm64)
 
 The archives hold static binaries for `mosh`, `mosh-client`, and `mosh-server`.
-`uname -m` prints `x86_64` or `aarch64`, which picks the matching archive.
+The script below picks the archive from `uname -m`, which prints `x86_64` or `aarch64`.
 
 ```sh
 v=v0.1.3; t=$(uname -m)-unknown-linux-musl
@@ -117,22 +123,22 @@ sudo install mosh-rs-$v-$t/mosh mosh-rs-$v-$t/mosh-client mosh-rs-$v-$t/mosh-ser
 mosh --version   # prints "mosh-rs 0.1.3"
 ```
 
-Without sudo, install into a directory on your `PATH` that you own instead, such as `~/.local/bin`.
-If an archive for the wrong CPU is installed, every program fails with "cannot execute binary file: Exec format error".
+If you don't have sudo, install into a directory on your `PATH` that you own, such as `~/.local/bin`.
+An archive built for the wrong CPU fails on every program with "cannot execute binary file: Exec format error".
 
 ### macOS (Apple silicon)
 
 Download `mosh-rs-v0.1.3-aarch64-apple-darwin.tar.gz` and install it the same way, with `shasum -a 256 -c` in place of `sha256sum -c`.
 The v0.1.0 macOS `mosh` launcher could not connect ("Did not find remote IP address"), because it read the address family at the Linux position of a C socket address.
-v0.1.1 fixes this: the v0.1.1 release archive was used for a real session from an Apple silicon Mac to a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)).
-The v0.1.0 `mosh-server` was verified on macOS separately: a Linux client ran a full session against it.
+v0.1.1 fixes this, and the v0.1.1 release archive was used for a real session from an Apple silicon Mac to a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)).
+The v0.1.0 `mosh-server` was verified on macOS separately, with a Linux client running a full session against it.
 
 ### Windows (x86_64)
 
-There is one Windows build, for x86_64.
-It also runs on Windows on Arm through the x64 emulation built into Windows 11; the hand tests below were run that way, on an ARM64 Windows 11 laptop.
+The only Windows build is for x86_64.
+It also runs on Windows on Arm through the x64 emulation built into Windows 11, and that is how the hand tests below were run, on an ARM64 Windows 11 laptop.
 
-In PowerShell, download the zip and its checksum, compare the two hashes, and unzip:
+In PowerShell, download the zip and its checksum, compare the hashes, and unzip:
 
 ```powershell
 $f = "mosh-rs-v0.1.3-x86_64-pc-windows-msvc"
@@ -145,26 +151,26 @@ cd $f
 ```
 
 The zip unpacks into a folder named `mosh-rs-v0.1.3-x86_64-pc-windows-msvc` that holds `mosh.exe` and `mosh-client.exe`.
-Keep the two together in one folder: `mosh.exe` starts the `mosh-client.exe` next to it.
+Keep the two in the same folder, because `mosh.exe` starts the `mosh-client.exe` next to it.
 In Windows Terminal, run `.\mosh.exe user@host` from that folder, or add the folder to your `PATH` and run `mosh user@host`.
 
 The launcher uses the OpenSSH client that ships with Windows 10 and later.
-There is no Windows server; the remote host needs `mosh-server` from mosh-rs or mosh 1.4.
-The escape key is Ctrl-^, which you type as Ctrl+6 in Windows Terminal, so Ctrl+6 then `.` quits a session.
-See [Windows](#windows) for what has been tested.
+There is no Windows server, so the remote host needs `mosh-server` from mosh-rs or mosh 1.4.
+The escape key is Ctrl-^, which you type as Ctrl+6 in Windows Terminal (Ctrl+6 then `.` quits a session).
+[Windows](#windows) describes what has been tested.
 
 ### With cargo
 
-The package is published on crates.io as [`mosh`](https://crates.io/crates/mosh).
-Cargo builds it with Rust 1.89 or later and installs `mosh`, `mosh-client`, and `mosh-server` into `~/.cargo/bin`:
+The package is on crates.io as [`mosh`](https://crates.io/crates/mosh).
+With Rust 1.89 or later, this builds it and installs `mosh`, `mosh-client`, and `mosh-server` into `~/.cargo/bin`:
 
 ```sh
 cargo install --locked mosh
 ```
 
-The crate named `mosh-rs` on crates.io is a different, unrelated project, so do not run `cargo install mosh-rs`.
-To build a specific commit instead, use `cargo install --locked --git https://github.com/Arunjay4213/mosh-rs --tag v0.1.3 mosh`.
-On Windows the installed `mosh-server.exe` only prints that the server is not supported there, as described under [Windows](#windows).
+Do not run `cargo install mosh-rs`: the crate named `mosh-rs` on crates.io is an unrelated project.
+To build a specific commit, use `cargo install --locked --git https://github.com/Arunjay4213/mosh-rs --tag v0.1.3 mosh`.
+On Windows the installed `mosh-server.exe` only prints that the server is not supported there (see [Windows](#windows)).
 
 ### From source
 
@@ -181,7 +187,7 @@ To build the Windows client, see [Building for Windows](docs/ARCHITECTURE.md#bui
 
 ## Usage
 
-mosh-rs builds the same three programs as mosh, with the same names and flags, so existing scripts keep working.
+mosh-rs builds the same three programs as mosh with the same names and flags, so existing scripts still work.
 
 ```sh
 mosh user@host                      # connect; type Ctrl-^ then . to quit
@@ -193,11 +199,11 @@ mosh --local localhost              # run mosh-server locally, without ssh (a ho
 mosh --scrollback host              # keep the session's output in your terminal's history (needs a mosh-rs server)
 ```
 
-The escape key is Ctrl-^, as in upstream: Ctrl-^ then `.` quits, and Ctrl-^ then Ctrl-Z suspends the client on Unix.
-In most terminals you type Ctrl-^ as Ctrl+6 or Ctrl+Shift+6.
-Set `MOSH_ESCAPE_KEY` to change it.
+As in upstream, the escape key is Ctrl-^.
+Ctrl-^ then `.` quits, and on Unix Ctrl-^ then Ctrl-Z suspends the client.
+Most terminals produce Ctrl-^ when you press Ctrl+6 or Ctrl+Shift+6, and `MOSH_ESCAPE_KEY` changes it.
 
-The most used launcher flags ([PLAN.md](PLAN.md) section 8); `mosh --help` lists all of mosh.pl's options:
+These are the most used launcher flags ([PLAN.md](PLAN.md) section 8), and `mosh --help` lists all of mosh.pl's options:
 
 | Flag | Meaning |
 | --- | --- |
@@ -210,11 +216,12 @@ The most used launcher flags ([PLAN.md](PLAN.md) section 8); `mosh --help` lists
 | `-4`, `-6` | IPv4 only, IPv6 only |
 | `--scrollback` | keep the session's output in the local terminal's history; needs a mosh-rs server, falls back to upstream behavior with a notice otherwise (new in mosh-rs) |
 
-The server takes `mosh-server new --scrollback MIB` to cap how much undelivered history it holds (default 32 MiB, `0` turns capture off).
+On the server, `mosh-server new --scrollback MIB` caps how much undelivered history it holds (default 32 MiB, and `0` turns capture off).
 
 ### ssh ControlMaster
 
-In the default mode the launcher learns the server's address through a fake `ProxyCommand`, which needs a fresh ssh connection, so it runs ssh with `-S none` and an open ControlMaster socket is not used (upstream [mobile-shell/mosh#24](https://github.com/mobile-shell/mosh/issues/24)); every session authenticates again.
+In the default mode the launcher learns the server's address through a fake `ProxyCommand`.
+That needs a fresh ssh connection, so it runs ssh with `-S none`, an open ControlMaster socket goes unused (upstream [mobile-shell/mosh#24](https://github.com/mobile-shell/mosh/issues/24)), and every session authenticates again.
 With `--experimental-remote-ip=remote` the launcher asks the server for the address instead (`$SSH_CONNECTION`), ssh runs without `-S none`, and a ControlMaster socket from `~/.ssh/config` is reused, so later sessions open without logging in:
 
 ```
@@ -228,9 +235,11 @@ Host myhost
 mosh --experimental-remote-ip=remote myhost
 ```
 
-Measured against devbox with a master socket open and `ssh -v -E log`: the default mode made a full new connection and authentication, `remote` mode reused the socket (`mux_client_request_session`), both sessions worked.
-`remote` reports the address the server sees, which is wrong behind port-forwarding NAT; `--experimental-remote-ip=local` resolves the name on your side and also runs ssh without `-S none`.
-When a master socket is open and the default mode is used, mosh-rs prints a one-line hint naming the option (upstream prints nothing); `tests/tests/launcher.rs` checks both modes.
+This was measured against devbox with a master socket open and `ssh -v -E log`.
+The default mode made a full new connection and authenticated, `remote` mode reused the socket (`mux_client_request_session`), and both sessions worked.
+One catch is that `remote` reports the address the server sees, which is wrong behind port-forwarding NAT.
+`--experimental-remote-ip=local` resolves the name on your side and also runs ssh without `-S none`.
+If a master socket is open and you use the default mode, mosh-rs prints a one-line hint naming the option, where upstream prints nothing; `tests/tests/launcher.rs` checks both modes.
 
 Environment variables, as in upstream:
 
@@ -242,7 +251,8 @@ Environment variables, as in upstream:
 
 ## Compatibility
 
-Each cell is six runs of the interop test ([PLAN.md](PLAN.md) section 3, oracle 4), one per screen scenario: a scripted session over loopback through the `udp-impair` proxy, with the final screen compared against a direct run of the same script.
+Each cell is six runs of the interop test ([PLAN.md](PLAN.md) section 3, oracle 4), one per screen scenario.
+A run is a scripted session over loopback through the `udp-impair` proxy, and its final screen is compared against a direct run of the same script.
 The mosh 1.4 binaries are the Ubuntu 24.04 apt package.
 
 | Client / server | Clean | 5% loss | 30% loss, 200 ms, reorder | 2 min blackout | Client roams |
@@ -260,8 +270,9 @@ Upstream's own test suite (`make check`, 32 tests, from the decd9b7 tree) also p
 
 ## Performance
 
-Targets from [PLAN.md](PLAN.md) section 5, measured by `tools/bench` against C++ mosh 1.4.0 (Ubuntu 24.04 package) on the same machine, an 8-core arm64 Linux VM (Neoverse-V1), mosh-rs commit 7cab26f, with `target/release/bench --hour`.
-Both implementations run the same scripted workload, alternating run by run; [tools/bench/README.md](tools/bench/README.md) describes it.
+The targets come from [PLAN.md](PLAN.md) section 5.
+`tools/bench` measured mosh-rs commit 7cab26f against C++ mosh 1.4.0 (Ubuntu 24.04 package) on the same machine, an 8-core arm64 Linux VM (Neoverse-V1), with `target/release/bench --hour`.
+Both implementations run the same scripted workload, taking turns run by run, and [tools/bench/README.md](tools/bench/README.md) describes it.
 
 | Metric | Target | mosh-rs | mosh 1.4.0 |
 | --- | --- | --- | --- |
@@ -277,17 +288,20 @@ Both implementations run the same scripted workload, alternating run by run; [to
 Notes:
 
 - The first frame takes about 250 ms in both implementations because upstream's round-trip estimate starts at 1 second, which sets the first send interval to its 250 ms maximum; mosh-rs keeps upstream's timing.
-- Part of the memory difference is shared-library pages: the C++ binaries load several shared libraries, the static mosh-rs binaries load none.
-- All numbers are medians where several runs were taken; the full output, including p90 values and per-run times, is printed by `tools/bench`.
+- Part of the memory difference is shared-library pages, since the C++ binaries load several shared libraries and the static mosh-rs binaries load none.
+- Where several runs were taken, the number is the median.
+  `tools/bench` prints the full output, including p90 values and per-run times.
 
 ## How it works
 
 A mosh session has four layers, and mosh-rs ports each one from upstream.
 
-1. **Crypto.** Every UDP packet is AES-128 in OCB3 mode with a 16-byte tag, keyed by a secret the server prints once over ssh.
-2. **Transport (SSP).** Each side keeps numbered snapshots of a state object and sends only the diff from the snapshot the other side last acknowledged, so a lost packet is replaced by a newer diff instead of being resent, and the server adopts a new client address on the first valid packet from it (roaming).
-3. **State objects.** The client sends keystrokes and resizes; the server sends its terminal screen, encoded as the escape sequences that redraw the client's copy.
-4. **Frontend.** `mosh` starts `mosh-server` over ssh, `mosh-server` runs your shell in a pseudoterminal, and `mosh-client` draws the mirrored screen plus predicted local echo.
+1. Crypto: every UDP packet is AES-128 in OCB3 mode with a 16-byte tag, keyed by a secret the server prints once over ssh.
+2. Transport (SSP): each side keeps numbered snapshots of a state object and sends only the diff from the snapshot the other side last acknowledged.
+   A lost packet is never resent; a newer diff replaces it.
+   The server also switches to a new client address on the first valid packet from it, which is how roaming works.
+3. State objects: the client sends keystrokes and resizes, and the server sends its terminal screen, encoded as the escape sequences that redraw the client's copy.
+4. Frontend: `mosh` starts `mosh-server` over ssh, `mosh-server` runs your shell in a pseudoterminal, and `mosh-client` draws the mirrored screen plus predicted local echo.
 
 ```text
  local machine                                                 remote host
@@ -303,57 +317,65 @@ The full design is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Scrollback
 
-Upstream mosh has no scrollback because the client switches the local terminal to the alternate screen and the server discards rows that scroll off.
-With `mosh --scrollback` and a mosh-rs server, the server records every row that leaves the top of the screen, and the rows on screen when a program clears it, and sends them as a new protobuf field that upstream peers ignore.
-The client writes those lines into your terminal's normal history, so the mouse wheel and your terminal's search work as they do over ssh.
-Full-screen programs like vim and less run in your terminal's own alternate screen, so nothing they draw enters history and the screen from before them comes back when they exit.
+Upstream mosh has no scrollback because the client switches the local terminal to the alternate screen and the server throws away rows that scroll off.
+With `mosh --scrollback` and a mosh-rs server, the server records every row that leaves the top of the screen, plus the rows on screen when a program clears it.
+It sends them in a new protobuf field that upstream peers ignore, and the client writes them into your terminal's normal history, so the mouse wheel and your terminal's search work as they do over ssh.
+Full-screen programs like vim and less run in your terminal's own alternate screen.
+Nothing they draw enters history, and the screen from before them comes back when they exit.
 
-The screen is always current; history follows a few seconds behind on a large burst (the history of `seq 1 50000` arrives in about 9 seconds on loopback), because the server sends at most a few packets of history per round trip so that it survives packet loss.
-The remote program is never paused for history: if more than 32 MiB of history is waiting (for example while your laptop sleeps during a long build), the oldest undelivered lines are dropped and a dim line in your history says how many.
-Known limit: changing the window height can lose or repeat a few rows, because terminals keep the bottom of the screen on resize while mosh's emulator keeps the top.
+The screen is always current, but on a large burst history can lag a few seconds behind (the history of `seq 1 50000` arrives in about 9 seconds on loopback).
+That is because the server sends at most a few packets of history per round trip, so that history survives packet loss.
+The remote program is never paused to wait for history.
+If more than 32 MiB of history is waiting (say your laptop sleeps during a long build), the oldest undelivered lines are dropped and a dim line in your history says how many.
+There is one known limit: changing the window height can lose or repeat a few rows, because terminals keep the bottom of the screen on resize while mosh's emulator keeps the top.
 Against an upstream server, `--scrollback` falls back to normal mosh behavior and shows the notice "mosh: Server does not support scrollback; using the alternate screen."
 Without `--scrollback`, the session keeps no local history, even with a mosh-rs server.
 
-To use it, install the mosh-rs `mosh-server` on the remote host with the same Linux or macOS steps, and check it with `ssh host mosh-server --version`, which prints `mosh-server (mosh-rs ...)`.
+To use it, install the mosh-rs `mosh-server` on the remote host with the same Linux or macOS steps.
+`ssh host mosh-server --version` should then print `mosh-server (mosh-rs ...)`.
 If the mosh-rs server is not the first `mosh-server` on that host's `PATH`, point the launcher at it: `mosh --scrollback --server=/path/to/mosh-server host`.
 
-How this is checked: `tests/scrollback.sh` runs `seq 1 50000` through mosh in tmux with a 200,000-line history and compares the captured history with `seq` line by line, also through 30% packet loss, around vim, less and `clear`, across resizes, and against an upstream server.
+`tests/scrollback.sh` checks this by running `seq 1 50000` through mosh in tmux with a 200,000-line history and comparing the captured history with `seq` line by line.
+It repeats the check through 30% packet loss, around vim, less and `clear`, across resizes, and against an upstream server.
 
 ## Windows
 
-The Windows client puts the console into VT mode, so keys arrive as the same escape-sequence bytes a Unix terminal produces and output is plain VT bytes, with no key translation layer.
-It starts the server with the `ssh.exe` that ships with Windows 10 and later, and assumes `TERM=xterm-256color` when TERM is unset, as it normally is on Windows.
+The Windows client puts the console into VT mode.
+Keys then arrive as the same escape-sequence bytes a Unix terminal produces, and output is plain VT bytes, so there is no key translation layer.
+It starts the server with the `ssh.exe` that ships with Windows 10 and later, and assumes `TERM=xterm-256color` when TERM is unset, which it normally is on Windows.
 `mosh.exe` and `mosh-client.exe` cross-compile from Linux and need only system DLLs.
 `mosh-server` stays Unix-only, as in upstream.
 
-The escape key is Ctrl-^, as in upstream; in Windows Terminal you type it as Ctrl+6.
-So Ctrl+6 then `.` quits the session.
+The escape key is Ctrl-^, as in upstream, and in Windows Terminal you type it as Ctrl+6, so Ctrl+6 then `.` quits the session.
 
-Tested by hand in Windows Terminal on an ARM64 Windows 11 laptop (the x86_64 build under emulation) against a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)): connecting, typing, `ls --color`, vim, UTF-8 output, Ctrl-C, resizing and quitting all worked, and a session survived turning Wi-Fi off and on.
-Losing and regaining the network (Wi-Fi off and on) kept the session live, and so did sleeping and waking the machine.
-Sleeping and waking the Windows machine was tested on 2026-10-13 with `top` running: after a minute asleep the session was live and `top` kept updating.
-Idle CPU of `mosh-client.exe`, measured over 60 seconds while `top` redrew: 0.1% of one core and 14.7 MB of memory.
-Ctrl-^ Ctrl-Z does not suspend the client on Windows, which has no job control; the Ctrl-Z is delivered to the remote shell instead.
+The client was tested by hand in Windows Terminal on an ARM64 Windows 11 laptop (the x86_64 build under emulation) against a Linux server ([INTERVENTIONS.md](INTERVENTIONS.md)).
+Connecting, typing, `ls --color`, vim, UTF-8 output, Ctrl-C, resizing and quitting all worked.
+The session stayed live when Wi-Fi was turned off and back on.
+Sleep and wake was tested on 2026-10-13 with `top` running, and after a minute asleep the session was live and `top` kept updating.
+While `top` redrew, `mosh-client.exe` used 0.1% of one core and 14.7 MB of memory, measured over 60 seconds.
+Windows has no job control, so Ctrl-^ Ctrl-Z does not suspend the client and the Ctrl-Z goes to the remote shell instead.
 
 ## How correctness is checked
 
-Correctness is proven against upstream's own C++ code, not by unit tests.
-Each check is a program that can be run, and the results go into [STATUS.md](STATUS.md).
+The correctness checks compare mosh-rs with upstream's own C++ code instead of relying on unit tests.
+Each check is a program you can run, and the results go into [STATUS.md](STATUS.md).
 
-- **Reference oracles.** Small C++ harnesses linked against the upstream build dump the emulator's screen, `new_frame` output, and encrypted packets; the Rust versions must produce byte-identical output.
-- **Differential fuzzing.** Generated escape-sequence inputs (one run of 1,000,000 and several of 200,000, plus random screen pairs for `new_frame`) run through both emulators; any mismatch is minimized and fixed.
-- **Recorded session corpus.** Ten recorded sessions (bash, vim, less, htop, tmux, the Claude Code TUI, `seq`, a resize, 256-color and truecolor, wide characters and emoji) and 17 inputs from upstream's own emulation tests, replayed through both emulators.
-- **Interop matrix.** Rust and C++ clients and servers in every combination, under loss, delay, reordering, blackouts, and roaming.
-- **Upstream's test suite.** `make check` in upstream mosh, with mosh-rs binaries swapped in.
-- **End-to-end and comparison tests.** The real binaries, mostly driven in tmux, with most cases also run with the C++ program for comparison: client, server, prediction timing at 300 ms round trip, the launcher's options and messages compared with `/usr/bin/mosh` (73 cases), terminfo answers for every terminal type, and a hostile scrollback server.
-- **Scrollback oracle.** `seq 1 50000` through mosh-rs inside tmux must appear in history exactly, with no gaps, duplicates, or blank lines, including under 30% loss, a vim excursion, `clear`, and a width resize (height resizes have the known limit above).
-- **Benchmarks.** Side by side with C++ mosh 1.4.0 in the same harness.
+- Reference oracles: small C++ harnesses linked against the upstream build dump the emulator's screen, `new_frame` output, and encrypted packets, and the Rust versions must produce byte-identical output.
+- Differential fuzzing runs generated escape-sequence inputs (one run of 1,000,000 and several of 200,000, plus random screen pairs for `new_frame`) through both emulators, and any mismatch is minimized and fixed.
+- A corpus of ten recorded sessions (bash, vim, less, htop, tmux, the Claude Code TUI, `seq`, a resize, 256-color and truecolor, wide characters and emoji) and 17 inputs from upstream's own emulation tests is replayed through both emulators.
+- The interop matrix runs Rust and C++ clients and servers in every combination, under loss, delay, reordering, blackouts, and roaming.
+- Upstream's `make check` runs with mosh-rs binaries swapped in.
+- End-to-end tests drive the real binaries, mostly in tmux, and most cases also run the C++ program for comparison.
+  They cover the client, the server, prediction timing at 300 ms round trip, the launcher's options and messages compared with `/usr/bin/mosh` (73 cases), terminfo answers for every terminal type, and a hostile scrollback server.
+- The scrollback oracle requires `seq 1 50000` run through mosh-rs inside tmux to appear in history exactly, with no gaps, duplicates, or blank lines.
+  That includes runs under 30% loss, a vim excursion, `clear`, and a width resize (height resizes have the known limit above).
+- Benchmarks run side by side with C++ mosh 1.4.0 in the same harness.
 
 ## How this was built
 
-The port was produced by AI coding agents working from the upstream mosh source under a written plan, [PLAN.md](PLAN.md).
-Every module was checked against upstream's own code by differential testing, as described in [How correctness is checked](#how-correctness-is-checked), and reviewed line by line against the upstream code it was ported from.
-The complete record of the work is in this repository:
+AI coding agents wrote the port, working from the upstream mosh source under a written plan, [PLAN.md](PLAN.md).
+Every module was checked against upstream's own code by differential testing (see [How correctness is checked](#how-correctness-is-checked)) and reviewed line by line against the upstream code it came from.
+The full record of the work is in this repository:
 
 - [PLAN.md](PLAN.md): the plan the port follows, including the allowed differences from upstream.
 - [STATUS.md](STATUS.md): the status log, with the commands run and their measured results.
@@ -375,7 +397,8 @@ The complete record of the work is in this repository:
 
 ## Contributing
 
-Contributions are welcome, with one strong rule: behavior matches upstream mosh master (decd9b7, March 2026) exactly, except for the deviations listed in [PLAN.md](PLAN.md) section 9.
+Contributions are welcome.
+The one firm rule is that behavior must match upstream mosh master (decd9b7, March 2026) exactly, apart from the deviations listed in [PLAN.md](PLAN.md) section 9.
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and the [Code of Conduct](CODE_OF_CONDUCT.md) before joining a discussion.
 
 ## Security
@@ -385,7 +408,7 @@ See [SECURITY.md](SECURITY.md) for private reporting.
 
 ## License and attribution
 
-mosh-rs is licensed under the [GNU General Public License v3.0 or later](LICENSE), because it is a port of mosh, which is GPLv3.
+mosh-rs is a port of mosh, which is GPLv3, so it is licensed under the [GNU General Public License v3.0 or later](LICENSE).
 
 mosh was created by **Keith Winstein** and the mosh authors.
 The protocol, the emulator design, the prediction overlay, and the test suite that mosh-rs is checked against are their work.
