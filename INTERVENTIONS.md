@@ -415,3 +415,8 @@ Evidence came from the `ci-status` branch (every run's failure excerpt) and the 
 ## 2026-10-14 CI red on laptop/controlmaster: hint wrapped by the 80-column pane (laptop)
 
 - Both conformance shards failed in `control_master_hint_and_remote_mode_reuses_socket`: the hint was on screen but tmux wrapped it mid-word at column 80 ("ControlMaster s" / "ocket"), so `contains` on the raw capture missed it. Devbox passed because its shorter binary path moved the wrap. Fix: the test searches the capture with newlines removed. No launcher change.
+
+## 2026-11-05 winget validation: Windows executables need VCRUNTIME140.dll (laptop)
+
+- microsoft/winget-pkgs#452393 (0.1.3) failed automatic validation: `mosh.exe` and `mosh-client.exe` returned 0xC0000135 (STATUS_DLL_NOT_FOUND) on the validator's clean Windows image. `objdump -p` on the shipped 0.1.3 executables lists `VCRUNTIME140.dll` plus the `api-ms-win-crt-*` set: the MSVC target links the C runtime dynamically by default. The hand tests on the user's Windows 11 laptop passed because the Visual C++ redistributable was already installed there.
+- Fix: `.cargo/config.toml` sets `-C target-feature=+crt-static` for `x86_64-pc-windows-msvc`. Verified by a manual Release workflow run on the branch (result recorded in STATUS.md), then released as 0.1.4 and the winget PR moved to 0.1.4.
