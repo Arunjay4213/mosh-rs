@@ -99,7 +99,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          name="mosh-rs-${GITHUB_REF_NAME}-${{ matrix.target }}"
+          # A manual run from a branch has a slash in the ref name
+          # (laptop/topic), which mkdir would take as a directory.
+          ref="${GITHUB_REF_NAME//\//-}"
+          name="mosh-rs-${ref}-${{ matrix.target }}"
           mkdir "$name"
           out="target/${{ matrix.target }}/release"
           if [ "${{ matrix.archive }}" = "zip" ]; then
