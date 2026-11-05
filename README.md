@@ -343,7 +343,7 @@ It repeats the check through 30% packet loss, around vim, less and `clear`, acro
 The Windows client puts the console into VT mode.
 Keys then arrive as the same escape-sequence bytes a Unix terminal produces, and output is plain VT bytes, so there is no key translation layer.
 It starts the server with the `ssh.exe` that ships with Windows 10 and later, and assumes `TERM=xterm-256color` when TERM is unset, which it normally is on Windows.
-`mosh.exe` and `mosh-client.exe` cross-compile from Linux and need only system DLLs.
+`mosh.exe` and `mosh-client.exe` link the C runtime statically and import only DLLs that ship with Windows, so they run on a clean install without the Visual C++ redistributable (0.1.3 and earlier needed `VCRUNTIME140.dll`).
 `mosh-server` stays Unix-only, as in upstream.
 
 The escape key is Ctrl-^, as in upstream, and in Windows Terminal you type it as Ctrl+6, so Ctrl+6 then `.` quits the session.
