@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-05
+
 ### Fixed
 
 - Windows: `mosh.exe` and `mosh-client.exe` did not start on a clean Windows install (exit code 0xC0000135, STATUS_DLL_NOT_FOUND) because the MSVC build linked the Visual C++ runtime dynamically and needed `VCRUNTIME140.dll` from the redistributable. The release build now links the C runtime statically (`+crt-static`), so the executables depend only on DLLs that ship with Windows. Found by winget's validation of the 0.1.3 manifest.
